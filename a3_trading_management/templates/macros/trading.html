@@ -1,0 +1,17 @@
+{#- Macros shared by the trading screens. -#}
+{#- The row of stat cards every workshop list page opens with. The markup and the
+    class names are the portal's own (`.tc-stats` > `.stat-card.stat-card--sm`), so
+    the look comes entirely from the shared workshop stylesheet and follows it when
+    upstream restyles it -- nothing is styled here. The first tile is the headline:
+    the stylesheet tints the first card of a `.tc-stats` row. -#}
+{%- macro stat_row(tiles) -%}
+<div class="tc-stats">
+	{%- for t in tiles %}
+	<div class="stat-card stat-card--sm">
+		<div class="label">{{ t.label }}</div>
+		<div class="value">{{ t.value }}</div>
+		{%- if t.sub %}<div class="sub">{{ t.sub }}</div>{% endif %}
+	</div>
+	{%- endfor %}
+</div>
+{%- endmacro -%}

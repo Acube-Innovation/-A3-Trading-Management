@@ -1,0 +1,124 @@
+{% extends "templates/workshop_base.html" %}
+{% from "templates/macros/workshop.html" import statcard %}
+
+{% block topbar %}{% endblock %}
+
+{% block page_content %}
+{%- set fullname = (frappe.db.get_value("User", frappe.session.user, "full_name") if frappe.session.user != "Guest" else "User") or "User" -%}
+<style>
+	.hm-bar { display: flex; align-items: center; gap: 10px; margin: 6px 0; }
+	.hm-bar__label { flex: 0 0 96px; font-size: 13px; font-weight: 600; }
+	.hm-bar__track { flex: 1 1 auto; height: 10px; background: var(--bg); border-radius: 999px; overflow: hidden; }
+	.hm-bar__fill { height: 100%; background: var(--red); border-radius: 999px; }
+	.hm-bar__n { flex: 0 0 28px; text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
+	.hm-after { display: flex; gap: 10px; margin-top: 14px; }
+	.hm-after div { flex: 1; text-align: center; background: var(--bg); border-radius: var(--radius-sm); padding: 10px 6px; }
+	.hm-after b { display: block; font-size: 20px; }
+	.hm-after span { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+	.hm-prog { display: inline-block; width: 90px; height: 8px; background: var(--bg); border-radius: 999px; vertical-align: middle; overflow: hidden; margin-right: 6px; }
+	.hm-prog i { display: block; height: 100%; background: var(--red); }
+</style>
+<div class="dashboard-actions" style="display:flex; justify-content:flex-end; margin-bottom:4px">
+	<a class="btn btn--icon btn--navy" href="/app/home" title="Go to Desk">
+		<i class="fa-solid fa-table-columns"></i>
+	</a>
+</div>
+
+<div class="welcome">
+	<div class="workshop-avatar workshop-avatar--lg" style="margin:0 auto">{{ fullname[0] }}</div>
+	<div class="hi">Welcome back, {{ fullname.split(" ")[0] }}</div>
+</div>
+
+<div class="stat-grid">
+	{%- for t in tiles %}
+	{{ statcard(t.label, t.value, "", t.sub) }}
+	{%- endfor %}
+</div>
+
+<div class="page-grid-2" style="margin-top:18px">
+	<div class="card">
+		<div class="card__head"><h3>Production Board</h3><a class="btn btn--outline btn--sm" href="/a3-workshop/manufacturing">Manufacturing</a></div>
+		<div class="card__body" style="padding:0">
+			{%- if work_orders %}
+			<table class="table">
+				<thead><tr><th>Work Order</th><th>Trailer</th><th class="num">Qty</th><th>Status</th><th>Stage</th><th>Progress</th></tr></thead>
+				<tbody>
+					{%- for o in work_orders %}
+					<tr>
+						<td><a href="/a3-workshop/manufacturing?wo={{ o.name | urlencode }}">{{ o.name }}</a></td>
+						<td>{{ o.item_name or o.item }}</td>
+						<td class="num">{{ o.qty }}</td>
+						<td><span class="badge {{ o.badge }}">{{ o.status }}</span></td>
+						<td>{{ o.stage }}</td>
+						<td><span class="hm-prog"><i style="width:{{ o.progress or 0 }}%"></i></span>{{ o.progress or 0 }}%</td>
+					</tr>
+					{%- endfor %}
+				</tbody>
+			</table>
+			{%- else %}
+			<div class="empty" style="padding:24px">No open work orders — every work order is completed or cancelled.</div>
+			{%- endif %}
+		</div>
+	</div>
+
+	<div class="card">
+		<div class="card__head"><h3>Trailers on the Floor</h3><span class="muted">{{ stages.on_floor }} being built</span></div>
+		<div class="card__body">
+			{%- if not stages.on_floor %}
+			<div class="empty" style="padding:10px 0 14px">Nothing on the floor right now.</div>
+			{%- endif %}
+			{%- for s in stages.stages %}
+			<div class="hm-bar">
+				<span class="hm-bar__label">{{ s.stage }}</span>
+				<span class="hm-bar__track"><span class="hm-bar__fill" style="width:{{ s.pct }}%"></span></span>
+				<span class="hm-bar__n">{{ s.count }}</span>
+			</div>
+			{%- endfor %}
+			<div class="muted" style="font-size:12.5px;margin-top:14px">After the floor</div>
+			<div class="hm-after" style="margin-top:6px">
+				<div><b>{{ stages.after["In Stock"] }}</b><span>Ready in stock</span></div>
+				<div><b>{{ stages.after["Sold"] }}</b><span>Reserved for orders</span></div>
+				<div><b>{{ stages.after["Delivered"] }}</b><span>Delivered</span></div>
+			</div>
+		</div>
+	</div>
+</div>
+
+<div class="page-grid-2" style="margin-top:18px">
+	<div class="card">
+		<div class="card__head"><h3>Recent Deliveries</h3><a class="btn btn--outline btn--sm" href="/a3-workshop/delivery-invoice">Delivery &amp; Invoice</a></div>
+		<div class="card__body" style="padding:0">
+			{%- if deliveries %}
+			<table class="table">
+				<thead><tr><th>Note</th><th>Customer</th><th>Chassis</th><th>Date</th><th class="num">Total</th></tr></thead>
+				<tbody>
+					{%- for d in deliveries %}
+					<tr><td>{{ d.name }}</td><td>{{ d.customer }}</td><td>{{ d.chassis }}</td><td>{{ d.date }}</td><td class="num">{{ d.total }}</td></tr>
+					{%- endfor %}
+				</tbody>
+			</table>
+			{%- else %}
+			<div class="empty" style="padding:24px">Nothing delivered yet.</div>
+			{%- endif %}
+		</div>
+	</div>
+
+	<div class="card">
+		<div class="card__head"><h3>Low Stock</h3><a class="btn btn--outline btn--sm" href="/a3-workshop/live-stock">Live Stock</a></div>
+		<div class="card__body" style="padding:0">
+			{%- if low_stock %}
+			<table class="table">
+				<thead><tr><th>Item</th><th>Yard</th><th class="num">Available</th><th class="num">Reorder at</th></tr></thead>
+				<tbody>
+					{%- for a in low_stock %}
+					<tr><td>{{ a.item_name or a.item_code }}</td><td>{{ a.warehouse or "—" }}</td><td class="num">{{ a.available }}</td><td class="num">{{ a.reorder_level }}</td></tr>
+					{%- endfor %}
+				</tbody>
+			</table>
+			{%- else %}
+			<div class="empty" style="padding:24px">Nothing below its reorder level.</div>
+			{%- endif %}
+		</div>
+	</div>
+</div>
+{% endblock %}

@@ -1,0 +1,139 @@
+{% extends "templates/workshop_base.html" %}
+{% from "templates/macros/trading.html" import stat_row %}
+
+{% block page_content %}
+{#- Every serial A3 has ever issued: chassis number, trailer type, originating
+    work order, production stage, warehouse, current owner and warranty position.
+    Rows are server-rendered from a3_trading_management.api.serial_register;
+    filtering is client-side over those rows so the register stays searchable by
+    any column without a round trip. -#}
+
+{{ stat_row([
+	{"label": "Chassis Issued", "value": summary.total, "sub": "Trailers identified"},
+	{"label": "In Stock", "value": (summary.by_status or {}).get("In Stock", 0), "sub": "Built and in the yard"},
+	{"label": "Delivered", "value": (summary.by_status or {}).get("Delivered", 0), "sub": "With their owner"},
+	{"label": "Awaiting Embossing", "value": summary.awaiting_embossing, "sub": "Number not yet on metal"},
+	{"label": "Embossed", "value": (summary.total or 0) - (summary.awaiting_embossing or 0), "sub": "Plate struck"},
+]) }}
+
+<div class="toolbar">
+	<div class="section-title" style="margin:0">Serial &amp; Chassis Register</div>
+	<div class="toolbar__right">
+		<a class="btn btn--outline btn--sm" href="/a3-workshop/chassis-plate-print">
+			<i class="fa-solid fa-print"></i> Chassis Plate Print</a>
+	</div>
+</div>
+
+<div class="card" style="margin-bottom:14px">
+	<div class="card__body" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+		<input id="sr-q" placeholder="Search chassis, serial, trailer type, work order, warehouse or owner…"
+			style="flex:1;min-width:280px">
+		<select id="sr-status">
+			<option value="">All statuses</option>
+			{%- for s in statuses %}<option value="{{ s }}">{{ s }}</option>{%- endfor %}
+		</select>
+		<select id="sr-stage">
+			<option value="">All stages</option>
+			{%- for s in stages %}<option value="{{ s }}">{{ s }}</option>{%- endfor %}
+		</select>
+		<span class="muted" id="sr-count" style="font-size:12px"></span>
+	</div>
+</div>
+
+<div class="card">
+	<div class="card__body" style="overflow-x:auto">
+		{%- if rows %}
+		<table class="table" id="sr-table">
+			<thead><tr>
+				<th>Chassis Number</th><th>Serial</th><th>Trailer Type</th><th>Work Order</th>
+				<th>Stage</th><th>Status</th><th>Warehouse</th><th>Owner</th><th>Warranty</th><th>Plate</th>
+			</tr></thead>
+			<tbody>
+			{%- for r in rows %}
+				<tr data-hay="{{ ((r.chassis_number or '') ~ ' ' ~ (r.serial_no or '') ~ ' ' ~ (r.trailer_type or '') ~ ' ' ~ (r.work_order or '') ~ ' ' ~ (r.warehouse or '') ~ ' ' ~ (r.current_owner or '') ~ ' ' ~ (r.owner_name or '')) | lower }}"
+					data-status="{{ r.status or '' }}" data-stage="{{ r.production_stage or '' }}">
+					<td><b>{{ r.chassis_number or "—" }}</b></td>
+					<td>{{ r.serial_no }}</td>
+					<td>{{ r.trailer_type or "—" }}</td>
+					<td>{%- if r.work_order %}<a href="/a3-workshop/manufacturing?wo={{ r.work_order | urlencode }}" data-wo="{{ r.work_order }}">{{ r.work_order }}</a>{% else %}—{% endif %}</td>
+					<td>{{ r.production_stage or "—" }}</td>
+					<td>{{ r.status }}</td>
+					<td>{{ r.warehouse or "—" }}</td>
+					<td>{{ r.owner_name or r.current_owner or "—" }}</td>
+					<td>{{ r.warranty_state }}{% if r.warranty_expiry_date %}
+						<span class="muted" style="font-size:11px"><br>to {{ frappe.utils.formatdate(r.warranty_expiry_date, "dd MMM yyyy") }}</span>{% endif %}</td>
+					<td>{% if r.chassis_embossed %}Embossed{% else %}<span class="muted">Pending</span>{% endif %}</td>
+				</tr>
+			{%- endfor %}
+			</tbody>
+		</table>
+		{%- else %}
+		<div class="empty">No trailer serials issued yet. A serial is created for each unit
+			when a work order for a trailer item is raised.</div>
+		{%- endif %}
+	</div>
+</div>
+
+<script>
+(function () {
+	var q = document.getElementById("sr-q"),
+	    fStatus = document.getElementById("sr-status"),
+	    fStage = document.getElementById("sr-stage"),
+	    count = document.getElementById("sr-count"),
+	    table = document.getElementById("sr-table");
+	if (!table) return;
+	var rows = Array.prototype.slice.call(table.tBodies[0].rows);
+
+	function apply() {
+		var needle = (q.value || "").trim().toLowerCase(),
+		    st = fStatus.value, sg = fStage.value, shown = 0;
+		rows.forEach(function (tr) {
+			var ok = (!needle || tr.dataset.hay.indexOf(needle) >= 0) &&
+			         (!st || tr.dataset.status === st) &&
+			         (!sg || tr.dataset.stage === sg);
+			tr.style.display = ok ? "" : "none";
+			if (ok) shown++;
+		});
+		count.textContent = shown + " of " + rows.length + " shown";
+	}
+	[q, fStatus, fStage].forEach(function (el) {
+		el.addEventListener("input", apply); el.addEventListener("change", apply);
+	});
+	apply();
+})();
+</script>
+
+<!-- Work order pop-up: the Manufacturing page's Production Detail, embedded. -->
+<div class="modal-overlay" id="wo-modal" role="dialog" aria-modal="true" aria-labelledby="wo-modal-title">
+	<div class="modal" style="width:min(1080px, 96vw);max-width:none">
+		<div class="modal__head">
+			<div><h3 id="wo-modal-title">Work Order</h3><div class="sub" id="wo-modal-sub"></div></div>
+			<div style="display:flex;gap:8px;align-items:center">
+				<a class="btn btn--outline btn--sm" id="wo-modal-full" href="#" target="_blank" rel="noopener"><i class="fa-solid fa-up-right-from-square"></i> Open in Manufacturing</a>
+				<button type="button" class="modal__close" data-close><i class="fa-solid fa-xmark"></i></button>
+			</div>
+		</div>
+		<div class="modal__body" style="padding:0">
+			<iframe id="wo-frame" title="Work order" style="width:100%;height:78vh;border:0;display:block;background:#fff"></iframe>
+		</div>
+	</div>
+</div>
+<script>
+(function () {
+	var modal = document.getElementById("wo-modal"), frame = document.getElementById("wo-frame");
+	function open(wo) {
+		document.getElementById("wo-modal-title").textContent = wo;
+		document.getElementById("wo-modal-full").href = "/a3-workshop/manufacturing?wo=" + encodeURIComponent(wo);
+		frame.src = "/a3-workshop/manufacturing?wo=" + encodeURIComponent(wo) + "&embed=1";
+		modal.classList.add("is-open"); document.body.style.overflow = "hidden";
+	}
+	function close() { modal.classList.remove("is-open"); document.body.style.overflow = ""; frame.src = "about:blank"; }
+	document.querySelectorAll("a[data-wo]").forEach(function (a) {
+		a.addEventListener("click", function (e) { e.preventDefault(); open(a.getAttribute("data-wo")); });
+	});
+	modal.querySelectorAll("[data-close]").forEach(function (b) { b.addEventListener("click", close); });
+	modal.addEventListener("click", function (e) { if (e.target === modal) close(); });
+	document.addEventListener("keydown", function (e) { if (e.key === "Escape" && modal.classList.contains("is-open")) close(); });
+})();
+</script>
+{% endblock %}

@@ -9,12 +9,16 @@ required_apps = ["frappe", "erpnext"]
 # This app is self-contained: trading and manufacturing on ERPNext, with its own
 # portal (templates, stylesheet, pages). The workshop-service side of the platform
 # it grew out of (job cards, appointments, estimates, telecalling, inspection,
-# repair warranty) is not part of it -- see setup/trim_to_trading.py.
+# repair warranty) was removed on 23 Sep 2026 -- see setup/trim_to_trading.py.
 
 # Installation
 # ------------
 before_install = "a3_trading_management.setup.before_install.before_install"
-after_install = "a3_trading_management.setup.after_install.after_install"   # roles, settings singles
+after_install = [
+	"a3_trading_management.setup.after_install.after_install",   # roles, settings singles
+	"a3_trading_management.setup.install.after_install",         # trading custom fields
+]
+after_migrate = "a3_trading_management.setup.install.after_migrate"
 
 # Desk
 # ----
@@ -65,5 +69,21 @@ doc_events = {
 	# Items are numbered from a series while Item Code stays a typeable field.
 	"Item": {
 		"before_naming": "a3_trading_management.integrations.item.before_naming",
+	},
+	# Phase 2: serials are minted from Work Order events so that a work order raised
+	# from the Desk, an import or the portal all behave the same way.
+	"Work Order": {
+		"after_insert": "a3_trading_management.serial_control.create_serials",
+		"on_update": "a3_trading_management.serial_control.sync_stage",
+		"on_submit": "a3_trading_management.serial_control.sync_stage",
+		# The production stage is allow_on_submit, so advancing it on a submitted
+		# work order comes through update_after_submit -- the path that matters.
+		"on_update_after_submit": "a3_trading_management.serial_control.sync_stage",
+		"on_cancel": "a3_trading_management.serial_control.on_work_order_cancel",
+	},
+	# Task 9: the Manufacture entry is when the trailer really enters stock.
+	"Stock Entry": {
+		"before_validate": "a3_trading_management.serial_control.set_stock_entry_type",
+		"on_submit": "a3_trading_management.serial_control.on_manufacture_entry",
 	},
 }

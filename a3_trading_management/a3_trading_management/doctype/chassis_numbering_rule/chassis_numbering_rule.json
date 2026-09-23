@@ -1,0 +1,102 @@
+{
+ "actions": [],
+ "creation": "2026-09-16 17:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "intro_html",
+  "confirmed_by_redlines",
+  "format_sb",
+  "prefix",
+  "include_year",
+  "year_format",
+  "separator",
+  "column_break_format",
+  "sequence_length",
+  "next_number",
+  "check_digit_method",
+  "preview_sb",
+  "sample_number"
+ ],
+ "fields": [
+  {
+   "fieldname": "intro_html",
+   "fieldtype": "HTML",
+   "options": "<p>The chassis numbering rule A3 stamps on every trailer. Redlines confirms the format, prefix, check digit and starting number; nothing is assumed here.</p>"
+  },
+  {
+   "default": "0",
+   "description": "Tick only once Redlines has confirmed the format below. Chassis numbers are not issued until this is ticked, so an unconfirmed rule can never be embossed onto a trailer.",
+   "fieldname": "confirmed_by_redlines",
+   "fieldtype": "Check",
+   "label": "Format Confirmed by Redlines"
+  },
+  {"fieldname": "format_sb", "fieldtype": "Section Break", "label": "Format"},
+  {
+   "description": "Leading text, e.g. A3. Left blank the number is digits only.",
+   "fieldname": "prefix",
+   "fieldtype": "Data",
+   "label": "Prefix"
+  },
+  {"default": "0", "fieldname": "include_year", "fieldtype": "Check", "label": "Include Year"},
+  {
+   "default": "YY",
+   "depends_on": "include_year",
+   "fieldname": "year_format",
+   "fieldtype": "Select",
+   "label": "Year Format",
+   "options": "YY\nYYYY"
+  },
+  {
+   "default": "-",
+   "description": "Placed between the parts. Leave blank to run them together.",
+   "fieldname": "separator",
+   "fieldtype": "Data",
+   "label": "Separator"
+  },
+  {"fieldname": "column_break_format", "fieldtype": "Column Break"},
+  {
+   "default": "5",
+   "description": "Digits in the running number, zero padded.",
+   "fieldname": "sequence_length",
+   "fieldtype": "Int",
+   "label": "Sequence Length"
+  },
+  {
+   "default": "1",
+   "description": "The number the next chassis will take. Set this to the starting number Redlines specifies.",
+   "fieldname": "next_number",
+   "fieldtype": "Int",
+   "label": "Next Number"
+  },
+  {
+   "default": "None",
+   "description": "Appended as a final digit, computed over the digits of the number.",
+   "fieldname": "check_digit_method",
+   "fieldtype": "Select",
+   "label": "Check Digit",
+   "options": "None\nMod 10 (Luhn)\nMod 11"
+  },
+  {"fieldname": "preview_sb", "fieldtype": "Section Break", "label": "Preview"},
+  {
+   "description": "What the next chassis number will look like under the settings above.",
+   "fieldname": "sample_number",
+   "fieldtype": "Data",
+   "label": "Next Chassis Number",
+   "read_only": 1
+  }
+ ],
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-09-16 17:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "A3 Trading Management",
+ "name": "Chassis Numbering Rule",
+ "owner": "Administrator",
+ "permissions": [
+  {"create": 1, "delete": 1, "email": 1, "print": 1, "read": 1, "role": "System Manager", "share": 1, "write": 1}
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "track_changes": 1
+}

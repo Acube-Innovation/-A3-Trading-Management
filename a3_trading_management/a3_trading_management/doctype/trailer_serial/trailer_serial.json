@@ -1,0 +1,165 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "field:serial_no",
+ "creation": "2026-09-16 17:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "serial_no",
+  "chassis_number",
+  "trailer_type",
+  "column_break_identity",
+  "status",
+  "production_stage",
+  "work_order",
+  "stock_sb",
+  "warehouse",
+  "company",
+  "column_break_stock",
+  "current_owner",
+  "owner_name",
+  "warranty_sb",
+  "warranty_start_date",
+  "column_break_warranty",
+  "warranty_expiry_date",
+  "embossing_sb",
+  "chassis_embossed",
+  "embossed_on",
+  "column_break_embossing",
+  "embossed_by",
+  "amended_from"
+ ],
+ "fields": [
+  {
+   "description": "A3's own running identifier for this physical trailer.",
+   "fieldname": "serial_no",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Serial No",
+   "read_only": 1,
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "description": "Stamped once, when the work order is created, and never editable afterwards.",
+   "fieldname": "chassis_number",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Chassis Number",
+   "read_only": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "trailer_type",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Trailer Type",
+   "options": "Item"
+  },
+  {"fieldname": "column_break_identity", "fieldtype": "Column Break"},
+  {
+   "default": "In Production",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "options": "In Production\nIn Stock\nSold\nDelivered\nScrapped",
+   "reqd": 1
+  },
+  {
+   "default": "Material",
+   "description": "Follows the work order through the six production stages.",
+   "fieldname": "production_stage",
+   "fieldtype": "Select",
+   "in_standard_filter": 1,
+   "label": "Production Stage",
+   "options": "Material\nFabrication\nAssembly\nPaint\nQC\nDelivery"
+  },
+  {
+   "description": "The work order this trailer was built on. One serial per trailer, reserved to that order.",
+   "fieldname": "work_order",
+   "fieldtype": "Link",
+   "in_standard_filter": 1,
+   "label": "Work Order",
+   "options": "Work Order",
+   "read_only": 1
+  },
+  {"fieldname": "stock_sb", "fieldtype": "Section Break", "label": "Stock and Ownership"},
+  {
+   "description": "Set when the finished trailer enters stock, so stock is a list of identified units rather than a quantity.",
+   "fieldname": "warehouse",
+   "fieldtype": "Link",
+   "label": "Warehouse",
+   "options": "Warehouse"
+  },
+  {"fieldname": "company", "fieldtype": "Link", "label": "Company", "options": "Company"},
+  {"fieldname": "column_break_stock", "fieldtype": "Column Break"},
+  {
+   "fieldname": "current_owner",
+   "fieldtype": "Link",
+   "label": "Current Owner",
+   "options": "Customer"
+  },
+  {
+   "fetch_from": "current_owner.customer_name",
+   "fieldname": "owner_name",
+   "fieldtype": "Data",
+   "label": "Owner Name",
+   "read_only": 1
+  },
+  {"fieldname": "warranty_sb", "fieldtype": "Section Break", "label": "Warranty"},
+  {"fieldname": "warranty_start_date", "fieldtype": "Date", "label": "Warranty Start"},
+  {"fieldname": "column_break_warranty", "fieldtype": "Column Break"},
+  {"fieldname": "warranty_expiry_date", "fieldtype": "Date", "label": "Warranty Expiry"},
+  {"fieldname": "embossing_sb", "fieldtype": "Section Break", "label": "Chassis Plate"},
+  {
+   "default": "0",
+   "description": "Ticked when the fabrication bay has embossed the plate.",
+   "fieldname": "chassis_embossed",
+   "fieldtype": "Check",
+   "label": "Chassis Embossed"
+  },
+  {"fieldname": "embossed_on", "fieldtype": "Datetime", "label": "Embossed On", "read_only": 1},
+  {"fieldname": "column_break_embossing", "fieldtype": "Column Break"},
+  {
+   "fieldname": "embossed_by",
+   "fieldtype": "Link",
+   "label": "Embossed By",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "amended_from",
+   "fieldtype": "Link",
+   "label": "Amended From",
+   "no_copy": 1,
+   "options": "Trailer Serial",
+   "print_hide": 1,
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-09-16 17:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "A3 Trading Management",
+ "name": "Trailer Serial",
+ "owner": "Administrator",
+ "permissions": [
+  {"create": 1, "delete": 1, "email": 1, "print": 1, "read": 1, "report": 1, "role": "System Manager", "share": 1, "write": 1},
+  {"create": 1, "email": 1, "print": 1, "read": 1, "report": 1, "role": "Manufacturing Manager", "share": 1, "write": 1},
+  {"print": 1, "read": 1, "report": 1, "role": "Manufacturing User"},
+  {"print": 1, "read": 1, "report": 1, "role": "Stock User"}
+ ],
+ "search_fields": "chassis_number,trailer_type,status",
+ "show_title_field_in_link": 1,
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "chassis_number",
+ "track_changes": 1
+}

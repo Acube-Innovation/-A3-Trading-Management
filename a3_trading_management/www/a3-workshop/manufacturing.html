@@ -1,0 +1,577 @@
+{% extends "templates/workshop_base.html" %}
+{% from "templates/macros/workshop.html" import field %}
+
+{% block page_content %}
+
+<style>
+	/* item / raw-material autocomplete (same look as the Job Card wizard) */
+	.mfg-ac { position:absolute; left:0; right:0; top:100%; z-index:60; margin-top:2px; background:#fff;
+		border:1px solid var(--border,#d8dde6); border-radius:8px; box-shadow:0 8px 24px rgba(0,0,0,.12);
+		max-height:240px; overflow:auto; }
+	.mfg-ac-item { padding:8px 12px; cursor:pointer; }
+	.mfg-ac-item:hover, .mfg-ac-item.is-active { background:#f1f4f8; }
+	.mfg-ac-label { font-weight:600; font-size:13px; }
+	.mfg-ac-sub { font-size:12px; color:var(--muted,#7a8598); }
+	.mfg-ac-empty { padding:8px 12px; font-size:12px; color:var(--muted,#7a8598); }
+	/* inline editable table cells */
+	.cell-inp { width:100%; border:1px solid var(--border,#d8dde6); border-radius:6px; padding:5px 7px; font-size:12px; background:#fff; }
+	.cell-inp:focus { outline:none; border-color:var(--primary,#2f6fed); }
+	/* bordered tables with a red header row — uses the brand red (--red, same as
+	   the primary "Move to…" transition button) */
+	.mfg-table { width:100%; border-collapse:collapse; margin-top:4px; border:1px solid var(--red,#ec2e5d); }
+	.mfg-table thead th { background:var(--red,#ec2e5d); color:#fff; border:1px solid var(--red-700,#c01643); font-weight:700; font-size:11px;
+		text-transform:uppercase; letter-spacing:.02em; padding:7px 8px; text-align:left; }
+	.mfg-table tbody td { border:1px solid #f5c9d6; padding:6px 8px; }
+	.mfg-table tbody tr:nth-child(even) { background:#fdf1f5; }
+	.mfg-table tbody tr:hover { background:#fce6ec; }
+	.mfg-table .sl { width:40px; text-align:center; font-variant-numeric:tabular-nums; }
+	.mfg-table tbody .sl { color:#98a2b3; }
+	.mfg-etable { table-layout:auto; }
+	.mfg-etable td { vertical-align:middle; }
+	.mfg-addrow { margin-top:8px; }
+	/* light-red action buttons (add row / save) */
+	.mfg-btn-red { background:#fde6ec; border:1px solid #f5b6c7; color:var(--red-600,#d81e4d); }
+	.mfg-btn-red:hover { background:#fbd3de; border-color:#ef9db2; color:var(--red-700,#c01643); }
+	/* delete-row button: light red shade */
+	.mfg-row-x { border:1px solid #f5b6c7; background:#fde6ec; color:var(--red-600,#d81e4d); cursor:pointer; font-size:12px;
+		padding:5px 8px; border-radius:6px; line-height:1; transition:background .12s; }
+	.mfg-row-x:hover { background:#fbd3de; border-color:#ef9db2; }
+	.mfg-warn { background:#fff6e6; border:1px solid #f0c36d; color:#8a6100; padding:9px 12px; border-radius:8px; font-size:12px; margin-top:12px; }
+	.mfg-note { width:100%; border:1px solid var(--border,#d8dde6); border-radius:8px; padding:8px 10px; font-size:13px; margin-top:12px; }
+</style>
+
+<!-- production KPIs (filled live from a3_trading_management.api.manufacturing.get_dashboard) -->
+<style>
+	.is-embed #mfg-cards, .is-embed .mfg-grid > .card:first-child { display: none; }
+	.is-embed .mfg-grid { grid-template-columns: 1fr; }
+</style>
+<div class="tc-stats" id="mfg-cards">
+	<div class="stat-card stat-card--sm"><div class="label">Open Work Orders</div><div class="value" id="s-open">—</div></div>
+	<div class="stat-card stat-card--sm stat-card--navy"><div class="label">In Production</div><div class="value" id="s-prod">—</div></div>
+	<div class="stat-card stat-card--sm stat-card--purple"><div class="label">Ready for Delivery</div><div class="value" id="s-ready">—</div></div>
+	<div class="stat-card stat-card--sm"><div class="label">Delivered (MTD)</div><div class="value" id="s-delivered">—</div></div>
+	<div class="stat-card stat-card--sm stat-card--navy"><div class="label">WIP Value</div><div class="value" id="s-wip">—</div></div>
+	<div class="stat-card stat-card--sm stat-card--purple"><div class="label">On-time %</div><div class="value" id="s-ontime">—</div></div>
+</div>
+
+<div class="mfg-grid">
+	<!-- Work Orders list -->
+	<div class="card"><div class="card__head">
+			<h3>Work Orders</h3>
+			<button type="button" class="btn btn--primary btn--sm" id="new-wo"><i class="fa-solid fa-plus"></i> New</button>
+		</div>
+		<div class="card__body">
+			<div class="field" style="margin-bottom:12px"><input id="wo-search" placeholder="Search item / work order…"></div>
+			{#- The search box above already filters server-side. These chips narrow
+			    what came back, by production stage, without another round trip. -#}
+			<div class="filter-bar" id="wo-bar" style="margin-bottom:12px">
+				<div class="filter-bar__group" data-filter-key="stage" role="group" aria-label="Filter by production stage" style="margin-left:0">
+					<button type="button" class="chip" data-val="all">All</button>
+					<button type="button" class="chip" data-val="Material">Material</button>
+					<button type="button" class="chip" data-val="Fabrication">Fabrication</button>
+					<button type="button" class="chip" data-val="Assembly">Assembly</button>
+					<button type="button" class="chip" data-val="Paint">Paint</button>
+					<button type="button" class="chip" data-val="QC">QC</button>
+					<button type="button" class="chip" data-val="Delivery">Delivery</button>
+				</div>
+			</div>
+			<div class="mfg-list" id="wo-list"><div class="empty">Loading…</div></div>
+		</div>
+	</div>
+
+	<!-- Work Order lifecycle detail -->
+	<div class="card"><div class="card__head"><h3 id="wo-title">Production Detail</h3><span class="readonly-tag" id="wo-tag">select a work order</span></div>
+		<div class="card__body" id="wo-detail">
+			<div class="empty">Select a work order to manage its BOM, costing and delivery — all on this page.</div>
+		</div>
+	</div>
+</div>
+
+<!-- New Work Order modal -->
+<div class="modal-overlay" id="wo-modal" role="dialog" aria-modal="true">
+	<div class="modal">
+		<div class="modal__head">
+			<div><h3>New Work Order</h3><div class="sub">Build trailers to stock</div></div>
+			<button type="button" class="modal__close" data-close><i class="fa-solid fa-xmark"></i></button>
+		</div>
+		<div class="modal__body">
+			<form class="form-grid" id="wo-form" autocomplete="off">
+				<div class="field field--full" style="position:relative">
+					<label>Item to be Manufactured <span class="req">*</span></label>
+					<input id="wo-item-input" placeholder="Search an item that has a BOM…">
+					<input type="hidden" name="wo_item_code">
+					<div class="mfg-mini-label" id="wo-item-desc"></div>
+				</div>
+				{{ field("Quantity","wo_qty",type="number",value="1") }}
+				<div class="field">
+					<label>BOM <span class="req">*</span></label>
+					<select name="wo_bom" id="wo-bom"><option value="">Select an item first</option></select>
+				</div>
+				{{ field("Planned Start","wo_start",type="date") }}
+				{{ field("Target Delivery","wo_target",type="date") }}
+				<div class="field">
+					<label>Take raw material from</label>
+					<select name="wo_source" id="wo-source"></select>
+				</div>
+				<div class="field">
+					<label>Finished trailers go to</label>
+					<select name="wo_fg" id="wo-fg"></select>
+				</div>
+				<div class="field field--full">
+					<label>Specification / notes for the floor</label>
+					<textarea name="wo_spec" id="wo-spec" rows="2" placeholder="Colour, axles, options — anything the fabrication bay must know. Prints on the traveler."></textarea>
+				</div>
+				<div class="field field--full" id="wo-bom-preview" style="display:none">
+					<div class="totals" style="margin-top:0"></div>
+				</div>
+				<div class="field field--full" id="wo-material" style="display:none"></div>
+			</form>
+		</div>
+		<div class="modal__foot">
+			<button type="button" class="btn btn--outline" data-close>Cancel</button>
+			<button type="button" class="btn btn--primary" id="wo-create"><i class="fa-solid fa-check"></i> Create Work Order</button>
+		</div>
+	</div>
+</div>
+
+<script>window.csrf_token = "{{ frappe.session.csrf_token }}";</script>
+{% raw %}
+<script>
+(function () {
+	var API = "a3_trading_management.api.manufacturing.";
+	var CURRENCY = "AED";
+	var current = null, search = "", detail = null;
+	var editRM = [], editOps = [];   // in-memory editable table state for the current draft WO
+
+	function callMethod(method, args) {
+		return fetch("/api/method/" + method, {
+			method: "POST",
+			headers: { "Content-Type": "application/json", "X-Frappe-CSRF-Token": window.csrf_token || "", "Accept": "application/json" },
+			body: JSON.stringify(args || {})
+		}).then(function (r) {
+			return r.json().then(function (data) {
+				if (!r.ok) { throw new Error((data && data._server_messages) || (data && data.exc) || r.statusText); }
+				return data.message;
+			});
+		});
+	}
+	function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+	function money(n) { return CURRENCY + " " + (Number(n) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+
+	var listEl = document.getElementById("wo-list");
+	var woFilter = null;  // set once the DOM below is wired; renderList re-applies it
+	var detailEl = document.getElementById("wo-detail");
+	var titleEl = document.getElementById("wo-title");
+	var tagEl = document.getElementById("wo-tag");
+
+	// ---- KPI cards -----------------------------------------------------
+	function renderCards(d) {
+		var map = { open: "s-open", prod: "s-prod", ready: "s-ready", delivered: "s-delivered", wip: "s-wip", ontime: "s-ontime" };
+		(d.cards || []).forEach(function (c) { var el = document.getElementById(map[c.key]); if (el) el.textContent = c.value; });
+	}
+
+	// ---- Work Orders list ----------------------------------------------
+	function renderList(rows) {
+		listEl.innerHTML = (rows || []).map(function (o) {
+			return '<div class="tc-row' + (current === o.name ? ' is-active' : '') + '" data-id="' + esc(o.name) + '"' +
+				' data-row data-f-stage="' + esc(o.stage) + '"' +
+				' data-search="' + esc((o.item_name + " " + o.name).toLowerCase()) + '">' +
+				'<div class="row-between"><div class="list-row__title">' + esc(o.item_name) + '</div><span class="badge ' + o.badge + '">' + esc(o.status) + '</span></div>' +
+				'<div class="sub">' + esc(o.name) + ' · Qty ' + o.qty + '</div>' +
+				'<div class="bar"><span style="width:' + o.progress + '%"></span></div>' +
+				'<div class="muted" style="font-size:11px;margin-top:5px">' + esc(o.stage) + ' · ' + o.progress + '%</div></div>';
+		}).join("") || '<div class="empty">No work orders yet. Click “New” to manufacture an item.</div>';
+		setPageCount((rows || []).length, (rows || []).length === 1 ? "work order" : "work orders");
+		if (woFilter) { woFilter.apply(); }
+	}
+
+	// ---- Detail panel --------------------------------------------------
+	function stepperHtml(o) {
+		var delivered = o.stage === "Delivery";
+		var h = '<div class="card" style="box-shadow:none;background:var(--bg)"><div class="stepper stepper--read">';
+		o.stages.forEach(function (s, i) {
+			var done = delivered || i < o.stage_index;
+			var cls = done ? "is-done" : (i === o.stage_index ? "is-active" : "");
+			h += '<div class="step ' + cls + '"><div class="step__dot">' + (done ? '<i class="fa-solid fa-check"></i>' : (i + 1)) + '</div><div class="step__label">' + esc(s) + '</div></div>';
+			if (i < o.stages.length - 1) h += '<div class="step__line ' + (done ? "is-done" : "") + '"></div>';
+		});
+		return h + '</div></div>';
+	}
+	function kv(pairs) { return pairs.map(function (p) { return '<div class="kv-row"><span class="muted">' + esc(p[0]) + '</span><b style="text-align:right">' + esc(p[1]) + '</b></div>'; }).join(""); }
+	function roTable(cols, rows) {
+		var head = '<th class="sl">#</th>' + cols.map(function (c) { return "<th>" + esc(c) + "</th>"; }).join("");
+		var body = rows.length
+			? rows.map(function (r, i) { return '<tr><td class="sl">' + (i + 1) + '</td>' + r.map(function (c) { return "<td>" + c + "</td>"; }).join("") + "</tr>"; }).join("")
+			: '<tr><td colspan="' + (cols.length + 1) + '" class="muted">None</td></tr>';
+		return '<div style="overflow:auto"><table class="table mfg-table"><thead><tr>' + head + '</tr></thead><tbody>' + body + "</tbody></table></div>";
+	}
+
+	// editable raw-materials table (bound to editRM). The Item cell is an inline
+	// autocomplete so any row — existing or newly added — can pick an item.
+	function rmTableHtml() {
+		var body = editRM.map(function (r, i) {
+			return '<tr>' +
+				'<td class="sl">' + (i + 1) + '</td>' +
+				'<td style="position:relative;min-width:150px"><input class="cell-inp rm-item-ac" data-i="' + i + '" value="' + esc(r.item_name || r.item_code || "") + '" placeholder="Search item…" autocomplete="off"></td>' +
+				'<td style="width:90px"><input class="cell-inp" type="number" step="any" data-rm="qty" data-i="' + i + '" value="' + (r.qty || 0) + '"></td>' +
+				'<td style="width:110px"><input class="cell-inp" type="number" step="any" data-rm="rate" data-i="' + i + '" value="' + (r.rate || 0) + '"></td>' +
+				'<td style="width:110px" data-rm-amt="' + i + '">' + money((r.qty || 0) * (r.rate || 0)) + '</td>' +
+				'<td style="width:34px"><button type="button" class="mfg-row-x" data-rm-x="' + i + '" title="Remove row"><i class="fa-solid fa-trash"></i></button></td></tr>';
+		}).join("");
+		return '<table class="table mfg-etable mfg-table"><thead><tr><th class="sl">#</th><th>Item</th><th>Qty</th><th>Rate</th><th>Amount</th><th></th></tr></thead><tbody>' +
+			(body || '<tr><td colspan="6" class="muted">No materials — add a row below.</td></tr>') + '</tbody></table>' +
+			'<button type="button" class="btn btn--sm mfg-addrow mfg-btn-red" data-rm-add><i class="fa-solid fa-plus"></i> Add material row</button>';
+	}
+	// editable operations table (bound to editOps). Operation/Workstation are free
+	// text — missing masters are auto-created on save.
+	function opTableHtml() {
+		var body = editOps.map(function (r, i) {
+			return '<tr>' +
+				'<td class="sl">' + (i + 1) + '</td>' +
+				'<td style="min-width:150px"><input class="cell-inp" data-op="operation" data-i="' + i + '" value="' + esc(r.operation || "") + '" placeholder="Operation" autocomplete="off"></td>' +
+				'<td style="min-width:130px"><input class="cell-inp" data-op="workstation" data-i="' + i + '" value="' + esc(r.workstation || "") + '" placeholder="Workstation" autocomplete="off"></td>' +
+				'<td style="width:80px"><input class="cell-inp" type="number" step="any" data-op="time_in_mins" data-i="' + i + '" value="' + (r.time_in_mins || 0) + '"></td>' +
+				'<td style="width:100px"><input class="cell-inp" type="number" step="any" data-op="hour_rate" data-i="' + i + '" value="' + (r.hour_rate || 0) + '"></td>' +
+				'<td style="width:34px"><button type="button" class="mfg-row-x" data-op-x="' + i + '" title="Remove row"><i class="fa-solid fa-trash"></i></button></td></tr>';
+		}).join("");
+		return '<table class="table mfg-etable mfg-table"><thead><tr><th class="sl">#</th><th>Operation</th><th>Workstation</th><th>Mins</th><th>Rate / hr</th><th></th></tr></thead><tbody>' +
+			(body || '<tr><td colspan="6" class="muted">No operations — add a row below.</td></tr>') + '</tbody></table>' +
+			'<button type="button" class="btn btn--sm mfg-addrow mfg-btn-red" data-op-add><i class="fa-solid fa-plus"></i> Add operation row</button>';
+	}
+
+	function actionArea(o) {
+		if (o.stage === "Delivery") {
+			return '<button class="btn btn--outline" style="width:100%;justify-content:center;margin-top:14px" disabled><i class="fa-solid fa-circle-check"></i> Delivered — added to stock</button>';
+		}
+		var label = o.next_stage === "Delivery"
+			? '<i class="fa-solid fa-truck-ramp-box"></i> Deliver &amp; Add to Stock'
+			: '<i class="fa-solid fa-arrow-right"></i> Move to ' + esc(o.next_stage);
+		return '<textarea class="mfg-note" id="stage-notes" rows="1" placeholder="Transition note (optional)…"></textarea>' +
+			'<button class="btn btn--primary" style="width:100%;justify-content:center;margin-top:10px" id="advance-btn">' + label + '</button>';
+	}
+
+	// seed !== false => this is a fresh server load, so (re)initialise the editable
+	// table state. rerenderTables() passes seed=false to preserve in-memory edits.
+	function renderDetail(o, seed) {
+		detail = o;
+		titleEl.textContent = o.name;
+		tagEl.textContent = o.item_name;
+		if (o.editable && seed !== false) {
+			editRM = (o.required_items || []).map(function (r) { return { item_code: r.item_code, item_name: r.item_name, uom: r.uom, qty: r.qty, rate: r.rate, source_warehouse: r.source_warehouse }; });
+			editOps = (o.operations || []).map(function (r) { return { operation: r.operation, workstation: r.workstation, time_in_mins: r.time_in_mins, hour_rate: r.hour_rate }; });
+		}
+
+		var rmSection = o.editable ? rmTableHtml()
+			: roTable(["Item", "Qty", "Rate", "Amount"], (o.required_items || []).map(function (r) { return [esc(r.item_name), r.qty + " " + esc(r.uom || ""), r.rate_fmt, r.amount_fmt]; }));
+		var opSection = o.editable ? opTableHtml()
+			: roTable(["Operation", "Workstation", "Mins", "Rate / hr", "Cost"], (o.operations || []).map(function (r) { return [esc(r.operation), esc(r.workstation || "—"), r.time_in_mins, r.hour_rate_fmt, r.operating_cost_fmt]; }));
+
+		var saveBtn = o.editable ? '<button class="btn btn--sm mfg-btn-red" id="save-tables" style="margin-top:10px"><i class="fa-solid fa-floppy-disk"></i> Save materials & operations</button>' : '';
+
+		var history = (o.stage_history || []).length
+			? roTable(["Stage", "From", "When", "By", "Hrs", "Notes"], o.stage_history.map(function (h) {
+				return [esc(h.stage), esc(h.from_stage), esc(h.entered_on), esc(h.entered_by), h.duration_hours, esc(h.notes)];
+			}))
+			: '<div class="empty">No transitions yet.</div>';
+
+		detailEl.innerHTML =
+			'<div class="row-between" style="margin-bottom:14px"><div><div style="font-weight:800;font-size:16px">' + esc(o.item_name) + '</div>' +
+			'<div class="muted">Qty ' + o.qty + ' · ' + esc(o.bom || "") + '</div></div>' +
+			'<div style="display:flex;gap:8px;align-items:center">' +
+			'<a class="btn btn--outline btn--sm" href="/a3-workshop/workshop-print?workorder=' + encodeURIComponent(o.name) + '" target="_blank" rel="noopener" title="Print Traveler"><i class="fa-solid fa-print"></i> Print</a>' +
+			'<span class="badge ' + o.badge + '">' + esc(o.status) + '</span></div></div>' +
+			stepperHtml(o) +
+			'<div class="fieldset-title">Work Order</div>' +
+			kv([["Item", o.item_name], ["Specification", o.description || "—"], ["Quantity", o.qty], ["BOM", o.bom], ["Production Stage", o.stage], ["ERP Status", o.erp_status], ["Started", o.planned_start], ["Target Delivery", o.target], ["Raw material from", o.source_warehouse || "—"], ["FG Warehouse", o.fg_warehouse]]) +
+			'<div class="fieldset-title">BOM — Raw Materials' + (o.editable ? ' <span class="muted" style="font-weight:400">(editable)</span>' : '') + '</div>' + rmSection +
+			'<div class="fieldset-title">BOM — Operations' + (o.editable ? ' <span class="muted" style="font-weight:400">(editable)</span>' : '') + '</div>' + opSection +
+			saveBtn +
+			'<div class="fieldset-title">Costing</div>' +
+			kv([["Raw Material Cost", o.costing.raw_material], ["Operating Cost", o.costing.operating], ["Additional Cost", o.costing.additional]]) +
+			'<div class="totals"><div class="row-between"><span class="muted">Total Production Cost</span><span>' + o.costing.total + '</span></div>' +
+			'<div class="row-between grand"><span>Cost per Unit</span><span>' + o.costing.per_unit + '</span></div></div>' +
+			'<div class="fieldset-title">Finished Goods & Delivery</div>' +
+			kv([
+				["Produced", o.produced_qty + " / " + o.qty],
+				["Manufacture Entry", o.stock_entry || "—"],
+				["Delivery Status", o.stage === "Delivery" ? "Delivered — in stock" : (o.stage === "QC" ? "Ready for delivery" : "In production")]
+			]) +
+			(o.stock_warning ? '<div class="mfg-warn"><i class="fa-solid fa-triangle-exclamation"></i> Stock not posted: ' + esc(o.stock_warning) + '</div>' : '') +
+			actionArea(o) +
+			'<div class="fieldset-title">Stage History</div>' + history;
+
+		if (o.editable) wireEditable();
+		var adv = document.getElementById("advance-btn");
+		if (adv) adv.addEventListener("click", advance);
+		var sv = document.getElementById("save-tables");
+		if (sv) sv.addEventListener("click", saveTables);
+	}
+
+	// ---- editable-table wiring ----------------------------------------
+	function wireEditable() {
+		// raw-material qty / rate
+		detailEl.querySelectorAll("[data-rm]").forEach(function (inp) {
+			inp.addEventListener("input", function () {
+				var i = +inp.dataset.i; editRM[i][inp.dataset.rm] = parseFloat(inp.value) || 0;
+				var amt = detailEl.querySelector('[data-rm-amt="' + i + '"]');
+				if (amt) amt.textContent = money((editRM[i].qty || 0) * (editRM[i].rate || 0));
+			});
+		});
+		// raw-material item picker (per row, inline autocomplete)
+		detailEl.querySelectorAll(".rm-item-ac").forEach(function (inp) {
+			var i = +inp.dataset.i;
+			attachAC(inp, function (q) {
+				return callMethod(API + "search_raw_items", { search: q, limit: 10 }).then(function (rows) {
+					return (rows || []).map(function (it) { return { label: it.item_name || it.name, sub: it.name, value: it.name, uom: it.stock_uom, rate: it.valuation_rate }; });
+				});
+			}, function (it) {
+				editRM[i].item_code = it.value; editRM[i].item_name = it.label; editRM[i].uom = it.uom || "";
+				if (!editRM[i].rate && it.rate) editRM[i].rate = it.rate;
+				rerenderTables();
+			});
+		});
+		// raw-material delete + add row
+		detailEl.querySelectorAll("[data-rm-x]").forEach(function (b) {
+			b.addEventListener("click", function () { editRM.splice(+b.dataset.rmX, 1); rerenderTables(); });
+		});
+		var rmAdd = detailEl.querySelector("[data-rm-add]");
+		if (rmAdd) rmAdd.addEventListener("click", function () {
+			editRM.push({ item_code: "", item_name: "", uom: "", qty: 1, rate: 0 }); rerenderTables();
+		});
+		// operation fields
+		detailEl.querySelectorAll("[data-op]").forEach(function (inp) {
+			inp.addEventListener("input", function () {
+				var i = +inp.dataset.i; var k = inp.dataset.op;
+				editOps[i][k] = (k === "time_in_mins" || k === "hour_rate") ? (parseFloat(inp.value) || 0) : inp.value;
+			});
+		});
+		// operation delete + add row
+		detailEl.querySelectorAll("[data-op-x]").forEach(function (b) {
+			b.addEventListener("click", function () { editOps.splice(+b.dataset.opX, 1); rerenderTables(); });
+		});
+		var opAdd = detailEl.querySelector("[data-op-add]");
+		if (opAdd) opAdd.addEventListener("click", function () {
+			editOps.push({ operation: "", workstation: "", time_in_mins: 0, hour_rate: 0 }); rerenderTables();
+		});
+	}
+	// re-render the panel WITHOUT re-seeding the editable tables (keeps in-memory edits)
+	function rerenderTables() { if (detail) renderDetail(detail, false); }
+
+	function saveTables() {
+		var btn = document.getElementById("save-tables");
+		if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving…'; }
+		callMethod(API + "update_work_order_tables", { name: current, required_items: editRM, operations: editOps })
+			.then(function (o) { renderDetail(o); refresh(true); })
+			.catch(function (e) { alert("Save failed: " + e.message); if (btn) { btn.disabled = false; btn.innerHTML = 'Save materials & operations'; } });
+	}
+
+	function advance() {
+		var btn = document.getElementById("advance-btn");
+		var notes = (document.getElementById("stage-notes") || {}).value || "";
+		if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Working…'; }
+		callMethod(API + "advance_stage", { name: current, notes: notes })
+			.then(function (o) { renderDetail(o); refresh(true); })
+			.catch(function (e) { alert("Could not advance: " + e.message); if (btn) { btn.disabled = false; } });
+	}
+
+	// ---- select / refresh ----------------------------------------------
+	function select(name) {
+		current = name;
+		renderList(window._mfgRows || []);
+		detailEl.innerHTML = '<div class="empty">Loading…</div>';
+		return callMethod(API + "get_work_order", { name: name }).then(renderDetail);
+	}
+	function refresh(keepSelection) {
+		return Promise.all([
+			callMethod(API + "get_dashboard", {}),
+			callMethod(API + "list_work_orders", { search: search })
+		]).then(function (res) {
+			renderCards(res[0] || {});
+			var rows = res[1] || [];
+			window._mfgRows = rows;
+			renderList(rows);
+			if (!keepSelection) {
+				if (rows.length && (!current || !rows.some(function (r) { return r.name === current; }))) select(rows[0].name);
+				else if (!rows.length) { current = null; detailEl.innerHTML = '<div class="empty">No work orders yet. Click “New” to manufacture an item.</div>'; }
+			}
+		});
+	}
+
+	// ---- generic autocomplete (item pickers) ---------------------------
+	function attachAC(input, source, onSelect) {
+		if (!input) return;
+		var wrap = input.parentNode; wrap.style.position = "relative";
+		var list = document.createElement("div"); list.className = "mfg-ac"; list.style.display = "none"; wrap.appendChild(list);
+		var items = [], active = -1, timer = null;
+		function hide() { list.style.display = "none"; active = -1; }
+		function render(rows) {
+			items = rows || [];
+			if (!items.length) { list.innerHTML = '<div class="mfg-ac-empty">No matches</div>'; list.style.display = "block"; return; }
+			list.innerHTML = items.map(function (it, i) { return '<div class="mfg-ac-item" data-i="' + i + '"><div class="mfg-ac-label">' + esc(it.label) + '</div>' + (it.sub ? '<div class="mfg-ac-sub">' + esc(it.sub) + '</div>' : '') + '</div>'; }).join("");
+			active = -1; list.style.display = "block";
+		}
+		function run() { Promise.resolve(source(input.value.trim())).then(render).catch(hide); }
+		input.addEventListener("input", function () { clearTimeout(timer); timer = setTimeout(run, 180); });
+		input.addEventListener("focus", run);
+		input.addEventListener("blur", function () { setTimeout(hide, 150); });
+		list.addEventListener("mousedown", function (e) {
+			var el = e.target.closest("[data-i]"); if (!el) return;
+			e.preventDefault(); var it = items[+el.dataset.i]; input.value = it.label; hide(); if (onSelect) onSelect(it);
+		});
+		input.addEventListener("keydown", function (e) {
+			if (list.style.display === "none" || !items.length) return;
+			if (e.key === "ArrowDown") active = Math.min(items.length - 1, active + 1);
+			else if (e.key === "ArrowUp") active = Math.max(0, active - 1);
+			else if (e.key === "Enter" && active >= 0) { e.preventDefault(); var it = items[active]; input.value = it.label; hide(); if (onSelect) onSelect(it); return; }
+			else if (e.key === "Escape") { hide(); return; }
+			else return;
+			e.preventDefault();
+			Array.prototype.forEach.call(list.children, function (c, i) { c.classList.toggle("is-active", i === active); });
+		});
+	}
+
+	// ---- New Work Order modal ------------------------------------------
+	var modal = document.getElementById("wo-modal");
+	function openModal() {
+		document.getElementById("wo-form").reset();
+		document.querySelector('[name=wo_item_code]').value = "";
+		document.getElementById("wo-item-desc").textContent = "";
+		document.getElementById("wo-bom").innerHTML = '<option value="">Select an item first</option>';
+		document.getElementById("wo-bom-preview").style.display = "none";
+		document.getElementById("wo-material").style.display = "none";
+		modal.classList.add("is-open"); document.body.style.overflow = "hidden";
+	}
+	function closeModal() { modal.classList.remove("is-open"); document.body.style.overflow = ""; }
+	document.getElementById("new-wo").addEventListener("click", openModal);
+	modal.querySelectorAll("[data-close]").forEach(function (b) { b.addEventListener("click", closeModal); });
+	modal.addEventListener("click", function (e) { if (e.target === modal) closeModal(); });
+	document.addEventListener("keydown", function (e) { if (e.key === "Escape") closeModal(); });
+
+	// item picker → load its BOMs, default-select the default BOM
+	attachAC(document.getElementById("wo-item-input"), function (q) {
+		return callMethod(API + "search_items", { search: q, limit: 12 }).then(function (rows) {
+			return (rows || []).map(function (it) { return { label: it.item_name || it.name, sub: it.name + (it.default_bom ? " · " + it.default_bom : ""), value: it.name, uom: it.stock_uom }; });
+		});
+	}, function (it) {
+		document.querySelector('[name=wo_item_code]').value = it.value;
+		document.getElementById("wo-item-desc").textContent = it.value + (it.uom ? " · " + it.uom : "");
+		loadBoms(it.value);
+	});
+
+	// Is the material there? Runs whenever the BOM, quantity or yard changes.
+	function checkMaterial() {
+		var bom = document.getElementById("wo-bom").value;
+		var qty = document.querySelector('[name=wo_qty]').value || 1;
+		var wh = document.getElementById("wo-source").value;
+		var box = document.getElementById("wo-material");
+		if (!bom) { box.style.display = "none"; return; }
+		callMethod(API + "check_material", { bom: bom, qty: qty, source_warehouse: wh }).then(function (c) {
+			if (!c || !c.rows || !c.rows.length) { box.style.display = "none"; return; }
+			var rows = c.rows.map(function (r) {
+				return '<tr' + (r.short > 0 ? ' style="color:#b3261e"' : '') + '><td>' + esc(r.item_name) + '</td><td class="num">' + r.needed + ' ' + esc(r.uom || '') + '</td><td class="num">' + r.available + '</td><td class="num">' + (r.short > 0 ? r.short : '—') + (r.requested ? ' <span class="muted" style="font-size:11px">(requested)</span>' : '') + '</td></tr>';
+			}).join("");
+			var head = c.ok
+				? '<div class="mfg-mini-label" style="color:#15803d;font-weight:700"><i class="fa-solid fa-circle-check"></i> Material available in ' + esc(c.warehouse || 'the yard') + '</div>'
+				: '<div class="mfg-warn"><i class="fa-solid fa-triangle-exclamation"></i> Short of ' + c.short_items + ' item(s) in ' + esc(c.warehouse || 'the yard') + '. You can still create the order; the last stage will not post stock until the material is in.</div>';
+			box.innerHTML = head +
+				'<table class="table" style="margin-top:8px"><thead><tr><th>Material</th><th class="num">Needed</th><th class="num">In yard</th><th class="num">Short</th></tr></thead><tbody>' + rows + '</tbody></table>' +
+				(c.ok ? '' : '<button type="button" class="btn btn--outline btn--sm" id="wo-request" style="margin-top:8px"><i class="fa-solid fa-cart-plus"></i> Request the shortfall</button>');
+			box.style.display = "block";
+			var rq = document.getElementById("wo-request");
+			if (rq) rq.addEventListener("click", function () {
+				rq.disabled = true;
+				callMethod(API + "request_shortfall", { bom: bom, qty: qty, source_warehouse: wh })
+					.then(function (r) { alert("Requisition " + r.material_request + " raised for " + r.items + " item(s)."); checkMaterial(); })
+					.catch(function (e) { alert(e.message); rq.disabled = false; });
+			});
+		});
+	}
+	document.getElementById("wo-source").addEventListener("change", checkMaterial);
+
+	function loadBoms(item) {
+		var sel = document.getElementById("wo-bom");
+		sel.innerHTML = '<option value="">Loading…</option>';
+		callMethod(API + "get_item_boms", { item: item }).then(function (r) {
+			var boms = r.boms || [];
+			sel.innerHTML = boms.map(function (b) {
+				return '<option value="' + esc(b.name) + '"' + (b.name === r.default_bom ? " selected" : "") + '>' + esc(b.name) + (b.is_default ? " (default)" : "") + '</option>';
+			}).join("") || '<option value="">No active BOM</option>';
+			previewBom(); checkMaterial();
+		});
+	}
+	function previewBom() {
+		var bom = document.getElementById("wo-bom").value;
+		var qty = document.querySelector('[name=wo_qty]').value || 1;
+		var box = document.getElementById("wo-bom-preview");
+		if (!bom) { box.style.display = "none"; return; }
+		callMethod(API + "get_bom_detail", { bom: bom, qty: qty }).then(function (d) {
+			if (!d || !d.bom) { box.style.display = "none"; return; }
+			box.querySelector(".totals").innerHTML =
+				'<div class="row-between"><span class="muted">' + d.n_materials + ' materials · ' + d.n_operations + ' operations</span><span></span></div>' +
+				'<div class="row-between"><span class="muted">Raw Material</span><span>' + d.raw_material_cost + '</span></div>' +
+				'<div class="row-between"><span class="muted">Operating</span><span>' + d.operating_cost + '</span></div>' +
+				'<div class="row-between grand"><span>Est. Total</span><span>' + d.total_cost + '</span></div>';
+			box.style.display = "block";
+		});
+	}
+	document.getElementById("wo-bom").addEventListener("change", function () { previewBom(); checkMaterial(); });
+	document.querySelector('[name=wo_qty]').addEventListener("input", function () { previewBom(); checkMaterial(); });
+
+	document.getElementById("wo-create").addEventListener("click", function () {
+		var item = document.querySelector('[name=wo_item_code]').value;
+		var bom = document.getElementById("wo-bom").value;
+		if (!item) { alert("Pick an item to manufacture."); return; }
+		if (!bom) { alert("This item has no active BOM."); return; }
+		var btn = this; btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Creating…';
+		callMethod(API + "create_work_order", {
+			item: item, bom: bom,
+			qty: document.querySelector('[name=wo_qty]').value || 1,
+			source_warehouse: document.getElementById("wo-source").value,
+			fg_warehouse: document.getElementById("wo-fg").value,
+			planned_start_date: document.querySelector('[name=wo_start]').value || null,
+			expected_delivery_date: document.querySelector('[name=wo_target]').value || null,
+			description: document.getElementById("wo-spec").value.trim() || null
+		}).then(function (r) {
+			closeModal(); current = r.name;
+			return refresh(true).then(function () { return select(r.name); });
+		}).catch(function (e) { alert("Create failed: " + e.message); })
+			.then(function () { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-check"></i> Create Work Order'; });
+	});
+
+	// ---- list selection ------------------------------------------------
+	listEl.addEventListener("click", function (e) {
+		var row = e.target.closest("[data-id]");
+		if (row) select(row.dataset.id);
+	});
+
+	// ---- stage chips ---------------------------------------------------
+	if (window.WorkshopFilter) {
+		woFilter = new WorkshopFilter({ root: "#wo-list", bar: "#wo-bar" });
+	}
+
+	// ---- search --------------------------------------------------------
+	var searchTimer = null;
+	document.getElementById("wo-search").addEventListener("input", function () {
+		search = this.value; clearTimeout(searchTimer);
+		searchTimer = setTimeout(function () { refresh(true); }, 200);
+	});
+
+	// ---- boot ----------------------------------------------------------
+	callMethod(API + "get_work_order_options", {}).then(function (o) {
+		CURRENCY = o.currency || "AED";
+		var whOpts = (o.warehouses || []).map(function (w) { return '<option value="' + esc(w.name) + '">' + esc(w.warehouse_name || w.name) + '</option>'; }).join("");
+		var wip = document.getElementById("wo-source"), fg = document.getElementById("wo-fg");
+		wip.innerHTML = '<option value="">Default</option>' + whOpts;
+		fg.innerHTML = '<option value="">Default</option>' + whOpts;
+		if (o.default_wip_warehouse) wip.value = o.default_wip_warehouse;
+		if (o.default_fg_warehouse) fg.value = o.default_fg_warehouse;
+	}).then(function () {
+		// Opened from Home or the Serial Register with ?wo=<name>: land on that order.
+		var want = new URLSearchParams(location.search).get("wo");
+		if (want) { current = want; return refresh(true).then(function () { return select(want); }); }
+		return refresh();
+	});
+})();
+</script>
+{% endraw %}
+{% endblock %}

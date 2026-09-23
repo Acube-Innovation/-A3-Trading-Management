@@ -249,6 +249,9 @@
 	{%- set nav_items = [
 		{"label": "Home", "route": "/a3-workshop", "icon": "fa-gauge-high"},
 		{"label": "Customers", "route": "/a3-workshop/customers", "icon": "fa-users"},
+		{"label": "Manufacturing", "route": "/a3-workshop/manufacturing", "icon": "fa-industry"},
+		{"label": "Serial Register", "route": "/a3-workshop/serial-register", "icon": "fa-barcode"},
+		{"label": "Chassis Plates", "route": "/a3-workshop/chassis-plate-print", "icon": "fa-print"},
 		{"label": "Live Stock", "route": "/a3-workshop/live-stock", "icon": "fa-boxes-stacked"},
 	] -%}
 	{#- `frappe.request` is not exposed in the Jinja sandbox: the namespace returns a

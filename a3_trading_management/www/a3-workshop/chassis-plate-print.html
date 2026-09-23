@@ -1,0 +1,135 @@
+{% extends "templates/workshop_base.html" %}
+
+{% block page_content %}
+{#- The embossing sheet the fabrication bay works from. One trailer (?serial=) or a
+    batch (?work_order=), else everything still awaiting embossing. The number is
+    shown in the press format: large, monospaced and widely tracked, so it can be
+    read off the sheet while setting the dies. Confirming the print records the
+    embossing step against each serial (api.serial_register.mark_embossed). -#}
+
+<style>
+	.plate-sheet { display:grid; grid-template-columns:repeat(auto-fill,minmax(320px,1fr)); gap:12px; }
+	.plate { border:2px solid #111; border-radius:6px; padding:16px; background:#fff; position:relative; cursor:pointer; }
+	.plate.is-off { opacity:.45; }
+	.plate__pick { position:absolute; top:10px; right:10px; width:18px; height:18px; accent-color:#ec2e5d; cursor:pointer; }
+	.plate.is-done .plate__num { color:#666; }
+	.cp-sel { font-size:12.5px; color:#8a94a6; margin-right:6px; }
+	.cp-sel a { color:#ec2e5d; font-weight:600; text-decoration:none; }
+	.plate__num { font-family:"Courier New",monospace; font-size:30px; font-weight:700;
+		letter-spacing:.16em; text-align:center; margin:10px 0; word-break:break-all; }
+	.plate__meta { font-size:12px; color:#555; display:flex; justify-content:space-between; gap:8px; }
+	@media print {
+		.workshop-nav, .workshop-topbar, .toolbar, .no-print, .plate__pick { display:none !important; }
+		.plate.is-off { display:none !important; }
+		.plate { break-inside:avoid; }
+	}
+</style>
+
+<div class="toolbar no-print">
+	<div class="section-title" style="margin:0">
+		Chassis Plate Print
+		{%- if work_order %} &middot; {{ work_order }}{% elif single_serial %} &middot; {{ single_serial }}{% endif %}
+	</div>
+	<div class="toolbar__right">
+		<a class="btn btn--outline btn--sm" href="/a3-workshop/serial-register">
+			<i class="fa-solid fa-arrow-left"></i> Register</a>
+		<span class="cp-sel no-print" id="cp-sel"></span>
+		<button class="btn btn--outline btn--sm" id="cp-print" onclick="window.print()">
+			<i class="fa-solid fa-print"></i> Print sheet</button>
+		<button class="btn btn--primary btn--sm" id="cp-confirm">
+			<i class="fa-solid fa-check"></i> Mark embossed</button>
+	</div>
+</div>
+
+{%- if rows %}
+<div class="plate-sheet">
+	{%- for r in rows %}
+	<div class="plate{% if r.chassis_embossed %} is-done{% endif %}" data-serial="{{ r.name }}">
+		<input type="checkbox" class="plate__pick no-print"{% if not r.chassis_embossed %} checked{% endif %} aria-label="Select {{ r.chassis_number }}">
+		<div class="plate__meta">
+			<span>{{ r.trailer_type or "Trailer" }}</span>
+			<span>{{ r.serial_no }}</span>
+		</div>
+		<div class="plate__num">{{ r.chassis_number or "NOT ISSUED" }}</div>
+		<div class="plate__meta">
+			<span>{{ r.work_order or "—" }}</span>
+			<span>{% if r.chassis_embossed %}Embossed{% else %}Pending{% endif %}</span>
+		</div>
+	</div>
+	{%- endfor %}
+</div>
+{%- else %}
+<div class="card"><div class="card__body">
+	<div class="empty">Nothing awaiting embossing.</div>
+</div></div>
+{%- endif %}
+
+<script>
+(function () {
+	var btn = document.getElementById("cp-confirm");
+	if (!btn) return;
+	// These are website pages, not Desk — there is no frappe.call here, so the
+	// same fetch helper the other workshop pages use.
+	function callMethod(method, args) {
+		return fetch("/api/method/" + method, {
+			method: "POST",
+			headers: { "Content-Type": "application/json", "X-Frappe-CSRF-Token": window.csrf_token || "", "Accept": "application/json" },
+			body: JSON.stringify(args || {})
+		}).then(function (r) {
+			return r.json().then(function (data) {
+				if (!r.ok) throw new Error((data && data._server_messages) || (data && data.exc) || r.statusText);
+				return data.message;
+			});
+		});
+	}
+	// Selection: every pending plate starts ticked; untick the ones the bay has not
+	// done yet. Clicking anywhere on a plate toggles it. Done plates cannot be picked.
+	var picks = Array.prototype.slice.call(document.querySelectorAll(".plate__pick"));
+	// Ticked = on the printed sheet. For marking, only ticked plates that are still
+	// pending count; a done plate can be ticked to reprint it but is never re-marked.
+	function ticked() { return picks.filter(function (c) { return c.checked; }); }
+	function chosen() {
+		return ticked().filter(function (c) { return !c.closest(".plate").classList.contains("is-done"); })
+			.map(function (c) { return c.closest(".plate").dataset.serial; });
+	}
+	var pending = picks.filter(function (c) { return !c.closest(".plate").classList.contains("is-done"); }).length;
+	function paint() {
+		picks.forEach(function (c) { c.closest(".plate").classList.toggle("is-off", !c.checked); });
+		var n = chosen().length;
+		btn.disabled = !n;
+		btn.innerHTML = '<i class="fa-solid fa-check"></i> Mark embossed' + (pending ? ' (' + n + ' of ' + pending + ')' : '');
+		var pb = document.getElementById("cp-print"); if (pb) { pb.disabled = !ticked().length; pb.innerHTML = '<i class="fa-solid fa-print"></i> Print sheet (' + ticked().length + ')'; }
+		var sel = document.getElementById("cp-sel");
+		if (sel) sel.innerHTML = picks.length ? '<a href="#" data-all="1">Select all</a> · <a href="#" data-all="0">None</a>' : '';
+	}
+	picks.forEach(function (c) { c.addEventListener("change", paint); });
+	document.querySelectorAll(".plate").forEach(function (pl) {
+		pl.addEventListener("click", function (e) {
+			if (e.target.classList.contains("plate__pick")) return;
+			var c = pl.querySelector(".plate__pick"); if (c) { c.checked = !c.checked; paint(); }
+		});
+	});
+	document.addEventListener("click", function (e) {
+		var a = e.target.closest("[data-all]"); if (!a) return;
+		e.preventDefault(); picks.forEach(function (c) { c.checked = a.dataset.all === "1"; }); paint();
+	});
+	paint();
+	btn.addEventListener("click", function () {
+		var names = chosen();
+		if (!names.length) return;
+		if (!confirm("Record the embossing step against " + names.length + " trailer(s)? This says the numbers are stamped into the plates.")) return;
+		btn.disabled = true;
+		callMethod("a3_trading_management.api.serial_register.mark_embossed", {
+			serials: JSON.stringify(names)
+		}).then(function (r) {
+			var n = (r && r.stamped) || 0;
+			alert(n + " plate(s) recorded as embossed.");
+			window.location.reload();
+		}).catch(function (err) {
+			btn.disabled = false;
+			alert("Could not record embossing: " + ((err && err.message) || err));
+		});
+	});
+})();
+</script>
+{% endblock %}

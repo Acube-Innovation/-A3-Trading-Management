@@ -1,0 +1,78 @@
+{% extends "templates/print_base.html" %}
+
+{%- macro money(x) -%}AED {{ "{:,.2f}".format(x or 0) }}{%- endmacro -%}
+{%- macro money0(x) -%}AED {{ "{:,.0f}".format(x or 0) }}{%- endmacro -%}
+{%- macro pill(text, kind="") -%}<span class="pill {{ kind }}">{{ text }}</span>{%- endmacro -%}
+{%- macro statuspill(s) -%}
+{%- set k = "pill--green" if s in ("Completed", "Closed", "Ready", "Paid", "Resolved", "Done") else ("pill--amber" if s in ("Open", "In Progress", "On Hold", "Unpaid", "Pending", "Partly Paid") else ("pill--red" if s in ("Cancelled", "Overdue", "Escalated", "Critical", "Severe", "Urgent") else "")) -%}
+<span class="pill {{ k }}">{{ s }}</span>
+{%- endmacro -%}
+
+{% block doc_title -%}
+{%- if mode == "workorder" %}Work Order Traveler{% else %}Print{% endif %}
+{%- endblock %}
+
+{% block doc_subtitle -%}
+{%- if mode == "workorder" %}{{ wo.name }} · {{ wo.item }}{% endif %}
+{%- endblock %}
+
+{% block content %}
+
+{% if mode == "none" %}
+<p class="muted">Nothing to print — open with ?jobcard=, ?invoice=, ?receipt=, ?statement=, ?dayplan=, ?workorder=, ?complaints=register or ?calls=today.</p>
+
+{# ================================================================ JOB CARD #}
+{% elif mode == "workorder" %}
+<h2 class="sec">Work Order</h2>
+<div class="kv">
+	<div><div class="k">Item</div><div class="v">{{ wo.item }}</div></div>
+	<div><div class="k">Quantity</div><div class="v">{{ wo.qty }}</div></div>
+	<div><div class="k">Status</div><div class="v">{{ statuspill(wo.status) }}</div></div>
+	<div><div class="k">Current Stage</div><div class="v">{{ wo.stage }}</div></div>
+	<div><div class="k">BOM</div><div class="v">{{ wo.bom }}</div></div>
+	<div><div class="k">Planned Start</div><div class="v">{{ wo.planned_start }}</div></div>
+	<div><div class="k">Target Delivery</div><div class="v">{{ wo.delivery }}</div></div>
+	<div><div class="k">Raw material from</div><div class="v">{{ wo.source }}</div></div>
+	<div><div class="k">Finished trailers to</div><div class="v">{{ wo.fg }}</div></div>
+</div>
+{% if wo.spec %}
+<h2 class="sec">Specification</h2>
+<p style="white-space:pre-wrap">{{ wo.spec }}</p>
+{% endif %}
+
+<h2 class="sec">Raw Materials</h2>
+{% if wo.materials %}
+<table class="t"><thead><tr><th>#</th><th>Item</th><th class="right">Qty</th><th>Source Warehouse</th><th style="width:90px">Issued ✔</th></tr></thead><tbody>
+	{% for m in wo.materials %}
+	<tr><td>{{ loop.index }}</td><td>{{ m.item }}</td><td class="right">{{ m.qty }}</td><td>{{ m.warehouse }}</td><td></td></tr>
+	{% endfor %}
+</tbody></table>
+{% else %}<p class="muted">No raw materials.</p>{% endif %}
+
+<h2 class="sec">Operations</h2>
+{% if wo.operations %}
+<table class="t"><thead><tr><th>#</th><th>Operation</th><th>Workstation</th><th class="right">Mins</th><th style="width:110px">Done By / Sign</th></tr></thead><tbody>
+	{% for o in wo.operations %}
+	<tr><td>{{ loop.index }}</td><td><b>{{ o.operation }}</b></td><td>{{ o.workstation }}</td><td class="right">{{ o.mins }}</td><td></td></tr>
+	{% endfor %}
+</tbody></table>
+{% else %}<p class="muted">No operations.</p>{% endif %}
+
+<h2 class="sec">Stage History</h2>
+{% if wo.history %}
+<table class="t"><thead><tr><th>Stage</th><th>From</th><th>When</th><th>By</th><th class="right">Hrs</th><th>Notes</th></tr></thead><tbody>
+	{% for h in wo.history %}
+	<tr><td><b>{{ h.stage }}</b></td><td>{{ h.from_stage }}</td><td>{{ h.entered_on }}</td><td>{{ h.entered_by }}</td><td class="right">{{ h.hours or "—" }}</td><td>{{ h.notes }}</td></tr>
+	{% endfor %}
+</tbody></table>
+{% else %}<p class="muted">No stage transitions yet.</p>{% endif %}
+
+<div class="sigs">
+	<div class="sig"><b>&nbsp;</b>Production Supervisor</div>
+	<div class="sig"><b>&nbsp;</b>Quality Check</div>
+	<div class="sig"><b>&nbsp;</b>Store / Dispatch</div>
+</div>
+
+{# ================================================================ COMPLAINTS #}
+{% endif %}
+{% endblock %}
