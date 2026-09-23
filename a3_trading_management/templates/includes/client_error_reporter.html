@@ -1,0 +1,294 @@
+	{#- Global client-error reporter. Every page below is server-rendered HTML driven
+	    by inline JavaScript; when one of those scripts throws, the page half-builds
+	    and the user is left with a control that silently does nothing. The stack
+	    goes to a console nobody has open, on a tablet in a workshop bay. This ships
+	    it to a3_trading_management.api.error_log.log_client_error instead, so the fault lands
+	    in Garage Error Log where it can be sorted and fixed.
+
+	    Loaded in <head>, before any page script, so it is already listening when
+	    that script runs. -#}
+	<script>window.csrf_token = "{{ csrf_token if csrf_token is defined and csrf_token else frappe.session.csrf_token }}";</script>
+	<script>
+	(function (w, d) {
+		"use strict";
+
+		var ENDPOINT = "/api/method/a3_trading_management.api.error_log.log_client_error";
+
+		// Every failure below is swallowed on purpose — a reporter must not turn a
+		// broken control into a broken page. That silence made "nothing is being
+		// logged" impossible to diagnose, so each attempt is also recorded here.
+		// Open the console on any portal page and read window.gdErrorReporter to
+		// see what was sent and exactly what came back.
+		var diag = w.gdErrorReporter = {
+			loaded: true,
+			endpoint: ENDPOINT,
+			attempts: [],      // {payload, status, response, error}
+			hasToken: false,   // filled once the token is read
+			note: "window.gdErrorReporter.attempts shows every report this page tried"
+		};
+		// Per page load. The server collapses repeats and rate-limits as well, but
+		// stopping a render loop here saves the requests entirely.
+		var MAX_PER_PAGE = 25;
+		var sent = 0;
+		// Fingerprints already reported from THIS page load, so a handler firing on
+		// every mousemove reports once rather than ten times.
+		var seen = {};
+		// Captured before anything below replaces w.fetch, and bound to the window:
+		// a bare call from strict-mode code passes an undefined `this`, which some
+		// engines reject for a global operation.
+		var nativeFetch = w.fetch ? w.fetch.bind(w) : null;
+
+		// The token as rendered into <head>. Held privately because several pages
+		// re-assign window.csrf_token further down, and one of those assignments
+		// rendering empty must not disarm the reporter.
+		var TOKEN = (w.csrf_token && w.csrf_token !== "None") ? w.csrf_token : "";
+		function token() {
+			var t = w.csrf_token;
+			return (t && t !== "None") ? t : TOKEN;
+		}
+
+		function post(payload) {
+			var key = [payload.error_type, payload.error, payload.source_file, payload.line_no].join("|");
+			if (seen[key] || sent >= MAX_PER_PAGE) { return; }
+			seen[key] = 1;
+			sent += 1;
+			payload.page_url = w.location.href;
+			payload.page_route = w.location.pathname;
+			payload.viewport = w.innerWidth + "x" + w.innerHeight;
+			payload.user_agent = navigator.userAgent;
+			payload.os_platform = navigator.platform || "";
+			var record = { payload: payload, status: null, response: null, error: null };
+			diag.attempts.push(record);
+			diag.hasToken = !!token();
+			try {
+				// nativeFetch, not w.fetch: by now the wrapper below has replaced
+				// w.fetch, and a report must not travel through the thing that
+				// reports. Bound to the window because a bare strict-mode call would
+				// otherwise hand `fetch` an undefined `this`.
+				(nativeFetch || w.fetch)(ENDPOINT, {
+					method: "POST",
+					headers: {
+						"Content-Type": "application/json",
+						"X-Frappe-CSRF-Token": token(),
+						"Accept": "application/json"
+					},
+					body: JSON.stringify(payload),
+					// The page may be navigating away as this fires.
+					keepalive: true
+				}).then(function (r) {
+					record.status = r.status;
+					return r.text();
+				}).then(function (body) {
+					record.response = String(body).slice(0, 400);
+				}).catch(function (e) {
+					// A lost report is not worth a second error — but it IS worth
+					// being able to see that it was lost.
+					record.error = (e && e.message) || String(e);
+				});
+			} catch (e) {
+				record.error = (e && e.message) || String(e);
+			}
+		}
+
+		// Turn whatever was passed to console.error/warn into one readable line,
+		// keeping an Error's stack if there is one among the arguments.
+		function fromArgs(args) {
+			var parts = [], stack = "";
+			for (var i = 0; i < args.length; i++) {
+				var a = args[i];
+				if (a instanceof Error) {
+					parts.push(a.name + ": " + a.message);
+					if (!stack) { stack = a.stack || ""; }
+				} else if (a && typeof a === "object") {
+					try { parts.push(JSON.stringify(a).slice(0, 300)); }
+					catch (e) { parts.push(String(a)); }
+				} else {
+					parts.push(String(a));
+				}
+			}
+			return { message: parts.join(" ").trim(), stack: stack };
+		}
+
+		// console.error / console.warn. This is the big one for this portal: a page
+		// that catches its own failure and logs it -- "handover photo upload failed",
+		// "Could not merge handover links" -- was reporting nothing at all, because
+		// nothing was thrown and no request failed. The original console method is
+		// always called, so developer output is unchanged.
+		["error", "warn"].forEach(function (level) {
+			if (!w.console || typeof w.console[level] !== "function") { return; }
+			var original = w.console[level];
+			w.console[level] = function () {
+				try {
+					var info = fromArgs(arguments);
+					if (info.message) {
+						post({
+							error: info.message,
+							error_type: "console." + level,
+							stack_trace: info.stack,
+							severity: (level === "error") ? "Error" : "Warning"
+						});
+					}
+				} catch (e) { /* never break console */ }
+				return original.apply(w.console, arguments);
+			};
+		});
+
+		// A stylesheet, script or image that failed to load. These fire an `error`
+		// event that carries no .message, so the handler below skips them; caught
+		// here instead, on the capture phase (resource errors do not bubble) and as
+		// a Warning, because a broken image is not a broken page.
+		w.addEventListener("error", function (e) {
+			var el = e && e.target;
+			if (!el || el === w || !el.tagName) { return; }   // real exception, handled below
+			var src = el.src || el.href || "";
+			if (!src) { return; }
+			post({
+				error: "Failed to load " + el.tagName.toLowerCase() + ": " + src,
+				error_type: "ResourceError",
+                severity: "Warning"
+			});
+		}, true);
+
+		// Content-Security-Policy refusals — a blocked script looks like dead UI.
+		w.addEventListener("securitypolicyviolation", function (e) {
+			if (!e) { return; }
+			post({
+				error: "CSP blocked " + (e.violatedDirective || "") + ": " + (e.blockedURI || ""),
+				error_type: "CSPViolation",
+				source_file: e.sourceFile || "",
+				line_no: e.lineNumber || 0,
+				severity: "Warning"
+			});
+		});
+
+		// Uncaught exceptions. `error` carries the stack; the positional arguments
+		// are all some older browsers give.
+		w.addEventListener("error", function (e) {
+			// Fires for failed <img>/<script>/<link> loads too, which have no
+			// .error and are a different (and much noisier) class of problem.
+			if (!e || !e.message) { return; }
+			post({
+				error: e.message,
+				error_type: (e.error && e.error.name) || "Error",
+				stack_trace: (e.error && e.error.stack) || "",
+				source_file: e.filename || "",
+				line_no: e.lineno || 0,
+				column_no: e.colno || 0,
+				severity: "Error"
+			});
+		});
+
+		// A rejected promise nobody caught — how a failed fetch() surfaces, which
+		// is most of what these pages do.
+		w.addEventListener("unhandledrejection", function (e) {
+			var r = e && e.reason;
+			if (!r) { return; }
+			post({
+				error: (r.message || String(r)),
+				error_type: (r.name || "UnhandledRejection"),
+				stack_trace: r.stack || "",
+				severity: "Error"
+			});
+		});
+
+		// ---- API failures the page catches itself --------------------------
+		// The two listeners above only see what nobody caught. Almost every real
+		// failure in this portal IS caught — a callMethod().catch() that paints
+		// "Could not load…" or alerts a server traceback — and none of that reached
+		// the log. Wrapping fetch once here covers all of them without touching a
+		// single page, and the pages keep handling their errors exactly as before.
+		function isApiCall(url) {
+			// Only /api/method/... — a page fetching an asset or an image is not the
+			// kind of failure this log is for. The reporter's OWN endpoint is
+			// excluded: reporting a failed report would loop.
+			return url.indexOf("/api/method/") !== -1 && url.indexOf(ENDPOINT) === -1;
+		}
+
+		function methodOf(url) {
+			var m = /\/api\/method\/([^?#]+)/.exec(url);
+			return m ? m[1] : "";
+		}
+
+		// Frappe puts the useful part in different places depending on how it
+		// failed: a thrown ValidationError arrives in _server_messages, an
+		// unhandled exception in exception/exc (which is the Python traceback the
+		// page was alerting), and a crash outside the JSON path as an HTML page.
+		function describe(body, status, method) {
+			var out = { error: "", type: "HTTP " + status, stack: "" };
+			try {
+				var data = JSON.parse(body);
+				out.stack = typeof data.exc === "string" ? data.exc : JSON.stringify(data.exc || "");
+				if (data._server_messages) {
+					var msgs = JSON.parse(data._server_messages);
+					if (msgs.length) {
+						var first = msgs[0];
+						try { first = JSON.parse(first).message; } catch (e) { /* plain string */ }
+						out.error = String(first).replace(/<[^>]+>/g, "").trim();
+					}
+				}
+				if (!out.error && data.exception) { out.error = String(data.exception); }
+				if (data.exc_type) { out.type = String(data.exc_type); }
+			} catch (e) {
+				// Not JSON — an HTML error page or a proxy response.
+				out.stack = String(body || "").slice(0, 2000);
+			}
+			if (!out.error) { out.error = method + " failed with HTTP " + status; }
+			return out;
+		}
+
+		if (nativeFetch) {
+			w.fetch = function (input, init) {
+				var url = (typeof input === "string") ? input : ((input && input.url) || "");
+				return nativeFetch.apply(w, arguments).then(function (res) {
+					if (!res.ok && isApiCall(url)) {
+						var method = methodOf(url);
+						// clone(): the page still needs to read the body itself, and a
+						// response body can only be consumed once.
+						res.clone().text().then(function (body) {
+							var d = describe(body, res.status, method);
+							post({
+								error: d.error,
+								error_type: d.type,
+								stack_trace: d.stack,
+								api_method: method,
+								http_status: res.status,
+								severity: "Error"
+							});
+						}).catch(function () {
+							post({
+								error: method + " failed with HTTP " + res.status,
+								error_type: "HTTP " + res.status,
+								api_method: method, http_status: res.status, severity: "Error"
+							});
+						});
+					}
+					return res;   // untouched — the page behaves exactly as before
+				}, function (netErr) {
+					if (isApiCall(url)) {
+						post({
+							error: (netErr && netErr.message) || "Network request failed",
+							error_type: "NetworkError",
+							api_method: methodOf(url),
+							http_status: 0,
+							severity: "Error"
+						});
+					}
+					throw netErr;  // rethrown: the page's own .catch must still run
+				});
+			};
+		}
+
+		// For a page that catches its own failure and wants it on file anyway:
+		//   logClientError("Could not load vehicle", { api_method: "…", http_status: 500 })
+		// NOT named reportError: that is a real browser global (self.reportError)
+		// which dispatches the very `error` event this file listens for.
+		w.logClientError = function (message, extra) {
+			if (!message) { return; }
+			var payload = { error: String(message), error_type: "Handled", severity: "Warning" };
+			for (var k in (extra || {})) {
+				if (Object.prototype.hasOwnProperty.call(extra, k)) { payload[k] = extra[k]; }
+			}
+			post(payload);
+		};
+	})(window, document);
+	</script>

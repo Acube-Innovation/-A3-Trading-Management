@@ -1,0 +1,46 @@
+/* Workshop shortcut button in the Desk navbar — see public/js/workshop_navbar.js.
+   Sized to sit level with the app logo (max-height 28px) beside it. */
+
+.a3-workshop-navbar-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex-shrink: 0;
+	width: 28px;
+	height: 28px;
+	margin-left: 10px;
+	border-radius: 7px;
+	background: #18181b;
+	color: #ffffff;
+	transition: background-color 120ms ease, color 120ms ease;
+}
+
+.a3-workshop-navbar-btn svg {
+	width: 15px;
+	height: 15px;
+	display: block;
+}
+
+.a3-workshop-navbar-btn:hover,
+.a3-workshop-navbar-btn:focus-visible {
+	background: #c01643; /* Redlines crimson, same as the portal's primary */
+	color: #ffffff;
+	text-decoration: none;
+}
+
+.a3-workshop-navbar-btn:focus-visible {
+	outline: 2px solid #c01643;
+	outline-offset: 2px;
+}
+
+/* Dark theme: a near-black square disappears into a near-black navbar, so invert. */
+[data-theme="dark"] .a3-workshop-navbar-btn {
+	background: #e4e4e7;
+	color: #18181b;
+}
+
+[data-theme="dark"] .a3-workshop-navbar-btn:hover,
+[data-theme="dark"] .a3-workshop-navbar-btn:focus-visible {
+	background: #c01643;
+	color: #ffffff;
+}

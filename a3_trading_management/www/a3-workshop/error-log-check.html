@@ -1,0 +1,199 @@
+{% extends "templates/workshop_base.html" %}
+
+{% block page_content %}
+{#- A self-test for the client-error pipeline. It exists because every failure in
+    that pipeline is deliberately silent (a reporter must never turn a broken
+    control into a broken page), which makes "nothing is being logged"
+    indistinguishable from "nothing has gone wrong". Open this page on the site in
+    question and it says which link of the chain is broken. -#}
+<div class="card"><div class="card__body">
+	<div class="row-between" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+		<div>
+			<h3 style="margin:0">Client error capture</h3>
+			<div class="muted" style="font-size:13px;margin-top:4px">
+				Runs three real probes against this site and reports what actually landed.
+			</div>
+		</div>
+		<button type="button" class="btn btn--primary" id="run"><i class="fa-solid fa-play"></i> Run check</button>
+	</div>
+	<div id="steps" style="margin-top:18px"></div>
+</div></div>
+
+<div class="card" style="margin-top:14px"><div class="card__body">
+	<h3 style="margin:0 0 10px">Server view (rendered, not fetched)</h3>
+	<table class="table">
+		<tr><td>Doctype installed</td><td><b>{{ "yes" if status.doctype_installed else "NO — run bench migrate" }}</b></td></tr>
+		<tr><td>Table exists</td><td><b>{{ "yes" if status.table_exists else "NO — run bench migrate" }}</b></td></tr>
+		<tr><td>Logged in as</td><td><b>{{ status.user }}</b></td></tr>
+		<tr><td>Rows on this site</td><td><b>{{ status.total_rows }}</b></td></tr>
+		<tr><td>Mine, last hour</td><td><b>{{ status.mine_last_hour }}</b></td></tr>
+		{%- if status.hint %}<tr><td>Note</td><td><b style="color:var(--red)">{{ status.hint }}</b></td></tr>{%- endif %}
+	</table>
+</div></div>
+
+<style>
+	.probe { border:1px solid var(--border); border-radius:9px; padding:12px 14px; margin-bottom:10px; }
+	.probe .t { font-weight:700; display:flex; align-items:center; gap:8px; }
+	.probe .d { color:var(--muted); font-size:12px; margin-top:4px; }
+	.probe pre { background:var(--bg); border-radius:6px; padding:8px 10px; margin-top:8px;
+		font-size:11px; overflow:auto; max-height:180px; white-space:pre-wrap; word-break:break-all; }
+	.pill { border-radius:999px; padding:1px 9px; font-size:11px; font-weight:700; }
+	.pill--ok { background:#e6f7ec; color:#1a7f43; }
+	.pill--no { background:var(--red-soft); color:var(--red); }
+	.pill--wait { background:var(--bg); color:var(--muted); }
+</style>
+
+{% raw %}
+<script>
+(function () {
+	var steps = document.getElementById("steps");
+	var results = [];
+
+	function esc(s) {
+		return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+			return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+		});
+	}
+	function draw() {
+		steps.innerHTML = results.map(function (r) {
+			var pill = r.state === "ok" ? "pill--ok" : (r.state === "no" ? "pill--no" : "pill--wait");
+			var label = r.state === "ok" ? "PASS" : (r.state === "no" ? "FAIL" : "…");
+			return '<div class="probe"><div class="t"><span class="pill ' + pill + '">' + label + "</span> " +
+				esc(r.title) + '</div><div class="d">' + esc(r.detail || "") + "</div>" +
+				(r.raw ? "<pre>" + esc(r.raw) + "</pre>" : "") + "</div>";
+		}).join("");
+	}
+	function step(title, detail) {
+		var r = { title: title, detail: detail, state: "wait", raw: "" };
+		results.push(r); draw(); return r;
+	}
+	function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+
+	function call(method, args) {
+		return fetch("/api/method/" + method, {
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json",
+				"X-Frappe-CSRF-Token": window.csrf_token || "",
+				"Accept": "application/json"
+			},
+			body: JSON.stringify(args || {})
+		}).then(function (r) {
+			return r.text().then(function (t) {
+				return { ok: r.ok, status: r.status, body: t };
+			});
+		});
+	}
+
+	document.getElementById("run").addEventListener("click", function () {
+		results = [];
+		run();
+	});
+
+	function run() {
+		// 1 — did the reporter script load at all?
+		var s1 = step("Reporter script loaded",
+			"window.gdErrorReporter must exist. If not, the include is missing from this deployment.");
+		var diag = window.gdErrorReporter;
+		s1.state = diag && diag.loaded ? "ok" : "no";
+		s1.detail = diag && diag.loaded
+			? "Loaded. Endpoint: " + diag.endpoint
+			: "NOT loaded — templates/includes/client_error_reporter.html is not in this build.";
+		draw();
+		if (!diag || !diag.loaded) { return; }
+
+		// 2 — is the CSRF token usable? A bad token loses every report silently.
+		var s2 = step("CSRF token present", "Reports POST with this token; an empty one is rejected.");
+		var tok = window.csrf_token;
+		s2.state = (tok && tok !== "None") ? "ok" : "no";
+		s2.detail = (tok && tok !== "None")
+			? "Token present (" + String(tok).slice(0, 10) + "…)"
+			: "Token is " + JSON.stringify(tok) + " — every report will be rejected.";
+		draw();
+
+		// 3 — is the intake reachable and installed?
+		var s3 = step("Intake endpoint reachable", "Calls a3_trading_management.api.error_log.intake_status.");
+		call("a3_trading_management.api.error_log.intake_status").then(function (res) {
+			s3.raw = res.body.slice(0, 600);
+			if (!res.ok) {
+				s3.state = "no";
+				s3.detail = "HTTP " + res.status + " — the method did not run. If 404, the a3_trading_management app on this site is older than the code you deployed.";
+				draw(); return Promise.reject("stop");
+			}
+			var msg = JSON.parse(res.body).message || {};
+			s3.state = msg.table_exists ? "ok" : "no";
+			s3.detail = msg.table_exists
+				? "Installed. " + msg.total_rows + " row(s) on this site."
+				: (msg.hint || "Garage Error Log table is missing — run bench migrate on this site.");
+			draw();
+			if (!msg.table_exists) { return Promise.reject("stop"); }
+			return msg.total_rows;
+		}).then(function (before) {
+			// 4 — a caught API failure, the exact shape the handover alert had.
+			var s4 = step("Failed API call is captured",
+				"Calls a method that does not exist, catching the error like every page does.");
+			// Deliberately nonexistent. Name kept free of dunders because
+			// frappe.render_template rejects a page whose source contains a dot
+			// followed by two underscores ("Illegal template", see
+			// frappe/utils/jinja.py safe_render) -- including in a comment.
+			return call("a3_trading_management.api.error_log.no_such_method_probe").catch(function () {})
+				.then(function () { return sleep(1200); })
+				.then(function () { return call("a3_trading_management.api.error_log.intake_status"); })
+				.then(function (res) {
+					var msg = JSON.parse(res.body).message || {};
+					s4.state = msg.total_rows > before ? "ok" : "no";
+					s4.detail = msg.total_rows > before
+						? "Captured — row count went " + before + " → " + msg.total_rows + "."
+						: "NOT captured. The fetch wrapper did not report it.";
+					s4.raw = JSON.stringify((window.gdErrorReporter.attempts || []).slice(-2), null, 1);
+					draw();
+					return msg.total_rows;
+				});
+		}).then(function (before) {
+			// 5 — a direct report, proving the write path independent of the wrapper.
+			var s5 = step("Direct report is written", "Calls logClientError() and reads the row back.");
+			window.logClientError("Error Log Check probe", { error_type: "SelfTest", severity: "Info" });
+			return sleep(1200).then(function () {
+				return call("a3_trading_management.api.error_log.intake_status");
+			}).then(function (res) {
+				var msg = JSON.parse(res.body).message || {};
+				var last = (window.gdErrorReporter.attempts || []).slice(-1)[0] || {};
+				s5.state = (last.status === 200) ? "ok" : "no";
+				s5.detail = last.status === 200
+					? "Accepted by the server (HTTP 200)."
+					: "POST returned " + JSON.stringify(last.status) + " " + (last.error || "") +
+					  " — this is why nothing is being logged.";
+				s5.raw = JSON.stringify(last, null, 1).slice(0, 900);
+				draw();
+			});
+		}).then(function () {
+			// 6 — a caught failure the page only logs. This is the class that used to
+			// vanish entirely: nothing thrown, no request failed, just console.error.
+			var s6 = step("console.error is captured",
+				"Calls console.error() the way a page does when it handles its own failure.");
+			var before = (window.gdErrorReporter.attempts || []).length;
+			console.error("Error Log Check probe", new Error("probe detail"));
+			return sleep(1200).then(function () {
+				var att = window.gdErrorReporter.attempts || [];
+				var mine = att.slice(before).filter(function (a) {
+					return a.payload && a.payload.error_type === "console.error";
+				});
+				var last = mine[mine.length - 1];
+				s6.state = (last && last.status === 200) ? "ok" : "no";
+				s6.detail = !last
+					? "NOT captured — the console interceptor did not fire."
+					: (last.status === 200
+						? "Captured and accepted (HTTP 200)."
+						: "Captured but the POST returned " + JSON.stringify(last.status) +
+						  " " + (last.error || "") + ".");
+				s6.raw = JSON.stringify(last || att.slice(-1)[0] || {}, null, 1).slice(0, 900);
+				draw();
+			});
+		}).catch(function (e) { if (e !== "stop") { draw(); } });
+	}
+
+	run();
+})();
+</script>
+{% endraw %}
+{% endblock %}

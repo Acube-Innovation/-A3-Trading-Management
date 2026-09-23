@@ -1,0 +1,24 @@
+[
+ {
+  "_assign": null,
+  "_comments": null,
+  "_liked_by": null,
+  "_user_tags": null,
+  "app_name": "a3_trading_management",
+  "custom": 0,
+  "docstatus": 0,
+  "doctype": "Module Def",
+  "modified": "2026-07-07 17:01:58.556218",
+  "module_name": "Platform",
+  "name": "Platform",
+  "package": null,
+  "restrict_to_domain": null
+ },
+ {
+  "app_name": "a3_trading_management",
+  "custom": 0,
+  "doctype": "Module Def",
+  "module_name": "A3 Trading Management",
+  "name": "A3 Trading Management"
+ }
+]

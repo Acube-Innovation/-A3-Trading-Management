@@ -1,0 +1,425 @@
+{% extends "templates/workshop_base.html" %}
+{% from "templates/macros/workshop.html" import badge %}
+
+{% block page_content %}
+{#- Whole board arrives from the page controller (www/a3-workshop/live_stock.py ->
+    a3_trading_management.api.live_stock.get_stock_board). Read-only review page; the only
+    action — "Request Selected" on the low-stock board — reuses the existing
+    a3_trading_management.api.live_stock.create_material_request endpoint.
+
+    Dynamic: the page re-fetches itself every 30s and swaps #ls-board in place
+    (same server-rendered markup, no duplicated client templates); filters,
+    selections and edited quantities survive each swap. -#}
+{%- set s = board.summary -%}
+
+<style>
+	.pill { display:inline-block; padding:3px 10px; border-radius:11px; font-size:11px;
+		font-weight:600; background:#eef1f5; color:#33415a; white-space:nowrap; }
+	.num { text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; }
+</style>
+
+<div class="toolbar">
+	<div class="section-title" style="margin:0">Stock Monitoring Board &middot; {{ frappe.utils.formatdate(frappe.utils.nowdate(), "dd MMM yyyy") }}</div>
+	<div class="toolbar__right">
+		<span class="muted" id="ls-updated" style="font-size:12px"></span>
+					~ "&from_date=" ~ frappe.utils.add_days(frappe.utils.nowdate(), -board.movement_days)
+			~ "&to_date=" ~ frappe.utils.nowdate() ~ "&valuation_field_type=Currency" -%}
+		<button type="button" class="btn btn--primary" id="ls-refresh"><i class="fa-solid fa-rotate"></i> Refresh</button>
+	</div>
+</div>
+
+<div id="ls-board">
+
+<!-- ============ Summary tiles ============ -->
+<div class="tc-stats">
+	<div class="stat-card stat-card--sm"><div class="label">Stock Value</div><div class="value" style="font-size:19px">{{ s.stock_value }}</div><div class="sub">All warehouses</div></div>
+	<div class="stat-card stat-card--sm stat-card--navy"><div class="label">Items In Stock</div><div class="value">{{ s.items_in_stock }}</div><div class="sub">{{ s.warehouses }} warehouse{{ "" if s.warehouses == 1 else "s" }}</div></div>
+	<div class="stat-card stat-card--sm"><div class="label">Low Stock Alerts</div><div class="value">{{ s.low_stock }}</div><div class="sub">{{ s.out_of_stock }} critical</div></div>
+	<div class="stat-card stat-card--sm stat-card--purple"><div class="label">Open Requisitions</div><div class="value">{{ s.open_requisitions }}</div><div class="sub">Material Requests</div></div>
+	<div class="stat-card stat-card--sm stat-card--navy"><div class="label">Payments Missing</div><div class="value" style="font-size:19px">{{ s.payments_due }}</div><div class="sub">{{ s.payments_count }} document{{ "" if s.payments_count == 1 else "s" }}</div></div>
+</div>
+
+<div class="ls-stack">
+
+	<!-- ============ 1. Stock by warehouse ============ -->
+	<div class="card"><div class="card__head"><h3>Stock by Warehouse</h3><span class="muted">Position per warehouse</span></div>
+		<div class="card__body">
+			<div class="ls-scroll"><table class="table">
+				<thead><tr><th>Warehouse</th><th>Items In Stock</th><th>Total Qty</th><th>Reserved</th><th>Incoming (Ordered)</th><th>Requisitioned</th><th>Stock Value</th><th>Low</th><th>Out / Short</th></tr></thead>
+				<tbody>
+					{%- for w in board.warehouses %}
+					<tr>
+						<td style="font-weight:600">{{ w.warehouse }}</td>
+						<td>{{ w.items }}</td>
+						<td>{{ w.qty }}</td>
+						<td>{{ w.reserved }}</td>
+						<td>{{ w.ordered }}</td>
+						<td>{{ w.requested }}</td>
+						<td style="font-weight:600">{{ w.value }}</td>
+						<td>{% if w.low %}{{ badge(w.low, "badge--pending") }}{% else %}<span class="muted">0</span>{% endif %}</td>
+						<td>{% if w.out %}{{ badge(w.out, "badge--danger") }}{% else %}<span class="muted">0</span>{% endif %}</td>
+					</tr>
+					{%- else %}
+					<tr><td colspan="9" class="empty">No warehouses set up yet.</td></tr>
+					{%- endfor %}
+				</tbody>
+			</table></div>
+		</div>
+	</div>
+
+	<!-- ============ 2. Current stock (live, filterable) ============ -->
+	<div class="card"><div class="card__head"><h3>Current Stock — Live</h3><span class="muted">One row per item &amp; warehouse</span></div>
+		<div class="card__body">
+			<div class="ls-filters">
+				<input type="search" id="ls-search" placeholder="Search item or code…">
+				<select id="ls-warehouse">
+					<option value="">All warehouses</option>
+					{%- for w in board.warehouses %}<option>{{ w.warehouse }}</option>{%- endfor %}
+				</select>
+				<select id="ls-status">
+					<option value="">All statuses</option>
+					<option>In Stock</option><option>Low Stock</option><option>Short</option><option>Out of Stock</option>
+				</select>
+				<span class="muted" id="ls-count" style="font-size:12px;margin-left:auto"></span>
+			</div>
+			<div class="ls-scroll"><table class="table" id="ls-stock-table">
+				<thead><tr><th>Item</th><th>Warehouse</th><th>In Stock</th><th>Reserved</th><th>On Order</th><th>Requisitioned</th><th>Projected</th><th>Reorder Lvl</th><th>Valuation</th><th>Stock Value</th><th>Status</th></tr></thead>
+				<tbody>
+					{%- for r in board.stock %}
+					<tr data-search="{{ (r.item_name ~ ' ' ~ r.item_code)|lower }}" data-warehouse="{{ r.warehouse }}" data-status="{{ r.status }}">
+						<td><div style="font-weight:600">{{ r.item_name }}</div><div class="muted" style="font-size:11px">{{ r.item_code }} · {{ r.uom }}</div></td>
+						<td>{{ r.warehouse }}</td>
+						<td style="font-weight:700">{{ r.actual }}</td>
+						<td>{{ r.reserved }}</td>
+						<td>{{ r.ordered }}</td>
+						<td>{{ r.requested }}</td>
+						<td style="color:{{ 'var(--red)' if r.projected_raw < 0 else 'var(--text)' }}">{{ r.projected }}</td>
+						<td>{{ r.reorder_level or "—" }}</td>
+						<td>{{ r.rate }}</td>
+						<td>{{ r.value }}</td>
+						<td>{{ badge(r.status, r.variant) }}</td>
+					</tr>
+					{%- else %}
+					<tr><td colspan="11" class="empty">No stock movements recorded yet — bins appear here after the first transaction.</td></tr>
+					{%- endfor %}
+				</tbody>
+			</table></div>
+		</div>
+	</div>
+
+	<!-- ============ 3. Low stock alerts (monitoring board + action) ============ -->
+	<div class="card"><div class="card__head"><h3>Low Stock Alerts</h3><span class="muted">At/below reorder level, or short for reservations</span></div>
+		<div class="card__body">
+			<div class="ls-scroll"><table class="table" id="ls-alert-table">
+				<thead><tr><th style="width:34px"><input type="checkbox" id="ls-check-all" title="Select all"></th><th>Alert</th><th>Item</th><th>Warehouse</th><th>Available</th><th>Reserved</th><th>Reorder Lvl</th><th>Order Qty</th><th>Requisition</th></tr></thead>
+				<tbody>
+					{%- for a in board.low_stock %}
+					<tr data-item="{{ a.item_code }}">
+						<td><input type="checkbox" class="ls-pick"{% if not a.material_request %} checked{% endif %}></td>
+						<td>{{ badge(a.status, a.variant) }}</td>
+						<td><div style="font-weight:600">{{ a.item_name }}</div><div class="muted" style="font-size:11px">{{ a.item_code }} · {{ a.uom }}</div></td>
+						<td>{{ a.warehouse }}</td>
+						<td style="font-weight:700;color:var(--red)">{{ a.available }}</td>
+						<td>{{ a.reserved }}</td>
+						<td>{{ a.reorder_level }}</td>
+						<td><input type="number" class="ls-qty" min="0" step="1" value="{{ a.suggested }}" style="width:76px"></td>
+						<td>{% if a.material_request %}<span>{{ badge("On " ~ a.material_request, "badge--navy") }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+					</tr>
+					{%- else %}
+					<tr><td colspan="9" class="empty">No alerts — nothing is below its reorder level or short for reservations.</td></tr>
+					{%- endfor %}
+				</tbody>
+			</table></div>
+			{%- if board.low_stock %}
+			<div class="row-between" style="margin-top:14px;gap:10px;flex-wrap:wrap">
+				<div id="ls-mr-result" class="muted" style="font-size:12px"></div>
+				<button type="button" class="btn btn--primary" id="ls-request"><i class="fa-solid fa-cart-plus"></i> Request Selected</button>
+			</div>
+			{%- endif %}
+		</div>
+	</div>
+
+	<!-- ============ 4. Requisitions (Material Requests) ============ -->
+	<div class="card"><div class="card__head"><h3>Requisitions</h3><span class="muted">Material Requests &amp; fulfilment</span></div>
+		<div class="card__body">
+			<div class="ls-scroll"><table class="table">
+				<thead><tr><th>Requisition</th><th>Date</th><th>Type</th><th>Items</th><th>Qty</th><th>Ordered</th><th>Received</th><th>Status</th><th></th></tr></thead>
+				<tbody>
+					{%- for m in board.requisitions %}
+					<tr>
+						<td style="font-weight:600;color:var(--red)">{{ m.name }}</td>
+						<td>{{ m.date }}</td>
+						<td>{{ m.type }}</td>
+						<td>{{ m.items }}</td>
+						<td>{{ m.qty }}</td>
+						<td><div class="bar" style="min-width:64px" title="{{ m.per_ordered }}% ordered"><span style="width:{{ m.per_ordered }}%"></span></div></td>
+						<td><div class="bar" style="min-width:64px" title="{{ m.per_received }}% received"><span style="width:{{ m.per_received }}%;background:var(--green)"></span></div></td>
+						<td>{{ badge(m.status, m.variant) }}</td>
+						<td><span class="muted">—</span></td>
+					</tr>
+					{%- else %}
+					<tr><td colspan="9" class="empty">No requisitions raised yet.</td></tr>
+					{%- endfor %}
+				</tbody>
+			</table></div>
+		</div>
+	</div>
+
+	<!-- ============ 5 & 6. Movement — stocked in / stocked out ============ -->
+	<div class="ls-grid-2">
+		<div class="card"><div class="card__head"><h3>Stocked (Stock In)</h3><span class="muted">Last {{ board.movement_days }} days</span></div>
+			<div class="card__body">
+				<div class="ls-scroll"><table class="table">
+					<thead><tr><th>Date</th><th>Item</th><th>Warehouse</th><th>Qty</th><th>Value</th><th>Voucher</th></tr></thead>
+					<tbody>
+						{%- for r in board.stock_in %}
+						<tr>
+							<td class="muted" style="white-space:nowrap">{{ r.date }}</td>
+							<td><div style="font-weight:600">{{ r.item_name }}</div></td>
+							<td>{{ r.warehouse }}</td>
+							<td style="font-weight:700;color:var(--green)">+{{ r.qty }} {{ r.uom }}</td>
+							<td>{{ r.value }}</td>
+							<td><a href="{{ r.voucher_url }}" target="_blank" rel="noopener" title="{{ r.voucher_type }}">{{ r.voucher_no }}</a></td>
+						</tr>
+						{%- else %}
+						<tr><td colspan="6" class="empty">Nothing stocked in the last {{ board.movement_days }} days.</td></tr>
+						{%- endfor %}
+					</tbody>
+				</table></div>
+			</div>
+		</div>
+		<div class="card"><div class="card__head"><h3>Stock Out</h3><span class="muted">Last {{ board.movement_days }} days</span></div>
+			<div class="card__body">
+				<div class="ls-scroll"><table class="table">
+					<thead><tr><th>Date</th><th>Item</th><th>Warehouse</th><th>Qty</th><th>Value</th><th>Voucher</th></tr></thead>
+					<tbody>
+						{%- for r in board.stock_out %}
+						<tr>
+							<td class="muted" style="white-space:nowrap">{{ r.date }}</td>
+							<td><div style="font-weight:600">{{ r.item_name }}</div></td>
+							<td>{{ r.warehouse }}</td>
+							<td style="font-weight:700;color:var(--red)">-{{ r.qty }} {{ r.uom }}</td>
+							<td>{{ r.value }}</td>
+							<td><a href="{{ r.voucher_url }}" target="_blank" rel="noopener" title="{{ r.voucher_type }}">{{ r.voucher_no }}</a></td>
+						</tr>
+						{%- else %}
+						<tr><td colspan="6" class="empty">Nothing issued in the last {{ board.movement_days }} days.</td></tr>
+						{%- endfor %}
+					</tbody>
+				</table></div>
+			</div>
+		</div>
+	</div>
+
+	<!-- ============ 7. Payment missing ============ -->
+	<div class="card"><div class="card__head"><h3>Payment Missing</h3><span class="muted">Unpaid purchases &amp; unbilled receipts</span></div>
+		<div class="card__body">
+			<div class="group-head">{{ badge("Unpaid Purchase Invoices", "badge--danger") }}</div>
+			<div class="ls-scroll"><table class="table">
+				<thead><tr><th>Invoice</th><th>Supplier</th><th>Date</th><th>Due</th><th>Total</th><th>Outstanding</th><th>Status</th></tr></thead>
+				<tbody>
+					{%- for p in board.payments.invoices %}
+					<tr>
+						<td><span style="font-weight:600">{{ p.name }}</span></td>
+						<td>{{ p.supplier }}</td>
+						<td>{{ p.date }}</td>
+						<td>{{ p.due }}</td>
+						<td>{{ p.total }}</td>
+						<td style="font-weight:700;color:var(--red)">{{ p.outstanding }}</td>
+						<td>{{ badge(p.status, p.variant) }}</td>
+					</tr>
+					{%- else %}
+					<tr><td colspan="7" class="empty">No unpaid purchase invoices.</td></tr>
+					{%- endfor %}
+				</tbody>
+			</table></div>
+			<div class="group-head" style="margin-top:16px">{{ badge("Received, Not Yet Billed", "badge--pending") }}</div>
+			<div class="ls-scroll"><table class="table">
+				<thead><tr><th>Purchase Receipt</th><th>Supplier</th><th>Date</th><th>Amount</th><th>Status</th></tr></thead>
+				<tbody>
+					{%- for p in board.payments.to_bill %}
+					<tr>
+						<td><span style="font-weight:600">{{ p.name }}</span></td>
+						<td>{{ p.supplier }}</td>
+						<td>{{ p.date }}</td>
+						<td>{{ p.total }}</td>
+						<td>{{ badge("To Bill", "badge--pending") }}</td>
+					</tr>
+					{%- else %}
+					<tr><td colspan="5" class="empty">Every received purchase has been billed.</td></tr>
+					{%- endfor %}
+				</tbody>
+			</table></div>
+		</div>
+	</div>
+</div>
+
+</div><!-- /#ls-board -->
+
+<style>
+.ls-stack { display: flex; flex-direction: column; gap: 18px; }
+.ls-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; align-items: start; }
+@media (max-width: 1100px) { .ls-grid-2 { grid-template-columns: 1fr; } }
+/* wide tables scroll inside their card instead of breaking the page */
+.ls-scroll { overflow-x: auto; }
+.ls-scroll .table { min-width: 640px; }
+.ls-filters { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
+.ls-filters input[type="search"], .ls-filters select {
+	padding: 8px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm);
+	background: var(--surface); font: inherit; color: var(--text);
+}
+.ls-filters input[type="search"] { min-width: 220px; }
+.ls-filters input[type="search"]:focus, .ls-filters select:focus {
+	outline: none; border-color: var(--red); box-shadow: 0 0 0 3px var(--red-soft);
+}
+.table .empty { padding: 24px; }
+#ls-alert-table .ls-qty {
+	padding: 6px 8px; border: 1px solid var(--border); border-radius: 7px; font: inherit;
+}
+#ls-alert-table .ls-qty:focus { outline: none; border-color: var(--red); box-shadow: 0 0 0 2px var(--red-soft); }
+</style>
+
+<script>window.csrf_token = "{{ frappe.session.csrf_token }}";</script>
+{% raw %}
+<script>
+(function () {
+	var REFRESH_MS = 30000;
+	// user state that must survive every board swap
+	var state = { q: "", wh: "", st: "", picks: {}, qty: {}, result: "", busy: false };
+
+	function $(sel, root) { return (root || document).querySelector(sel); }
+	function $all(sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); }
+	function esc(s) { var d = document.createElement("div"); d.textContent = (s == null ? "" : s); return d.innerHTML; }
+
+	// ---- Current Stock filters (re-query rows each time — they change on swap)
+	function applyFilters() {
+		var rows = $all("#ls-stock-table tbody tr[data-search]");
+		var shown = 0;
+		rows.forEach(function (tr) {
+			var ok = (!state.q || tr.dataset.search.indexOf(state.q) !== -1)
+				&& (!state.wh || tr.dataset.warehouse === state.wh)
+				&& (!state.st || tr.dataset.status === state.st);
+			tr.style.display = ok ? "" : "none";
+			if (ok) shown++;
+		});
+		var el = $("#ls-count");
+		if (el) el.textContent = rows.length ? ("Showing " + shown + " of " + rows.length) : "";
+	}
+
+	function restoreState() {
+		var s = $("#ls-search"), w = $("#ls-warehouse"), t = $("#ls-status");
+		if (s) s.value = state.q;
+		if (w) w.value = state.wh;
+		if (t) t.value = state.st;
+		$all("#ls-alert-table tbody tr[data-item]").forEach(function (tr) {
+			var code = tr.dataset.item;
+			var pick = tr.querySelector(".ls-pick"), qty = tr.querySelector(".ls-qty");
+			if (pick && (code in state.picks)) pick.checked = state.picks[code];
+			if (qty && (code in state.qty)) qty.value = state.qty[code];
+		});
+		var out = $("#ls-mr-result");
+		if (out && state.result) out.innerHTML = state.result;
+		applyFilters();
+	}
+
+	function stamp(text) { var el = $("#ls-updated"); if (el) el.textContent = text; }
+
+	// ---- Dynamic refresh: re-fetch this page, swap #ls-board in place --------
+	var refreshing = false;
+	function refreshBoard(manual) {
+		if (refreshing || state.busy) return;
+		refreshing = true;
+		if (manual) stamp("Refreshing…");
+		fetch(location.pathname + location.search, { headers: { "Accept": "text/html" }, credentials: "same-origin" })
+			.then(function (r) { if (!r.ok) throw new Error(r.statusText); return r.text(); })
+			.then(function (html) {
+				var fresh = new DOMParser().parseFromString(html, "text/html").getElementById("ls-board");
+				var cur = document.getElementById("ls-board");
+				if (fresh && cur) { cur.replaceWith(fresh); restoreState(); }
+				stamp("Live · updated " + new Date().toLocaleTimeString());
+			})
+			.catch(function () { stamp("Auto-refresh paused — server unreachable, retrying…"); })
+			.then(function () { refreshing = false; });
+	}
+	setInterval(function () {
+		if (document.hidden) return; // tab in background
+		var a = document.activeElement; // don't swap under the user's cursor
+		if (a && a.closest && a.closest("#ls-board") && /^(input|select|textarea)$/i.test(a.tagName)) return;
+		refreshBoard(false);
+	}, REFRESH_MS);
+	stamp("Live · auto-refresh every 30s");
+
+	// ---- Delegated events, so handlers survive every swap --------------------
+	document.addEventListener("input", function (e) {
+		if (e.target.id === "ls-search") { state.q = e.target.value.toLowerCase().trim(); applyFilters(); }
+		else if (e.target.classList && e.target.classList.contains("ls-qty")) {
+			var tr = e.target.closest("tr[data-item]");
+			if (tr) state.qty[tr.dataset.item] = e.target.value;
+		}
+	});
+	document.addEventListener("change", function (e) {
+		if (e.target.id === "ls-warehouse") { state.wh = e.target.value; applyFilters(); }
+		else if (e.target.id === "ls-status") { state.st = e.target.value; applyFilters(); }
+		else if (e.target.id === "ls-check-all") {
+			$all("#ls-alert-table .ls-pick").forEach(function (c) {
+				c.checked = e.target.checked;
+				var tr = c.closest("tr[data-item]");
+				if (tr) state.picks[tr.dataset.item] = c.checked;
+			});
+		} else if (e.target.classList && e.target.classList.contains("ls-pick")) {
+			var tr = e.target.closest("tr[data-item]");
+			if (tr) state.picks[tr.dataset.item] = e.target.checked;
+		}
+	});
+
+	function callMethod(method, args) {
+		return fetch("/api/method/" + method, {
+			method: "POST",
+			headers: { "Content-Type": "application/json", "X-Frappe-CSRF-Token": window.csrf_token || "", "Accept": "application/json" },
+			body: JSON.stringify(args || {})
+		}).then(function (r) {
+			return r.json().then(function (data) {
+				if (!r.ok) throw new Error((data && data._server_messages) || (data && data.exc) || r.statusText);
+				return data.message;
+			});
+		});
+	}
+
+	// ---- Low Stock Alerts → one Purchase Material Request (existing endpoint)
+	document.addEventListener("click", function (e) {
+		if (e.target.closest && e.target.closest("#ls-refresh")) { refreshBoard(true); return; }
+		var btn = e.target.closest && e.target.closest("#ls-request");
+		if (!btn || btn.disabled) return;
+		var out = $("#ls-mr-result");
+		var items = [];
+		$all("#ls-alert-table tbody tr[data-item]").forEach(function (tr) {
+			var pick = tr.querySelector(".ls-pick");
+			var qty = parseFloat(tr.querySelector(".ls-qty").value) || 0;
+			if (pick && pick.checked && qty > 0) items.push({ item_code: tr.dataset.item, qty: qty });
+		});
+		if (!items.length) { if (out) out.textContent = "Tick at least one alert row (with a quantity) to request."; return; }
+		state.busy = true; btn.disabled = true;
+		state.result = "Creating Material Request…";
+		if (out) out.textContent = state.result;
+		callMethod("a3_trading_management.api.live_stock.create_material_request", { items: items, force: 1 })
+			.then(function (r) {
+				var mr = r && r.material_request;
+				state.result = "Material Request <b>" + esc(mr) + "</b> created (" + r.items +
+					" item" + (r.items === 1 ? "" : "s") + ').';
+				// drop overrides so the refreshed board shows the new "On MR" flags
+				state.picks = {}; state.qty = {};
+			})
+			.catch(function (err) { state.result = "Could not create: " + esc(err && err.message ? err.message : err); })
+			.then(function () {
+				state.busy = false;
+				var b = $("#ls-request"); if (b) b.disabled = false;
+				var o = $("#ls-mr-result"); if (o) o.innerHTML = state.result;
+				refreshBoard(true); // pull the new requisition into the tables
+			});
+	});
+
+	applyFilters();
+})();
+</script>
+{% endraw %}
+{% endblock %}

@@ -5,3 +5,6 @@
 tags
 node_modules
 __pycache__
+__pycache__/
+a3_trading_management/public/dist/
+node_modules/

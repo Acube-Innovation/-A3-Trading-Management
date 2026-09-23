@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>{{ title or "Workshop" }} | Service Center CRM</title>
+	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+	{{ include_style('workshop.bundle.css') }}
+	{% include "templates/includes/client_error_reporter.html" %}
+	{#- The shared list helper is loaded HERE, in <head>, and not at the end of
+	    <body>: every list page calls `new WorkshopFilter(...)` from an inline
+	    <script> inside the page_content block, which the browser runs in
+	    document order -- i.e. before anything further down the page. Defined at
+	    the bottom, that call threw "WorkshopFilter is not defined" and took the
+	    whole filter bar with it (the Customer / Fuel dropdowns stayed empty, the
+	    chips and the search box did nothing). The block only DEFINES things, so
+	    it is safe this early -- nothing in it touches the DOM until it is called. -#}
+	{#- Shared list-filter helper. Every list page in the portal drives its search
+	    box and filter chips through this, so the behaviour (debounced live search,
+	    AND across filter groups, chip state mirrored into the query string so a
+	    filtered view survives a refresh and can be pasted to someone) is written
+	    once instead of per page.
+
+	    Contract, all declarative:
+	      * a row carries  data-row  plus  data-search="<lowercased haystack>"
+	        and one  data-f-<key>="<value>"  per filterable dimension.
+	      * a chip group is  <div class="filter-bar__group" data-filter-key="<key>">
+	        holding  <button class="chip" data-val="...">  ("all" clears it), or a
+	        <select class="chip-select" data-filter-key="<key>"> for open-ended lists.
+	      * optional  [data-filter-count]  gets "<n> of <total>",  [data-filter-empty]
+	        is shown only when nothing matches.
+
+	    Pages whose rows are rendered by JS just call .apply() again after redrawing. -#}
+	<script>
+	(function (w, d) {
+		"use strict";
+
+		function debounce(fn, ms) {
+			var t = null;
+			return function () {
+				var self = this, args = arguments;
+				clearTimeout(t);
+				t = setTimeout(function () { fn.apply(self, args); }, ms);
+			};
+		}
+
+		function WorkshopFilter(cfg) {
+			cfg = cfg || {};
+			this.root = typeof cfg.root === "string" ? d.querySelector(cfg.root) : (cfg.root || d);
+			this.rowSelector = cfg.rowSelector || "[data-row]";
+			this.searchInput = typeof cfg.search === "string" ? d.querySelector(cfg.search) : cfg.search;
+			this.searchParam = cfg.searchParam || "q";
+			this.syncUrl = cfg.syncUrl !== false;
+			this.onApply = cfg.onApply || null;
+			this.countEl = cfg.count ? d.querySelector(cfg.count) : null;
+			this.emptyEl = cfg.empty ? d.querySelector(cfg.empty) : null;
+			this.groups = [];
+
+			var self = this;
+			var scope = cfg.bar ? (typeof cfg.bar === "string" ? d.querySelector(cfg.bar) : cfg.bar) : d;
+			this.bar = cfg.bar ? scope : null;
+			if (scope) {
+				scope.querySelectorAll("[data-filter-key]").forEach(function (el) {
+					var key = el.getAttribute("data-filter-key");
+					var isSelect = el.tagName === "SELECT";
+					var g = { key: key, el: el, isSelect: isSelect, value: "all" };
+					self.groups.push(g);
+					if (isSelect) {
+						el.addEventListener("change", function () {
+							g.value = el.value || "all";
+							self.commit();
+						});
+					} else {
+						el.addEventListener("click", function (e) {
+							var b = e.target.closest(".chip");
+							if (!b || !el.contains(b)) { return; }
+							g.value = b.getAttribute("data-val") || "all";
+							self.commit();
+						});
+					}
+				});
+			}
+
+			if (this.searchInput) {
+				var run = debounce(function () { self.commit(); }, 200);
+				this.searchInput.addEventListener("input", run);
+				// Enter re-filters in place; it must not submit and reload the page.
+				var form = this.searchInput.closest("form");
+				if (form) { form.addEventListener("submit", function (e) { e.preventDefault(); self.commit(); }); }
+			}
+
+			if (this.syncUrl) { this.readUrl(); }
+			this.apply();
+		}
+
+		// Restore state from the query string so a filtered view can be linked/refreshed.
+		WorkshopFilter.prototype.readUrl = function () {
+			var params = new URLSearchParams(w.location.search);
+			if (this.searchInput) {
+				var q = params.get(this.searchParam);
+				if (q && !this.searchInput.value) { this.searchInput.value = q; }
+			}
+			this.groups.forEach(function (g) {
+				var v = params.get(g.key);
+				if (v) { g.value = v; }
+			});
+		};
+
+		WorkshopFilter.prototype.writeUrl = function () {
+			if (!this.syncUrl) { return; }
+			var params = new URLSearchParams(w.location.search);
+			var q = this.searchInput ? this.searchInput.value.trim() : "";
+			if (q) { params.set(this.searchParam, q); } else { params.delete(this.searchParam); }
+			this.groups.forEach(function (g) {
+				if (g.value && g.value !== "all") { params.set(g.key, g.value); } else { params.delete(g.key); }
+			});
+			var qs = params.toString();
+			// Keep the fragment: pages like the technician board park their open tab
+			// in the hash, and filtering must not throw that away.
+			w.history.replaceState(null, "", w.location.pathname + (qs ? "?" + qs : "") + w.location.hash);
+		};
+
+		WorkshopFilter.prototype.paintControls = function () {
+			this.groups.forEach(function (g) {
+				if (g.isSelect) {
+					g.el.value = g.value === "all" ? "" : g.value;
+					g.el.classList.toggle("is-active", g.value !== "all");
+				} else {
+					g.el.querySelectorAll(".chip").forEach(function (c) {
+						c.classList.toggle("is-active", (c.getAttribute("data-val") || "all") === g.value);
+					});
+				}
+			});
+		};
+
+		WorkshopFilter.prototype.values = function () {
+			var out = {};
+			this.groups.forEach(function (g) { out[g.key] = g.value; });
+			out[this.searchParam] = this.searchInput ? this.searchInput.value.trim().toLowerCase() : "";
+			return out;
+		};
+
+		WorkshopFilter.prototype.apply = function () {
+			this.paintControls();
+			var groups = this.groups;
+			var needle = this.searchInput ? this.searchInput.value.trim().toLowerCase() : "";
+			var rows = (this.root || d).querySelectorAll(this.rowSelector);
+			var shown = 0;
+
+			rows.forEach(function (row) {
+				var ok = true;
+				for (var i = 0; i < groups.length && ok; i++) {
+					var g = groups[i];
+					if (!g.value || g.value === "all") { continue; }
+					// Compared whole, not tokenised: facet values are routinely
+					// multi-word ("Redlines International Services", "Natural Gas").
+					// A row that belongs to several values of one key separates them
+					// with "|", which no value of ours contains.
+					var raw = row.getAttribute("data-f-" + g.key) || "";
+					var have = raw.indexOf("|") !== -1 ? raw.split("|") : [raw];
+					ok = have.indexOf(g.value) !== -1;
+				}
+				if (ok && needle) {
+					var hay = row.getAttribute("data-search");
+					if (hay === null) { hay = row.textContent; }
+					ok = hay.toLowerCase().indexOf(needle) !== -1;
+				}
+				row.classList.toggle("is-filtered-out", !ok);
+				if (ok) { shown++; }
+			});
+
+			// Default to the bar's own count/empty slots, so two filtered lists on one
+			// page never write into each other's.
+			var countEl = this.countEl || (this.bar || d).querySelector("[data-filter-count]");
+			if (countEl) {
+				countEl.textContent = rows.length
+					? (shown === rows.length ? shown + " shown" : shown + " of " + rows.length)
+					: "";
+			}
+			var emptyEl = this.emptyEl || d.querySelector("[data-filter-empty]");
+			if (emptyEl) { emptyEl.style.display = (rows.length && !shown) ? "" : "none"; }
+
+			if (this.onApply) { this.onApply(shown, rows.length, this.values()); }
+			return shown;
+		};
+
+		WorkshopFilter.prototype.commit = function () {
+			this.writeUrl();
+			this.apply();
+		};
+
+		// Fill a <select data-filter-key> from the values present in the rows, so the
+		// options can never drift from the data actually on the page.
+		WorkshopFilter.prototype.populate = function (key, placeholder) {
+			var g = null;
+			this.groups.forEach(function (x) { if (x.key === key) { g = x; } });
+			if (!g || !g.isSelect) { return; }
+			var seen = {};
+			(this.root || d).querySelectorAll(this.rowSelector).forEach(function (row) {
+				var v = row.getAttribute("data-f-" + key);
+				var label = row.getAttribute("data-l-" + key) || v;
+				if (v) { seen[v] = label; }
+			});
+			var keys = Object.keys(seen).sort(function (a, b) {
+				return String(seen[a]).localeCompare(String(seen[b]));
+			});
+			g.el.innerHTML = '<option value="">' + (placeholder || "All") + "</option>" +
+				keys.map(function (k) {
+					return '<option value="' + k.replace(/"/g, "&quot;") + '">' +
+						String(seen[k]).replace(/[<>&]/g, "") + "</option>";
+				}).join("");
+			g.el.value = g.value === "all" ? "" : g.value;
+		};
+
+		w.WorkshopFilter = WorkshopFilter;
+
+		// Fill the topbar total for a list whose rows are fetched by JS (Front
+		// Office, Vehicle History, Manufacturing). `n` is the number of records
+		// that EXIST, which is not always the number rendered -- pass the server's
+		// total, not rows.length, whenever the two can differ.
+		w.setPageCount = function (n, label) {
+			var pill = d.querySelector("[data-page-count]");
+			if (!pill) { return; }
+			if (n === null || n === undefined || n === "") {
+				pill.classList.add("is-empty");
+				return;
+			}
+			var num = Number(n);
+			pill.querySelector("[data-page-count-value]").textContent =
+				isNaN(num) ? String(n) : num.toLocaleString();
+			if (label) { pill.querySelector("[data-page-count-label]").textContent = label; }
+			pill.classList.remove("is-empty");
+		};
+	})(window, document);
+	</script>
+</head>
+<body class="workshop{% if embed %} is-embed{% endif %}">
+	{%- if embed %}
+	{#- ?embed=1: the page is shown inside a pop-up on another portal page, so the
+	    chrome around it would be a portal inside a portal. -#}
+	<style>
+		.is-embed .workshop-sidebar, .is-embed .workshop-topbar { display: none !important; }
+		.is-embed .workshop-content { padding: 14px 18px; }
+	</style>
+	{%- endif %}
+	{#- Sidebar entries. `children` keeps an entry highlighted while the user is on
+	    any of the pages it leads to. A Jinja comment cannot live inside the list
+	    expression itself. -#}
+	{%- set nav_items = [
+		{"label": "Home", "route": "/a3-workshop", "icon": "fa-gauge-high"},
+		{"label": "Customers", "route": "/a3-workshop/customers", "icon": "fa-users"},
+		{"label": "Live Stock", "route": "/a3-workshop/live-stock", "icon": "fa-boxes-stacked"},
+	] -%}
+	{#- `frappe.request` is not exposed in the Jinja sandbox: the namespace returns a
+    placeholder *function* for unknown keys, which is truthy, so the old
+    `if frappe.request` guard passed and `.path` then raised. The renderer puts the
+    current route in `path`, already stripped of slashes, so re-add the leading one
+    to match the `route` values above. -#}
+	{%- set current_path = ("/" ~ (path or "a3-workshop")).rstrip("/") -%}
+	{%- set uname = (frappe.session.user or "User") -%}
+	{%- set uinitial = uname[0] if uname and uname != "Guest" else "U" -%}
+	{%- set user_row = (frappe.db.get_value("User", uname, ["first_name", "role_profile_name"], as_dict=True) if uname != "Guest" else None) or {} -%}
+	{#- The line under the name is the user's real job title: the designation on their
+	    Employee record, else the Role Profile assigned to their User. A user with
+	    neither gets no line at all — never an invented one. -#}
+	{%- set user_role = (frappe.db.get_value("Employee", {"user_id": uname}, "designation") if uname != "Guest" else None) or user_row.get("role_profile_name") -%}
+	{#- Company name comes from the database; the literal is only a last resort for a
+	    site with no Company at all. -#}
+	{%- set company_name = frappe.db.get_default("company") or (frappe.get_all("Company", pluck="name", order_by="creation", limit_page_length=1) or ["Redlines International"])[0] -%}
+
+	<div class="workshop-shell">
+		<aside class="workshop-sidebar">
+			<a class="workshop-logo" href="/a3-workshop" title="{{ company_name }}">
+				<img src="/assets/a3_trading_management/images/redline-logo.png" alt="{{ company_name }}">
+			</a>
+			<div class="workshop-avatar">{{ uinitial }}</div>
+			<div class="workshop-userblock">
+				<div class="name">{{ (user_row.get("first_name") if uname != "Guest" else "User") or uname }}</div>
+				{%- if user_role %}<div class="role">{{ user_role }}</div>{%- endif %}
+			</div>
+
+			<nav class="workshop-nav">
+				{%- for item in nav_items %}
+				{%- set is_active = (current_path == item.route)
+					or (item.route != "/a3-workshop" and current_path.startswith(item.route))
+					or (item.children and current_path in item.children) %}
+				<a class="workshop-nav-item{% if is_active %} is-active{% endif %}" href="{{ item.route }}">
+					<i class="fa-solid {{ item.icon }}"></i><span>{{ item.label }}</span>
+				</a>
+				{%- endfor %}
+				<a class="workshop-nav-item workshop-nav-item--logout" href="/?cmd=web_logout">
+					<i class="fa-solid fa-right-from-bracket"></i><span>Logout</span>
+				</a>
+			</nav>
+		</aside>
+
+		<div class="workshop-main">
+			{% block topbar %}
+			<header class="workshop-topbar">
+				<div class="workshop-topbar__title">
+					<span class="icon"><i class="fa-solid {{ page_icon or 'fa-table-columns' }}"></i></span>
+					<div>
+						<h1>{{ title or "Workshop" }}</h1>
+						{% if subtitle %}<div class="sub">{{ subtitle }}</div>{% endif %}
+					</div>
+				</div>
+				{#- Right-hand cluster: the record total for this page sits above the
+				    breadcrumb, so every list says how many rows exist -- not how many
+				    happen to be rendered. Server-rendered lists set `page_count` (and
+				    optionally `page_count_label`) in get_context; lists painted by JS
+				    leave both unset and call setPageCount(n, label) once their rows
+				    land. Guarded with `is defined` because the site's Jinja env uses
+				    DebugUndefined, which would print the tag source verbatim. -#}
+				{%- set has_count = (page_count is defined and page_count is not none) -%}
+				<div class="workshop-topbar__aside">
+					<span class="workshop-count{% if not has_count %} is-empty{% endif %}" data-page-count
+					      title="Total records available on this page">
+						<i class="fa-solid fa-layer-group"></i>
+						<b data-page-count-value>{{ "{:,}".format(page_count) if has_count else "" }}</b>
+						<span data-page-count-label>{{ page_count_label if page_count_label is defined and page_count_label else "total" }}</span>
+					</span>
+					<div class="workshop-breadcrumb">
+						<a href="/a3-workshop">Home</a>{% if breadcrumb %}<span class="sep">›</span><b>{{ breadcrumb }}</b>{% endif %}
+					</div>
+				</div>
+			</header>
+			{% endblock %}
+
+			<main class="workshop-content">
+				{% block page_content %}{% endblock %}
+			</main>
+		</div>
+	</div>
+
+</body>
+</html>

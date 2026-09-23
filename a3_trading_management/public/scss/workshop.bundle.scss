@@ -1,0 +1,677 @@
+// ============================================================================
+// Workshop CRM — design system
+// Visual language adapted from the Redlines International (a3_webconsole) app.
+// Brand colours sampled from the client logo: red #EC2E5D, navy #003277.
+// Compiled by `bench build` -> /assets/a3_workshop_management/dist/css/workshop.bundle.<hash>.css
+// pulled into templates/workshop_base.html via {{ include_style('workshop.bundle.css') }}
+// ============================================================================
+
+:root {
+	--red: #ec2e5d;
+	--red-600: #d81e4d;
+	--red-700: #c01643;
+	--red-soft: #fde7ee;
+	--navy: #003277;
+	--navy-soft: #e6ecf4;
+	--purple: #7c5cfc;
+	--purple-600: #6a48ec;
+	--blue: #3b82f6;
+	--green: #22c55e;
+	--amber: #f59e0b;
+
+	--bg: #f4f5f7;
+	--surface: #ffffff;
+	--border: #e9eaee;
+	--text: #1f2a44;
+	--muted: #8a94a6;
+
+	--radius: 14px;
+	--radius-sm: 9px;
+	--shadow: 0 1px 3px rgba(16, 24, 40, 0.06), 0 1px 2px rgba(16, 24, 40, 0.04);
+	--shadow-md: 0 6px 18px rgba(16, 24, 40, 0.08);
+	--sidebar-w: 112px;
+	--font: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+body.workshop {
+	margin: 0;
+	font-family: var(--font);
+	color: var(--text);
+	background: var(--bg);
+	font-size: 14px;
+	-webkit-font-smoothing: antialiased;
+}
+
+a { color: inherit; text-decoration: none; }
+h1, h2, h3, h4 { margin: 0; color: var(--text); }
+
+// ---------------------------------------------------------------- shell
+.workshop-shell { display: flex; min-height: 100vh; }
+
+.workshop-main {
+	flex: 1 1 auto;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+}
+
+.workshop-content { padding: 24px 28px; }
+
+// ---------------------------------------------------------------- sidebar
+.workshop-sidebar {
+	width: var(--sidebar-w);
+	flex: 0 0 var(--sidebar-w);
+	background: var(--surface);
+	border-right: 1px solid var(--border);
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	padding: 16px 8px 12px;
+	position: sticky;
+	top: 0;
+	height: 100vh;
+}
+
+.workshop-logo {
+	width: 78px;
+	margin-bottom: 18px;
+	img { width: 100%; height: auto; display: block; }
+}
+
+.workshop-avatar--lg { width: 64px; height: 64px; font-size: 24px; }
+
+.workshop-avatar {
+	width: 46px; height: 46px;
+	border-radius: 50%;
+	background: var(--red-soft);
+	color: var(--red);
+	display: flex; align-items: center; justify-content: center;
+	font-weight: 700; font-size: 18px;
+	text-transform: uppercase;
+}
+
+.workshop-userblock {
+	text-align: center;
+	margin-bottom: 18px;
+	.name { font-weight: 700; font-size: 13px; margin-top: 6px; }
+	.role { color: var(--muted); font-size: 11px; }
+}
+
+.workshop-nav {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	width: 100%;
+	flex: 1 1 auto;
+}
+
+.workshop-nav-item {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 5px;
+	padding: 11px 4px;
+	border-radius: 10px;
+	color: var(--text);
+	font-size: 11px;
+	font-weight: 500;
+	text-align: center;
+	line-height: 1.2;
+
+	i { font-size: 18px; color: var(--red); }
+
+	&:hover { background: var(--bg); }
+
+	&.is-active {
+		background: var(--red);
+		color: #fff;
+		i { color: #fff; }
+	}
+}
+
+.workshop-nav-item--logout {
+	margin-top: auto;
+	i, & { color: var(--red); }
+}
+
+// ---------------------------------------------------------------- topbar
+.workshop-topbar {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 16px;
+	padding: 18px 28px;
+	background: var(--surface);
+	border-bottom: 1px solid var(--border);
+}
+.workshop-topbar__title {
+	display: flex; align-items: center; gap: 12px;
+	.icon {
+		width: 38px; height: 38px; border-radius: 10px;
+		background: var(--red-soft); color: var(--red);
+		display: flex; align-items: center; justify-content: center; font-size: 18px;
+	}
+	h1 { font-size: 20px; font-weight: 800; }
+	.sub { color: var(--navy); font-size: 12px; font-weight: 600; }
+}
+.workshop-topbar__aside {
+	display: flex; flex-direction: column; align-items: flex-end; gap: 6px;
+}
+.workshop-breadcrumb { color: var(--muted); font-size: 13px;
+	b { color: var(--text); } .sep { margin: 0 6px; }
+	a { color: var(--navy); }
+}
+
+// The record total for the current page. Sits top-right on every list; hidden
+// (rather than blank) until a page actually supplies a number, so a screen with
+// nothing countable shows no empty chip.
+.workshop-count {
+	display: inline-flex; align-items: center; gap: 6px;
+	padding: 4px 12px; border-radius: 999px;
+	background: var(--red-soft); color: var(--red);
+	font-size: 12px; font-weight: 600; white-space: nowrap;
+	i { font-size: 11px; opacity: .8; }
+	b { font-size: 14px; font-weight: 800; }
+	&.is-empty { display: none; }
+}
+
+// ---------------------------------------------------------------- buttons
+.btn {
+	display: inline-flex; align-items: center; gap: 7px;
+	border: 1px solid transparent;
+	border-radius: 999px;
+	padding: 8px 16px;
+	font-size: 13px; font-weight: 600;
+	cursor: pointer;
+	background: var(--surface);
+	color: var(--text);
+	transition: filter .15s, background .15s;
+	&:hover { filter: brightness(0.97); }
+}
+.btn--primary { background: var(--red); color: #fff; }
+.btn--purple { background: var(--purple); color: #fff; }
+.btn--navy { background: var(--navy); color: #fff; }
+.btn--outline { background: var(--surface); border-color: var(--border); color: var(--text); }
+.btn--ghost { background: var(--bg); color: var(--text); }
+.btn--sm { padding: 6px 12px; font-size: 12px; }
+.btn--icon { width: 34px; height: 34px; padding: 0; justify-content: center; border-radius: 9px; }
+.btn--danger { background: var(--red); color: #fff; }
+
+// ---------------------------------------------------------------- cards / surfaces
+.card {
+	background: var(--surface);
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	box-shadow: var(--shadow);
+}
+.card__head {
+	display: flex; align-items: center; justify-content: space-between;
+	padding: 16px 20px; border-bottom: 1px solid var(--border);
+	h3 { font-size: 15px; font-weight: 700; color: var(--red); }
+}
+.card__body { padding: 18px 20px; }
+
+// stat cards
+// Flat, not filled: a hairline border, one accent edge and the figure in the
+// page's own text colour. A row of six solid red/navy/purple blocks was the
+// loudest thing on every screen and said nothing the numbers did not.
+// The --navy / --purple modifiers are kept as no-ops so the dozen pages that
+// still write them keep working -- there is one stat card now, not three.
+.stat-grid {
+	display: grid; gap: 18px;
+	grid-template-columns: repeat(4, 1fr);
+	@media (max-width: 1100px) { grid-template-columns: repeat(2, 1fr); }
+}
+.stat-card {
+	background: var(--surface);
+	color: var(--text);
+	border: 1px solid var(--border);
+	border-left: 3px solid var(--red);
+	border-radius: var(--radius-sm);
+	padding: 18px 20px;
+	.label { text-transform: uppercase; letter-spacing: .06em; font-size: 11px;
+		font-weight: 700; color: var(--muted); }
+	.value { font-size: 26px; font-weight: 800; margin-top: 8px; line-height: 1.15;
+		overflow-wrap: anywhere; }
+	.sub { font-size: 11.5px; color: var(--muted); margin-top: 4px; }
+}
+// The headline figure of a row carries it, so it gets the one tint on the screen.
+// Both row containers are named: `.stat-grid` on the home page, `.tc-stats` on
+// every list page. Naming them (rather than a bare :first-child) keeps a stat
+// card that happens to sit first inside some other box out of it.
+.stat-grid > .stat-card:first-child,
+.tc-stats > .stat-card:first-child {
+	background: var(--red-soft);
+	border-color: #f8d3de;
+	border-left-color: var(--red);
+}
+
+// ---------------------------------------------------------------- badges
+.badge {
+	display: inline-block;
+	border-radius: 999px;
+	padding: 4px 12px;
+	font-size: 12px; font-weight: 600;
+	color: #fff; background: var(--muted);
+}
+.badge--new { background: var(--blue); }
+.badge--progress { background: var(--purple); }
+.badge--success { background: var(--green); }
+.badge--pending { background: var(--amber); }
+.badge--danger { background: var(--red); }
+.badge--navy { background: var(--navy); }
+.badge--soft { background: var(--bg); color: var(--text); }
+
+// ---------------------------------------------------------------- list rows (booking-style)
+.list-rows { display: flex; flex-direction: column; gap: 14px; }
+.list-row {
+	display: grid;
+	grid-template-columns: 2.4fr 1.3fr auto 1fr auto;
+	align-items: center;
+	gap: 18px;
+	background: var(--surface);
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	box-shadow: var(--shadow);
+	padding: 16px 20px;
+	@media (max-width: 1100px) { grid-template-columns: 1fr; }
+}
+// Vehicles list: Vehicle · Customer · Driver · Odometer · action. A class, not an
+// inline style, because an inline grid-template-columns outranks the media query
+// above it -- the row then kept all five columns on a narrow screen and ran off
+// the right edge instead of stacking.
+.list-row--vehicle {
+	grid-template-columns: 2fr 1.5fr 1.1fr 1fr auto;
+	@media (max-width: 1400px) { grid-template-columns: 1.6fr 1.3fr 1fr .9fr auto; }
+	@media (max-width: 1100px) { grid-template-columns: 1fr; }
+}
+// Grid items default to min-width:auto, so one long unbreakable token (a chassis
+// number) can push a whole row wider than its container. Let the text columns
+// shrink and wrap instead.
+.list-row__party, .list-row__col { min-width: 0; }
+.list-row__meta, .list-row__col > div { overflow-wrap: anywhere; }
+.list-row__party { display: flex; gap: 12px; align-items: flex-start; }
+.list-row__avatar {
+	width: 38px; height: 38px; border-radius: 50%;
+	background: var(--purple); color: #fff;
+	display: flex; align-items: center; justify-content: center; font-weight: 700;
+	flex: 0 0 38px; text-transform: uppercase;
+}
+.list-row__title { font-weight: 700; }
+.list-row__meta { color: var(--muted); font-size: 12px; line-height: 1.5; }
+.list-row__col .k { color: var(--muted); font-size: 12px; }
+.list-row__amount { font-weight: 800; font-size: 16px; text-align: right; }
+.list-row__actions { display: flex; flex-direction: column; gap: 8px; align-items: stretch; }
+.list-row__actions .row { display: flex; gap: 8px; }
+
+// ---------------------------------------------------------------- toolbar / pagination
+.toolbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; gap: 12px; }
+.toolbar__right { display: flex; align-items: center; gap: 10px; }
+.pager { display: flex; align-items: center; gap: 4px;
+	.page { min-width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--border);
+		display: inline-flex; align-items: center; justify-content: center; font-size: 13px; background: var(--surface); }
+	.page.is-active { background: var(--red); color: #fff; border-color: var(--red); }
+}
+
+// ---------------------------------------------------------------- typeahead
+// Dropdown for the "search a master, or create it inline" inputs (vehicle make /
+// model, customer, driver). Lives here rather than in one page because more than
+// one page now uses it.
+.jc-ac {
+	position: absolute; left: 0; right: 0; top: 100%; z-index: 60; margin-top: 2px;
+	background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+	box-shadow: 0 8px 24px rgba(0, 0, 0, .12);
+	max-height: 240px; overflow: auto;
+}
+.jc-ac-item { padding: 8px 12px; cursor: pointer;
+	&:hover, &.is-active { background: var(--bg); }
+}
+.jc-ac-label { font-weight: 600; font-size: 13px; }
+.jc-ac-sub { font-size: 12px; color: var(--muted); }
+.jc-ac-empty { padding: 8px 12px; font-size: 12px; color: var(--muted); }
+// "Create …" row — separated and tinted so it reads as an action, not a match.
+.jc-ac-item.is-create {
+	border-top: 1px solid var(--border); color: var(--red);
+	.jc-ac-label { display: flex; align-items: center; gap: 7px; font-weight: 600; }
+}
+
+// ---------------------------------------------------------------- list filter bar
+// One toolbar shape for every list page: a search box on the left, chip groups
+// (and the occasional <select>, where the option list is open-ended like a
+// customer) pushed to the right. Driven by the WorkshopFilter helper in
+// templates/workshop_base.html -- see that file for the data- attribute contract.
+.filter-bar {
+	display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+	margin-bottom: 18px;
+}
+.filter-bar__search {
+	position: relative;
+	flex: 1 1 260px;
+	max-width: 340px;
+	> i {
+		position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
+		color: var(--muted); font-size: 13px; pointer-events: none;
+	}
+	input {
+		width: 100%; padding: 9px 12px 9px 32px;
+		font: inherit; color: var(--text);
+		background: var(--surface); border: 1px solid var(--border);
+		border-radius: var(--radius-sm);
+		&:focus { outline: none; border-color: var(--red); box-shadow: 0 0 0 3px var(--red-soft); }
+	}
+}
+// Groups stack left-to-right; the first one carries the auto margin so every
+// group after it sits flush beside it rather than spreading across the bar.
+.filter-bar__group {
+	display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+	&:first-of-type { margin-left: auto; }
+}
+// A chip-shaped <select>, for filters whose options come from the data.
+.filter-bar select.chip-select {
+	border: 1px solid var(--border); background: var(--surface); color: var(--text);
+	border-radius: 999px; padding: 6px 12px; font: inherit; font-size: 12px;
+	cursor: pointer; max-width: 200px;
+	&:focus { outline: none; border-color: var(--red); box-shadow: 0 0 0 3px var(--red-soft); }
+	&.is-active { background: var(--red); border-color: var(--red); color: #fff; }
+}
+.filter-bar .chip { font-size: 12px; padding: 6px 12px; }
+.filter-count { color: var(--muted); font-size: 12px; white-space: nowrap; }
+.is-filtered-out { display: none !important; }
+
+// ---------------------------------------------------------------- wizard stepper
+.stepper { display: flex; align-items: center; padding: 22px 8px; }
+.step { display: flex; align-items: center; gap: 10px; }
+.step__dot {
+	width: 30px; height: 30px; border-radius: 50%;
+	display: flex; align-items: center; justify-content: center;
+	font-weight: 700; font-size: 13px;
+	background: #e7e9ef; color: var(--muted);
+}
+.step__label { font-size: 13px; font-weight: 600; color: var(--muted); }
+.step__line { flex: 1 1 auto; height: 3px; background: #e7e9ef; margin: 0 14px; border-radius: 2px; min-width: 28px; }
+.step.is-active { .step__dot { background: var(--red); color: #fff; } .step__label { color: var(--red); } }
+.step.is-done   { .step__dot { background: var(--green); color: #fff; } .step__label { color: var(--text); } }
+.step.is-done + .step__line, .step__line.is-done { background: var(--green); }
+
+// ---------------------------------------------------------------- type-selection cards
+.type-grid { display: grid; gap: 18px; grid-template-columns: repeat(4, 1fr);
+	@media (max-width: 1100px) { grid-template-columns: repeat(2, 1fr); } }
+.type-card {
+	background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+	padding: 22px; box-shadow: var(--shadow); cursor: pointer;
+	transition: border-color .15s, box-shadow .15s, transform .15s;
+	i { font-size: 24px; color: var(--red); }
+	.t { font-weight: 700; margin-top: 14px; }
+	.s { color: var(--muted); font-size: 12px; margin-top: 4px; }
+	&:hover { border-color: var(--red); box-shadow: var(--shadow-md); transform: translateY(-2px); }
+	&.is-active { border-color: var(--red); box-shadow: 0 0 0 2px var(--red-soft); }
+}
+
+// ---------------------------------------------------------------- forms
+.form-grid { display: grid; gap: 18px; grid-template-columns: repeat(2, 1fr);
+	@media (max-width: 800px) { grid-template-columns: 1fr; } }
+.form-grid--1 { grid-template-columns: 1fr; }
+.field { display: flex; flex-direction: column; gap: 6px; }
+.field--full { grid-column: 1 / -1; }
+.field > label { font-size: 12px; font-weight: 700; color: var(--text); }
+.field .req { color: var(--red); }
+.field input, .field select, .field textarea {
+	width: 100%; padding: 10px 12px; font: inherit; color: var(--text);
+	background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm);
+	&:focus { outline: none; border-color: var(--red); box-shadow: 0 0 0 3px var(--red-soft); }
+}
+.field textarea { min-height: 92px; resize: vertical; }
+.field--inline { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: end; }
+.form-actions { display: flex; justify-content: space-between; margin-top: 22px; }
+
+// ---------------------------------------------------------------- tables
+.table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.table thead th {
+	background: var(--red); color: #fff; text-align: left; text-transform: uppercase;
+	letter-spacing: .04em; font-size: 11px; font-weight: 700; padding: 12px 16px;
+	&:first-child { border-top-left-radius: 10px; } &:last-child { border-top-right-radius: 10px; }
+}
+.table tbody td { padding: 12px 16px; border-bottom: 1px solid var(--border); }
+.table tbody tr:hover { background: var(--bg); }
+.status-text { font-weight: 700; }
+.status-text--success { color: var(--green); }
+.status-text--transit { color: var(--red); }
+
+// ---------------------------------------------------------------- charts (illustrative SVG)
+.chart-svg { width: 100%; height: auto; display: block; }
+.legend { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 12px; font-size: 12px; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { width: 11px; height: 11px; border-radius: 3px; display: inline-block; }
+
+// ---------------------------------------------------------------- modal
+.modal-overlay {
+	position: fixed; inset: 0; z-index: 1000;
+	background: rgba(16, 24, 40, 0.45);
+	display: none; align-items: flex-start; justify-content: center;
+	padding: 48px 16px; overflow-y: auto;
+	&.is-open { display: flex; }
+}
+.modal {
+	background: var(--surface);
+	width: 100%; max-width: 760px;
+	&--sm { max-width: 460px; }
+	border-radius: var(--radius);
+	box-shadow: 0 24px 64px rgba(16, 24, 40, 0.28);
+	animation: modal-in .15s ease;
+}
+@keyframes modal-in { from { transform: translateY(-12px); opacity: 0; } to { transform: none; opacity: 1; } }
+.modal__head {
+	display: flex; align-items: center; justify-content: space-between;
+	padding: 18px 22px; border-bottom: 1px solid var(--border);
+	h3 { font-size: 16px; font-weight: 800; }
+	.sub { color: var(--muted); font-size: 12px; }
+}
+.modal__close {
+	background: var(--bg); border: none; color: var(--muted);
+	width: 32px; height: 32px; border-radius: 8px; cursor: pointer; font-size: 15px;
+	&:hover { background: var(--red-soft); color: var(--red); }
+}
+.modal__body { padding: 20px 22px; }
+.modal__foot {
+	display: flex; align-items: center; justify-content: flex-end; gap: 10px;
+	padding: 16px 22px; border-top: 1px solid var(--border);
+}
+.fieldset-title { grid-column: 1 / -1; font-size: 12px; font-weight: 800; letter-spacing: .04em;
+	text-transform: uppercase; color: var(--muted); margin-top: 4px; }
+.check { display: flex; align-items: center; gap: 8px; font-size: 14px;
+	input { width: 16px; height: 16px; } }
+
+// ---------------------------------------------------------------- misc helpers
+.page-grid-2 { display: grid; gap: 18px; grid-template-columns: 2fr 1fr;
+	@media (max-width: 1100px) { grid-template-columns: 1fr; } }
+.section-title { font-size: 16px; font-weight: 800; margin-bottom: 14px; }
+.welcome { text-align: center; padding: 8px 0 22px; .hi { font-size: 22px; font-weight: 800; margin-top: 10px; } }
+.muted { color: var(--muted); }
+.stack { display: flex; flex-direction: column; gap: 14px; }
+.row-between { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.qr { width: 64px; height: 64px; image-rendering: pixelated; }
+.empty { text-align: center; color: var(--muted); padding: 40px; }
+
+// ---------------------------------------------------------------- wizard (create job card)
+.stepper .step { cursor: pointer; user-select: none; }
+.wizard-tab { display: none; }
+.wizard-tab.is-active { display: block; }
+.split { display: grid; grid-template-columns: 1fr 1.45fr; gap: 18px;
+	@media (max-width: 1000px) { grid-template-columns: 1fr; } }
+
+.jobtype-list { display: flex; flex-direction: column; gap: 10px; }
+.jobtype-box {
+	display: flex; align-items: center; gap: 12px;
+	padding: 13px 15px; border: 1px solid var(--border); border-radius: var(--radius-sm);
+	cursor: pointer; background: var(--surface); transition: border-color .12s, background .12s;
+	i { color: var(--red); width: 20px; text-align: center; font-size: 16px; }
+	.t { font-weight: 600; } .s { color: var(--muted); font-size: 12px; }
+	&:hover { border-color: var(--red); }
+	&.is-active { border-color: var(--red); background: var(--red-soft); }
+	.tick { margin-left: auto; color: var(--red); display: none; }
+	&.is-active .tick { display: inline; }
+}
+
+// editable tables
+.table.editable th { background: var(--navy); }
+.table.editable td { padding: 5px 8px; vertical-align: middle; }
+.table input, .table select {
+	width: 100%; border: 1px solid transparent; background: transparent;
+	padding: 7px 8px; border-radius: 6px; font: inherit; color: var(--text);
+	&:focus { outline: none; border-color: var(--red); background: var(--surface); box-shadow: 0 0 0 2px var(--red-soft); }
+}
+.icon-del { color: var(--red); cursor: pointer; background: none; border: none; font-size: 14px; }
+.table-actions { display: flex; justify-content: flex-end; padding: 12px 8px 0; }
+
+// qty stepper
+.qty { display: inline-flex; align-items: center; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--surface); }
+.qty button { border: none; background: var(--bg); width: 28px; height: 30px; cursor: pointer; color: var(--text); font-size: 15px; }
+.qty input { width: 42px; text-align: center; border: none; height: 30px; background: transparent; }
+
+// cart + totals
+.cart-item { display: grid; grid-template-columns: 1fr auto auto auto; align-items: center; gap: 12px;
+	padding: 12px 0; border-bottom: 1px solid var(--border); }
+.cart-item .name { font-weight: 600; } .cart-item .unit { color: var(--muted); font-size: 12px; }
+.cart-item .line { font-weight: 700; min-width: 90px; text-align: right; }
+.totals { background: var(--bg); border-radius: var(--radius); padding: 16px 18px; margin-top: 14px; }
+.totals .row-between { margin: 6px 0; }
+.totals .grand { font-weight: 800; font-size: 19px; color: var(--red); }
+
+// readings + car drawing
+.readings-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 18px;
+	@media (max-width: 800px) { grid-template-columns: 1fr; } }
+input[type="range"] { width: 100%; accent-color: var(--red); }
+.range-val { font-weight: 700; color: var(--red); }
+.car-wrap { position: relative; border: 1px dashed var(--border); border-radius: var(--radius); background: var(--bg); padding: 10px; }
+.car-wrap svg { display: block; width: 100%; height: auto; }
+.car-wrap canvas { position: absolute; inset: 10px; width: calc(100% - 20px); height: calc(100% - 20px); touch-action: none; cursor: crosshair; }
+.car-tools { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+
+// ---------------------------------------------------------------- front office (customer 360)
+.fo-grid { display: grid; grid-template-columns: 320px minmax(0, 1fr) 340px; gap: 18px;
+	transition: grid-template-columns .18s ease;
+	// Once the middle box is showing something — a 360 section table, an enquiry
+	// detail or one of the inline forms — it needs the room more than the two
+	// directories flanking it do, so they hand some of their width back.
+	// --wide keeps the Enquiries list on screen (it is what the middle box was
+	// opened from); --full drops it entirely so a 360 section or an inline form
+	// runs from the customer list to the right edge.
+	&.fo-grid--wide { grid-template-columns: 236px minmax(0, 1fr) 256px; }
+	&.fo-grid--full { grid-template-columns: 236px minmax(0, 1fr);
+		> .fo-enquiries { display: none; } }
+	// At those widths a card head can run out of room for its title *and* its
+	// button; let the button drop to its own line instead of overflowing.
+	.card__head { flex-wrap: wrap; row-gap: 8px; }
+	// Stacked on narrow screens there is no width to reclaim, so every mode is
+	// one column and Enquiries stays put rather than vanishing off the page.
+	@media (max-width: 1200px) { grid-template-columns: 1fr;
+		&.fo-grid--wide, &.fo-grid--full { grid-template-columns: 1fr; }
+		&.fo-grid--full > .fo-enquiries { display: block; } } }
+.dir-list { display: flex; flex-direction: column; gap: 3px; max-height: 540px; overflow: auto; }
+.dir-item { display: flex; gap: 10px; align-items: center; padding: 10px 12px; border-radius: 9px; cursor: pointer; }
+.dir-item:hover { background: var(--bg); }
+.dir-item.is-active { background: var(--red-soft); }
+.dir-item .nm { font-weight: 600; font-size: 13px; line-height: 1.25; }
+.dir-item .ph { color: var(--muted); font-size: 12px; }
+.dir-sections { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }
+.sec-btn { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 12px; border-radius: 9px;
+	border: 1px solid var(--border); background: var(--surface); cursor: pointer; font: inherit; color: var(--text); text-align: left; }
+.sec-btn i { color: var(--red); width: 16px; text-align: center; }
+.sec-btn .count { margin-left: auto; color: var(--muted); font-size: 12px; background: var(--bg); border-radius: 999px; padding: 1px 8px; }
+.sec-btn:hover { border-color: var(--red); }
+// Row total above a Customer 360 table ("64 vehicles" / "12 of 64 vehicles").
+.sec-count { font-size: 12px; margin-bottom: 8px; b { color: var(--text); font-weight: 800; } }
+// Inline total beside a panel heading (Front Office Customers / Enquiries).
+.count-badge {
+	display: inline-block; margin-left: 8px; padding: 1px 9px; border-radius: 999px;
+	background: var(--red-soft); color: var(--red); font-size: 12px; font-weight: 700;
+	vertical-align: middle;
+}
+.sec-btn.is-active { border-color: var(--red); background: var(--red-soft); color: var(--red); .count { background: #fff; } }
+.fo-back { display: inline-flex; align-items: center; gap: 6px; background: none; border: none; color: var(--navy); cursor: pointer; font: inherit; padding: 0; margin-bottom: 12px; font-weight: 600; }
+.readonly-tag { font-size: 11px; color: var(--muted); border: 1px solid var(--border); border-radius: 999px; padding: 2px 8px; }
+
+// ---------------------------------------------------------------- daily planner dashboard
+.dp-grid { display: grid; grid-template-columns: 1.85fr 1fr; gap: 18px; align-items: start;
+	@media (max-width: 1200px) { grid-template-columns: 1fr; } }
+.dp-col { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+
+.group-head { display: flex; align-items: center; gap: 8px; margin: 16px 0 8px; font-weight: 700; font-size: 13px; }
+.group-head:first-child { margin-top: 0; }
+.group-head .count { margin-left: auto; color: var(--muted); font-size: 12px; font-weight: 600; }
+.dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+.dot--crit { background: var(--red); } .dot--high { background: var(--amber); } .dot--normal { background: var(--navy); }
+
+.task-row { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--border); }
+.task-row:last-child { border-bottom: none; }
+.task-row .txt { flex: 1; min-width: 0; }
+.task-row.is-done .txt { text-decoration: line-through; color: var(--muted); }
+.act-btns { display: flex; gap: 4px; }
+.act-btn { width: 30px; height: 30px; border: 1px solid var(--border); background: var(--surface); border-radius: 7px; cursor: pointer; color: var(--muted); font-size: 12px; }
+.act-btn:hover { border-color: var(--red); color: var(--red); }
+.act-btn.is-on { background: var(--green); border-color: var(--green); color: #fff; }
+
+.pipeline { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px;
+	@media (max-width: 900px) { grid-template-columns: repeat(2, 1fr); } }
+.pl-card { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px; }
+.pl-card .stage { font-size: 11px; color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: .03em; }
+.pl-card .n { font-size: 24px; font-weight: 800; color: var(--red); margin: 2px 0 8px; }
+.pl-card .sub { font-size: 11px; color: var(--muted); line-height: 1.6; }
+
+.slot-row { display: flex; align-items: center; gap: 12px; padding: 9px 0; border-bottom: 1px solid var(--border); }
+.slot-row:last-child { border-bottom: none; }
+.time-chip { background: var(--navy); color: #fff; border-radius: 8px; padding: 5px 10px; font-weight: 700; font-size: 12px; white-space: nowrap; }
+
+.tech-card { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px 14px; }
+.bar { height: 7px; background: var(--bg); border-radius: 5px; overflow: hidden; }
+.bar > span { display: block; height: 100%; background: var(--red); }
+
+.kv-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--border); }
+.kv-row:last-child { border-bottom: none; }
+.kv-row .k { display: flex; align-items: center; gap: 9px; }
+.light { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+.light--g { background: var(--green); } .light--y { background: var(--amber); } .light--r { background: var(--red); }
+.qbtns { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+
+// ---------------------------------------------------------------- telecalling
+.tc-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 18px; }
+.stat-card--sm { padding: 14px 16px; }
+.stat-card--sm .value { font-size: 21px; }
+.stat-card--sm .label { font-size: 10.5px; }
+
+.tc-grid { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); gap: 18px; align-items: start;
+	@media (max-width: 1100px) { grid-template-columns: 1fr; } }
+
+.tc-filters { display: flex; gap: 8px; flex-wrap: wrap; }
+.tc-chip { border: 1px solid var(--border); background: var(--surface); border-radius: 999px; padding: 6px 12px; font-size: 12px; cursor: pointer; color: var(--text); }
+.tc-chip:hover { border-color: var(--red); }
+.tc-chip.is-active { background: var(--red); color: #fff; border-color: var(--red); }
+
+.tc-list { display: flex; flex-direction: column; gap: 10px; max-height: 620px; overflow: auto; }
+.tc-row { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px 14px; cursor: pointer; transition: border-color .12s, background .12s; }
+.tc-row:hover { border-color: var(--red); }
+.tc-row.is-active { border-color: var(--red); background: var(--red-soft); }
+.tc-row.is-overdue { border-left: 3px solid var(--red); }
+.tc-row .sub { color: var(--muted); font-size: 12px; margin: 6px 0; }
+.tc-due { font-weight: 600; font-size: 12px; }
+.tc-due.is-late { color: var(--red); }
+
+.chip-group { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { border: 1px solid var(--border); background: var(--surface); border-radius: 999px; padding: 7px 13px; font-size: 13px; cursor: pointer; color: var(--text); }
+.chip:hover { border-color: var(--red); }
+.chip.is-active { background: var(--red); color: #fff; border-color: var(--red); }
+
+.comm-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.comm-item { display: flex; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--border); }
+.comm-item:last-child { border-bottom: none; }
+.comm-ico { width: 30px; height: 30px; border-radius: 8px; flex: 0 0 30px; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 12px; }
+.comm-item .t { color: var(--muted); font-size: 11px; }
+
+// ---------------------------------------------------------------- manufacturing
+.mfg-grid { display: grid; grid-template-columns: 340px minmax(0, 1fr); gap: 18px; align-items: start;
+	@media (max-width: 1100px) { grid-template-columns: 1fr; } }
+.mfg-list { display: flex; flex-direction: column; gap: 10px; max-height: 640px; overflow: auto; }
+.stepper--read .step { cursor: default; }
+.stepper--read { padding: 14px 4px; flex-wrap: wrap; gap: 6px 0; }

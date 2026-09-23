@@ -1,0 +1,33 @@
+{
+ "doctype": "Workspace",
+ "name": "Platform",
+ "label": "Platform",
+ "title": "Platform",
+ "module": "Platform",
+ "icon": "setting",
+ "public": 1,
+ "is_hidden": 0,
+ "docstatus": 0,
+ "for_user": "",
+ "parent_page": "",
+ "restrict_to_domain": "",
+ "sequence_id": 2,
+ "hide_custom": 0,
+ "content": "[{\"id\": \"3e159f1a42\", \"type\": \"onboarding\", \"data\": {\"onboarding_name\": \"Platform\", \"col\": 12}}, {\"id\": \"8d38455835\", \"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h4\\\"><b>Your Shortcuts</b></span>\", \"col\": 12}}, {\"id\": \"b0ab384f30\", \"type\": \"spacer\", \"data\": {\"col\": 12}}, {\"id\": \"57a1269de4\", \"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h4\\\"><b>Masters &amp; Transactions</b></span>\", \"col\": 12}}]",
+ "custom_blocks": [],
+ "number_cards": [],
+ "quick_lists": [],
+ "charts": [],
+ "shortcuts": [],
+ "links": [],
+ "roles": [
+  {
+   "role": "A3 Trading Admin"
+  },
+  {
+   "role": "System Manager"
+  }
+ ],
+ "owner": "Administrator",
+ "modified_by": "Administrator"
+}

@@ -1,0 +1,57 @@
+{# Reusable Workshop CRM UI components. Import in a page with:
+   {% from "templates/macros/workshop.html" import statcard, badge, typecard, field, qr %} #}
+
+{# `sub` captions the period a figure covers (e.g. "Last 30 days"), so a tile is
+   never a bare unqualified number. Omit it and the card renders exactly as before. #}
+{%- macro statcard(label, value, variant="", sub="") -%}
+<div class="stat-card {{ variant }}">
+	<div class="label">{{ label }}</div>
+	<div class="value">{{ value }}</div>
+	{%- if sub %}<div class="sub">{{ sub }}</div>{% endif -%}
+</div>
+{%- endmacro -%}
+
+{%- macro badge(text, variant="") -%}
+<span class="badge {{ variant }}">{{ text }}</span>
+{%- endmacro -%}
+
+{%- macro typecard(icon, title, sub, active=False) -%}
+<div class="type-card {{ 'is-active' if active else '' }}">
+	<i class="fa-solid {{ icon }}"></i>
+	<div class="t">{{ title }}</div>
+	<div class="s">{{ sub }}</div>
+</div>
+{%- endmacro -%}
+
+{%- macro field(label, name, type="text", required=False, placeholder="", value="", options=None, full=False) -%}
+<div class="field{{ ' field--full' if (full or type == 'textarea') else '' }}">
+	<label>{{ label }}{% if required %} <span class="req">*</span>{% endif %}</label>
+	{%- if type == "textarea" -%}
+		<textarea name="{{ name }}" placeholder="{{ placeholder }}">{{ value }}</textarea>
+	{%- elif type == "select" -%}
+		<select name="{{ name }}">
+			<option value="">{{ placeholder or "Select" }}</option>
+			{%- for opt in (options or []) %}<option>{{ opt }}</option>{% endfor -%}
+		</select>
+	{%- else -%}
+		<input type="{{ type }}" name="{{ name }}" placeholder="{{ placeholder }}" value="{{ value }}">
+	{%- endif -%}
+</div>
+{%- endmacro -%}
+
+{# tiny deterministic faux-QR block, purely decorative #}
+{%- macro qr(seed=7) -%}
+<svg class="qr" viewBox="0 0 21 21" shape-rendering="crispEdges" aria-hidden="true">
+	<rect width="21" height="21" fill="#fff"/>
+	{%- set k = (seed|string|length) + 3 -%}
+	{%- for y in range(21) -%}
+		{%- for x in range(21) -%}
+			{%- if (x < 7 and y < 7) or (x > 13 and y < 7) or (x < 7 and y > 13) -%}
+				{%- if x in [0,6] or y in [0,6] or (x > 1 and x < 5 and y > 1 and y < 5) -%}<rect x="{{ x }}" y="{{ y }}" width="1" height="1" fill="#111"/>{%- endif -%}
+			{%- elif (x * 5 + y * 7 + x * y + k) % 3 == 0 -%}
+				<rect x="{{ x }}" y="{{ y }}" width="1" height="1" fill="#111"/>
+			{%- endif -%}
+		{%- endfor -%}
+	{%- endfor -%}
+</svg>
+{%- endmacro -%}

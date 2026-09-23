@@ -1,0 +1,143 @@
+{% extends "templates/workshop_base.html" %}
+
+{% block page_content %}
+{#- customers.py renders EVERY Customer (no page-length cap), so typing narrows
+    the whole book client-side. The term is still mirrored into ?q= so a filtered
+    view survives a refresh and can be pasted to someone. -#}
+<div class="filter-bar" id="cu-bar">
+	<div class="filter-bar__search">
+		<i class="fa-solid fa-magnifying-glass"></i>
+		<input id="cu-search" value="{{ search or '' }}" placeholder="Search customers..." autocomplete="off" aria-label="Search customers">
+	</div>
+	<span class="filter-count" data-filter-count></span>
+	<span class="filter-count">· {{ "{:,}".format(total_customers) }} in total</span>
+	<div class="filter-bar__group">
+		{%- if search %}
+		<a class="btn btn--outline btn--sm" href="/a3-workshop/customers"><i class="fa-solid fa-xmark"></i> Clear</a>
+		{%- endif %}
+		<button type="button" class="btn btn--primary" data-add-customer><i class="fa-solid fa-plus"></i> Add Customer</button>
+	</div>
+</div>
+{%- if customers %}
+<div class="type-grid" id="cu-grid" style="grid-template-columns:repeat(3,1fr)">
+	{%- for c in customers %}
+	<div class="card" data-row
+	     data-search="{{ (c.customer_name ~ ' ' ~ (c.mobile_no or '') ~ ' ' ~ (c.email_id or '') ~ ' ' ~ c.name) | lower }}"><div class="card__body">
+		<div class="list-row__party" style="align-items:center">
+			<div class="list-row__avatar">{{ c.initial }}</div>
+			<div style="min-width:0">
+				<div style="font-weight:700">{{ c.customer_name }}</div>
+				<div class="muted" style="font-size:12px">{{ c.mobile_no or "No phone on file" }}</div>
+			</div>
+		</div>
+		<div class="row-between" style="margin-top:16px"><span class="muted">Orders</span><b>{{ c.orders }}</b></div>
+		<div class="row-between" style="margin-top:6px"><span class="muted">Total Spent</span><b style="color:var(--red)">{{ c.spent }}</b></div>
+		<div class="row-between" style="margin-top:6px"><span class="muted">Email</span><span style="min-width:0;overflow-wrap:anywhere">{{ c.email_id or "—" }}</span></div>
+		<button type="button" class="btn btn--outline btn--sm" style="margin-top:14px;width:100%;justify-content:center" data-edit-customer
+			data-name="{{ c.name }}" data-customer="{{ c.customer_name }}" data-mobile="{{ c.mobile_no }}" data-email="{{ c.email_id }}" data-trn="{{ c.tax_id or '' }}">Open</button>
+	</div></div>
+	{%- endfor %}
+</div>
+<div class="card" data-filter-empty style="display:none"><div class="card__body">
+	<div class="empty">
+		<div style="font-weight:700;color:var(--text)">No loaded customer matches these filters</div>
+		<div style="margin-top:6px">All {{ "{:,}".format(total_customers) }} customers are loaded on this page — try widening the filters.</div>
+		<button type="button" class="btn btn--outline btn--sm" style="margin-top:16px" onclick="location.href='/a3-workshop/customers'">
+			<i class="fa-solid fa-rotate-left"></i> Clear all filters
+		</button>
+	</div>
+</div></div>
+{%- else %}
+<div class="card"><div class="card__body">
+	<div class="empty">
+		{%- if search %}
+		No customers match "{{ search }}". <a href="/a3-workshop/customers" style="color:var(--red);font-weight:600">Clear the search</a>.
+		{%- else %}
+		<div style="font-weight:700;color:var(--text)">No customers yet</div>
+		<div style="margin-top:6px">Customers appear here as soon as the first one is registered.</div>
+		<button type="button" class="btn btn--primary btn--sm" style="margin-top:16px" data-add-customer><i class="fa-solid fa-plus"></i> Add Customer</button>
+		{%- endif %}
+	</div>
+</div></div>
+{%- endif %}
+
+<script>
+	new WorkshopFilter({ root: "#cu-grid", bar: "#cu-bar", search: "#cu-search", searchParam: "q" });
+</script>
+
+<!-- Add Customer: the two or three things a salesperson knows at the counter. -->
+<div class="modal-overlay" id="cu-modal" role="dialog" aria-modal="true" aria-labelledby="cu-modal-title">
+	<div class="modal">
+		<div class="modal__head">
+			<div><h3 id="cu-modal-title">Add Customer</h3><div class="sub">Name and a way to reach them; everything else can wait.</div></div>
+			<button type="button" class="modal__close" data-close><i class="fa-solid fa-xmark"></i></button>
+		</div>
+		<div class="modal__body">
+			<form class="form-grid" id="cu-form" autocomplete="off">
+				<div class="field field--full"><label>Customer name <span class="req">*</span></label><input name="customer_name" id="cu-name" required placeholder="Company or person"></div>
+				<div class="field"><label>Mobile</label><input name="mobile_no" id="cu-mobile" placeholder="05x xxx xxxx"></div>
+				<div class="field"><label>Email</label><input name="email_id" id="cu-email" type="email" placeholder="name@example.com"></div>
+				<div class="field field--full"><label>TRN / VAT number <span class="muted" style="font-weight:400">(companies)</span></label><input name="tax_id" id="cu-trn" placeholder="15 digits"></div>
+				<div class="field field--full muted" id="cu-error" style="color:#b3261e;display:none"></div>
+			</form>
+		</div>
+		<div class="modal__foot">
+			<button type="button" class="btn btn--outline" data-close>Cancel</button>
+			<button type="button" class="btn btn--primary" id="cu-save"><i class="fa-solid fa-check"></i> Save Customer</button>
+		</div>
+	</div>
+</div>
+<script>
+(function () {
+	var modal = document.getElementById("cu-modal"), editing = null;
+	function open(row) {
+		editing = row ? row.name : null;
+		document.getElementById("cu-form").reset();
+		document.getElementById("cu-error").style.display = "none";
+		document.getElementById("cu-modal-title").textContent = row ? "Customer — " + row.customer : "Add Customer";
+		if (row) { document.getElementById("cu-name").value = row.customer || ""; document.getElementById("cu-mobile").value = row.mobile || ""; document.getElementById("cu-email").value = row.email || ""; document.getElementById("cu-trn").value = row.trn || ""; }
+		modal.classList.add("is-open"); document.body.style.overflow = "hidden";
+		setTimeout(function () { document.getElementById("cu-name").focus(); }, 50);
+	}
+	function close() { modal.classList.remove("is-open"); document.body.style.overflow = ""; }
+	document.querySelectorAll("[data-add-customer]").forEach(function (b) { b.addEventListener("click", function () { open(null); }); });
+	document.querySelectorAll("[data-edit-customer]").forEach(function (b) { b.addEventListener("click", function () { open(b.dataset); }); });
+	modal.querySelectorAll("[data-close]").forEach(function (b) { b.addEventListener("click", close); });
+	modal.addEventListener("click", function (e) { if (e.target === modal) close(); });
+	document.addEventListener("keydown", function (e) { if (e.key === "Escape" && modal.classList.contains("is-open")) close(); });
+
+	function post(method, args) {
+		return fetch("/api/method/" + method, {
+			method: "POST", credentials: "same-origin",
+			headers: { "Content-Type": "application/json", "Accept": "application/json", "X-Frappe-CSRF-Token": (window.frappe && frappe.csrf_token) || "{{ csrf_token or '' }}" },
+			body: JSON.stringify(args || {})
+		}).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, body: j }; }); }).then(function (x) {
+			if (x.ok) return x.body.message;
+			var msg = x.body.exception || x.body.message || "Request failed";
+			try { var sm = JSON.parse(x.body._server_messages || "[]"); if (sm.length) msg = JSON.parse(sm[0]).message || msg; } catch (e) {}
+			throw new Error(String(msg).replace(/<[^>]+>/g, ""));
+		});
+	}
+	function save() {
+		var name = document.getElementById("cu-name").value.trim();
+		var err = document.getElementById("cu-error");
+		if (!name) { err.textContent = "Customer name is required."; err.style.display = "block"; document.getElementById("cu-name").focus(); return; }
+		var btn = document.getElementById("cu-save"); btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving…';
+		post("a3_trading_management.api.customers.save_customer", {
+			name: editing, customer_name: name,
+			mobile_no: document.getElementById("cu-mobile").value,
+			email_id: document.getElementById("cu-email").value,
+			tax_id: document.getElementById("cu-trn").value
+		}).then(function (r) {
+			location.href = "/a3-workshop/customers?q=" + encodeURIComponent(r.customer_name);
+		}).catch(function (e) {
+			err.textContent = e.message; err.style.display = "block";
+			btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-check"></i> Save Customer';
+		});
+	}
+	document.getElementById("cu-save").addEventListener("click", save);
+	document.getElementById("cu-form").addEventListener("submit", function (e) { e.preventDefault(); save(); });
+})();
+</script>
+
+{% endblock %}
