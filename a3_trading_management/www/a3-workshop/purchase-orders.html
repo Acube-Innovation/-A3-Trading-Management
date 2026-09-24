@@ -1,0 +1,104 @@
+{% extends "templates/workshop_base.html" %}
+{% from "templates/macros/trading.html" import status_pill, filter_bar, filter_script, call_method_js, stat_row, doc_modals %}
+
+{% block page_content %}
+{#- Raise, approve and track orders against requisitions, showing supplier, rates,
+    expected dates and what has been received so far. The compliance block lives on
+    Purchase Order.validate, so an order to a lapsed supplier is refused by the
+    document itself rather than by this screen. -#}
+
+{{ stat_row([
+	{"label": "Purchase Orders", "value": orders | length, "sub": "Raised"},
+	{"label": "Awaiting Approval", "value": orders | selectattr("docstatus", "equalto", 0) | list | length, "sub": "Still in draft"},
+	{"label": "Approved", "value": orders | selectattr("docstatus", "equalto", 1) | list | length, "sub": "Sent to supplier"},
+	{"label": "Order Value", "value": frappe.utils.fmt_money(orders | selectattr("docstatus", "equalto", 1) | sum(attribute="grand_total")), "sub": "Approved orders"},
+]) }}
+
+{%- if material_request %}
+<div class="card" style="margin-bottom:14px;border-left:4px solid var(--navy)"><div class="card__body" style="display:flex;justify-content:space-between;align-items:center;gap:12px">
+	<span>Orders made from requisition <b>{{ material_request }}</b></span>
+	<a class="btn btn--outline btn--sm" href="/a3-workshop/purchase-orders">Show all orders</a>
+</div></div>
+{%- endif %}
+<div class="toolbar">
+	<div class="section-title" style="margin:0">Purchase Orders</div>
+	<div class="toolbar__right">
+		<a class="btn btn--outline btn--sm" href="/a3-workshop/goods-receipt">
+			<i class="fa-solid fa-dolly"></i> Goods Receipt</a>
+		<button type="button" class="btn btn--primary btn--sm" onclick="newPurchaseOrder()">
+			<i class="fa-solid fa-plus"></i> New Order</a>
+	</div>
+</div>
+
+{{ filter_bar("Search order or supplier…", [
+	{"key": "status", "label": "All statuses",
+	 "options": ["Draft", "To Receive and Bill", "To Receive", "To Bill", "Completed", "Cancelled"]}
+]) }}
+
+<div class="card"><div class="card__body" style="overflow-x:auto">
+	{%- if orders %}
+	<table class="table" id="tf-table">
+		<thead><tr>
+			<th>Order</th><th>Supplier</th><th>Requisition</th><th>Date</th><th>Expected</th>
+			<th class="num">Total</th><th class="num">Received</th><th class="num">Billed</th>
+			<th>Status</th><th>Action</th>
+		</tr></thead>
+		<tbody>
+		{%- for o in orders %}
+			<tr data-hay="{{ ((o.name or '') ~ ' ' ~ (o.supplier or '') ~ ' ' ~ (o.supplier_name or '')) | lower }}"
+				data-status="{{ o.status or '' }}">
+				<td><b>{{ o.name }}</b></td>
+				<td>{{ o.supplier_name or o.supplier }}</td>
+				<td>{%- for mr in o.material_requests %}<a href="/a3-workshop/goods-receipt?material_request={{ mr | urlencode }}" title="Receipts for this requisition">{{ mr }}</a>{% if not loop.last %}<br>{% endif %}{% else %}<span class="muted">direct</span>{% endfor %}</td>
+				<td>{{ frappe.utils.formatdate(o.transaction_date, "dd MMM yyyy") }}</td>
+				<td>{{ frappe.utils.formatdate(o.schedule_date, "dd MMM yyyy") if o.schedule_date else "—" }}</td>
+				<td class="num">{{ frappe.utils.fmt_money(o.grand_total, currency=o.currency) }}</td>
+				<td class="num">{{ "%.0f%%" | format(o.per_received or 0) }}</td>
+				<td class="num">{{ "%.0f%%" | format(o.per_billed or 0) }}</td>
+				<td>{{ status_pill(o.status, o.docstatus) }}</td>
+				<td style="white-space:nowrap">
+					{%- if o.docstatus == 0 %}
+					<button class="btn btn--primary btn--sm" onclick="submitPO('{{ o.name }}')">Approve</button>
+					{%- elif o.docstatus == 1 and (o.per_received or 0) < 100 %}
+					<button class="btn btn--outline btn--sm" onclick="receivePO('{{ o.name }}')">Receive</button>
+					{%- else %}<button type="button" class="btn btn--outline btn--sm" onclick="openDoc('Purchase Order', '{{ o.name }}', { edit: { fields: ['qty', 'rate'], method: 'a3_trading_management.api.buying.update_order_rates', label: 'Save rates' } })">Open</button>{% endif %}
+				</td>
+			</tr>
+		{%- endfor %}
+		</tbody>
+	</table>
+	{%- else %}
+	<div class="empty">No purchase orders yet.</div>
+	{%- endif %}
+</div></div>
+
+{{ call_method_js() }}
+<script>
+function submitPO(name) {
+	if (!confirm("Approve purchase order " + name + "?")) return;
+	tradingAction("a3_trading_management.api.buying.submit_purchase_order", { name: name }, "Purchase order approved.");
+}
+function receivePO(name) {
+	if (!confirm("Create a goods receipt against " + name + "?")) return;
+	tradingCall("a3_trading_management.api.buying.receive_against_order", { purchase_order: name })
+		.then(function (r) { window.location.href = "/a3-workshop/goods-receipt"; })
+		.catch(function (e) { alert("Could not receive: " + ((e && e.message) || e)); });
+}
+</script>
+{{ doc_modals() }}
+{{ filter_script() }}
+<script>
+function newPurchaseOrder() {
+	openNewDoc({
+		title: "New Purchase Order", subtitle: "An order to a supplier whose papers are in order. Approve it on the list once saved.",
+		head: [{ key: "supplier", label: "Supplier", party: "Supplier", required: true, placeholder: "Search supplier…" }, { key: "schedule_date", label: "Required by", type: "date", value: (function(){var d=new Date();d.setDate(d.getDate()+7);return d.toISOString().slice(0,10);})() }],
+		columns: [{ key: "item_code", label: "Item", pick: "item", placeholder: "Search item…" }, { key: "qty", label: "Qty", num: true, value: 1, width: "100px" }, { key: "rate", label: "Rate", num: true, width: "120px" }, { key: "warehouse", label: "To yard", default: "Stores - A3T" }],
+		priceList: "Standard Buying",
+		total: function (l) { return [["Total", l.reduce(function (s, r) { return s + (Number(r.qty) || 0) * (Number(r.rate) || 0); }, 0).toLocaleString(undefined, { minimumFractionDigits: 2 })]]; },
+		validate: function (h, l) { if (!h.supplier) return "Choose a supplier."; if (!l.length) return "Add at least one item."; if (l.some(function (r) { return !Number(r.rate); })) return "Every line needs a rate."; return null; },
+		build: function (h, l) { return { supplier: h.supplier, schedule_date: h.schedule_date || null, items: JSON.stringify(l.map(function (r) { return { item_code: r.item_code, qty: r.qty, rate: r.rate, warehouse: r.warehouse }; })) }; },
+		method: "a3_trading_management.api.buying.create_purchase_order"
+	});
+}
+</script>
+{% endblock %}

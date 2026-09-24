@@ -243,15 +243,25 @@
 		.is-embed .workshop-content { padding: 14px 18px; }
 	</style>
 	{%- endif %}
-	{#- Sidebar entries. `children` keeps an entry highlighted while the user is on
-	    any of the pages it leads to. A Jinja comment cannot live inside the list
-	    expression itself. -#}
+	{#- Buying, selling and accounts sit behind one "Transactions" entry rather than
+	    ten near-identical sidebar items. `children` keeps that entry highlighted
+	    while the user is on any of the pages it leads to. A Jinja comment cannot
+	    live inside the list expression itself. -#}
 	{%- set nav_items = [
 		{"label": "Home", "route": "/a3-workshop", "icon": "fa-gauge-high"},
 		{"label": "Customers", "route": "/a3-workshop/customers", "icon": "fa-users"},
 		{"label": "Manufacturing", "route": "/a3-workshop/manufacturing", "icon": "fa-industry"},
 		{"label": "Serial Register", "route": "/a3-workshop/serial-register", "icon": "fa-barcode"},
 		{"label": "Chassis Plates", "route": "/a3-workshop/chassis-plate-print", "icon": "fa-print"},
+		{"label": "Suppliers", "route": "/a3-workshop/suppliers", "icon": "fa-truck-field"},
+		{"label": "Transactions", "route": "/a3-workshop/transactions", "icon": "fa-file-invoice-dollar",
+		 "children": [
+			"/a3-workshop/purchase-requisitions", "/a3-workshop/purchase-orders",
+			"/a3-workshop/goods-receipt", "/a3-workshop/purchase-invoices",
+			"/a3-workshop/supplier-payments", "/a3-workshop/sales-orders",
+			"/a3-workshop/delivery-invoice", "/a3-workshop/payments-receipts",
+			"/a3-workshop/journal-entries",
+		 ]},
 		{"label": "Live Stock", "route": "/a3-workshop/live-stock", "icon": "fa-boxes-stacked"},
 	] -%}
 	{#- `frappe.request` is not exposed in the Jinja sandbox: the namespace returns a

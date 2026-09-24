@@ -1,0 +1,91 @@
+{% extends "templates/workshop_base.html" %}
+{% from "templates/macros/trading.html" import status_pill, filter_bar, filter_script, call_method_js, stat_row, doc_modals %}
+
+{% block page_content %}
+{#- Bill against a receipt or an order, with a hold and approval step before the
+    invoice reaches the ledger. Approving IS submitting the Purchase Invoice —
+    that is what posts it — and approval is refused while the bill is on hold. -#}
+
+{{ stat_row([
+	{"label": "Purchase Invoices", "value": invoices | length, "sub": "Received"},
+	{"label": "On Hold", "value": on_hold | length, "sub": "Held before the ledger"},
+	{"label": "Awaiting Approval", "value": invoices | selectattr("docstatus", "equalto", 0) | list | length, "sub": "Still in draft"},
+	{"label": "Outstanding", "value": frappe.utils.fmt_money(invoices | selectattr("docstatus", "equalto", 1) | sum(attribute="outstanding_amount")), "sub": "Approved, unpaid"},
+]) }}
+
+<div class="toolbar">
+	<div class="section-title" style="margin:0">Purchase Invoices</div>
+	<div class="toolbar__right">
+		<a class="btn btn--outline btn--sm" href="/a3-workshop/supplier-payments">
+			<i class="fa-solid fa-money-bill-transfer"></i> Payments</a>
+	</div>
+</div>
+
+{{ filter_bar("Search invoice or supplier…", [
+	{"key": "status", "label": "All statuses",
+	 "options": ["Draft", "Unpaid", "Overdue", "Paid", "Cancelled", "Return"]}
+]) }}
+
+<div class="card"><div class="card__body" style="overflow-x:auto">
+	{%- if invoices %}
+	<table class="table" id="tf-table">
+		<thead><tr>
+			<th>Invoice</th><th>Supplier</th><th>Date</th><th>Due</th>
+			<th class="num">Total</th><th class="num">Outstanding</th><th>Status</th><th>Action</th>
+		</tr></thead>
+		<tbody>
+		{%- for i in invoices %}
+			<tr data-hay="{{ ((i.name or '') ~ ' ' ~ (i.supplier or '') ~ ' ' ~ (i.supplier_name or '')) | lower }}"
+				data-status="{{ i.status or '' }}">
+				<td><b>{{ i.name }}</b>
+					{%- if i.custom_approval_hold %}<div>{{ status_pill("On Hold") }}</div>{% endif %}</td>
+				<td>{{ i.supplier_name or i.supplier }}</td>
+				<td>{{ frappe.utils.formatdate(i.posting_date, "dd MMM yyyy") }}</td>
+				<td>{{ frappe.utils.formatdate(i.due_date, "dd MMM yyyy") if i.due_date else "—" }}</td>
+				<td class="num">{{ frappe.utils.fmt_money(i.grand_total, currency=i.currency) }}</td>
+				<td class="num">{{ frappe.utils.fmt_money(i.outstanding_amount, currency=i.currency) }}</td>
+				<td>{{ status_pill(i.status, i.docstatus) }}</td>
+				<td style="white-space:nowrap">
+					<button type="button" class="btn btn--outline btn--sm" onclick="openDoc('Purchase Invoice', '{{ i.name }}')">View</button>
+					{%- if i.docstatus == 0 %}
+						{%- if i.custom_approval_hold %}
+						<button class="btn btn--outline btn--sm" onclick="setHold('{{ i.name }}', 0)">Release</button>
+						{%- else %}
+						<button class="btn btn--primary btn--sm" onclick="approveInv('{{ i.name }}')">Approve</button>
+						<button class="btn btn--outline btn--sm" onclick="setHold('{{ i.name }}', 1)">Hold</button>
+						{%- endif %}
+					{%- elif i.docstatus == 1 and (i.outstanding_amount or 0) > 0 %}
+					<button class="btn btn--outline btn--sm" onclick="payInv('{{ i.name }}', {{ i.outstanding_amount or 0 }})">Pay</button>
+					{%- else %}<span class="muted">—</span>{% endif %}
+				</td>
+			</tr>
+		{%- endfor %}
+		</tbody>
+	</table>
+	{%- else %}
+	<div class="empty">No purchase invoices yet. Bill against a goods receipt to raise one.</div>
+	{%- endif %}
+</div></div>
+
+{{ call_method_js() }}
+<script>
+function approveInv(name) {
+	if (!confirm("Approve " + name + "? This posts it to the ledger.")) return;
+	tradingAction("a3_trading_management.api.buying.approve_purchase_invoice", { name: name }, "Invoice approved and posted.");
+}
+function setHold(name, hold) {
+	var reason = hold ? prompt("Put " + name + " on hold — reason?") : "";
+	if (hold && reason === null) return;
+	tradingAction("a3_trading_management.api.buying.set_invoice_hold",
+		{ name: name, hold: hold, reason: reason }, hold ? "Invoice put on hold." : "Hold released.");
+}
+function payInv(name, outstanding) {
+	var amt = prompt("Pay against " + name + "\nOutstanding: " + outstanding + "\nAmount to pay:", outstanding);
+	if (!amt) return;
+	tradingAction("a3_trading_management.api.buying.pay_supplier_invoice",
+		{ purchase_invoice: name, amount: amt }, "Payment drafted — submit it on the Payments screen.");
+}
+</script>
+{{ doc_modals() }}
+{{ filter_script() }}
+{% endblock %}

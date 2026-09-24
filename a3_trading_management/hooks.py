@@ -81,6 +81,10 @@ doc_events = {
 		"on_update_after_submit": "a3_trading_management.serial_control.sync_stage",
 		"on_cancel": "a3_trading_management.serial_control.on_work_order_cancel",
 	},
+	# Task 14: a purchase order cannot go to a supplier whose papers have lapsed.
+	"Purchase Order": {
+		"validate": "a3_trading_management.api.buying.block_non_compliant_supplier",
+	},
 	# Task 9: the Manufacture entry is when the trailer really enters stock.
 	"Stock Entry": {
 		"before_validate": "a3_trading_management.serial_control.set_stock_entry_type",
