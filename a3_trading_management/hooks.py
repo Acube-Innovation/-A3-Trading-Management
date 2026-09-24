@@ -90,4 +90,8 @@ doc_events = {
 		"before_validate": "a3_trading_management.serial_control.set_stock_entry_type",
 		"on_submit": "a3_trading_management.serial_control.on_manufacture_entry",
 	},
+	# Task 23: a dispatched trailer has left the yard and has a new owner.
+	"Delivery Note": {
+		"on_submit": "a3_trading_management.api.selling.mark_delivered",
+	},
 }

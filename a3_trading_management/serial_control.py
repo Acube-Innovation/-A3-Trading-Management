@@ -110,7 +110,27 @@ def sync_stage(doc, method=None):
 		if values:
 			frappe.db.set_value("Trailer Serial", row.name, values, update_modified=False)
 
+	# Built to order: the trailers this work order was raised for go straight to
+	# that customer's order, so nobody has to remember to reserve them.
+	if finished and doc.get("sales_order"):
+		_reserve_for_order(doc, finished)
 
+
+def _reserve_for_order(doc, serial_names):
+	"""Reserve the finished serials to the work order's sales order, never more
+	than the order still needs."""
+	if not frappe.get_meta("Trailer Serial").has_field("sales_order"):
+		return
+	so = doc.sales_order
+	ordered = flt(frappe.db.get_value(
+		"Sales Order Item", {"parent": so, "item_code": doc.production_item}, "sum(qty)"
+	))
+	already = frappe.db.count(
+		"Trailer Serial", {"sales_order": so, "trailer_type": doc.production_item, "status": ["in", ["Sold", "Delivered"]]}
+	)
+	room = int(max(ordered - already, 0))
+	for name in serial_names[:room]:
+		frappe.db.set_value("Trailer Serial", name, {"status": "Sold", "sales_order": so}, update_modified=False)
 
 
 def on_work_order_cancel(doc, method=None):
