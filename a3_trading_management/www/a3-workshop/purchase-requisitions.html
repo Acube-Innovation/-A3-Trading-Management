@@ -1,0 +1,98 @@
+{% extends "templates/workshop_base.html" %}
+{% from "templates/macros/trading.html" import status_pill, filter_bar, filter_script, call_method_js, stat_row, doc_modals %}
+
+{% block page_content %}
+{#- Raise and track requests for material, whether they come from a low-stock
+    alert, a work order or the counter, and approve, reject or convert them to an
+    order. Backed by Material Request (type Purchase) — no separate requisition
+    ledger is kept. -#}
+
+{{ stat_row([
+	{"label": "Requisitions", "value": requisitions | length, "sub": "Raised"},
+	{"label": "Awaiting Approval", "value": requisitions | selectattr("docstatus", "equalto", 0) | list | length, "sub": "Still in draft"},
+	{"label": "Approved", "value": requisitions | selectattr("docstatus", "equalto", 1) | list | length, "sub": "Ready to order"},
+]) }}
+
+<div class="toolbar">
+	<div class="section-title" style="margin:0">Purchase Requisitions</div>
+	<div class="toolbar__right">
+		<button type="button" class="btn btn--primary btn--sm" onclick="newRequisition()">
+			<i class="fa-solid fa-plus"></i> New Requisition</a>
+	</div>
+</div>
+
+{{ filter_bar("Search requisition…", [
+	{"key": "status", "label": "All statuses",
+	 "options": ["Draft", "Pending", "Partially Ordered", "Ordered", "Cancelled"]}
+]) }}
+
+<div class="card"><div class="card__body" style="overflow-x:auto">
+	{%- if requisitions %}
+	<table class="table" id="tf-table">
+		<thead><tr>
+			<th>Requisition</th><th>Raised</th><th>Needed By</th><th>Items</th>
+			<th>Status</th><th class="num">Ordered</th><th>Action</th>
+		</tr></thead>
+		<tbody>
+		{%- for r in requisitions %}
+			<tr data-hay="{{ ((r.name or '') ~ ' ' ~ (r.title or '')) | lower }}" data-status="{{ r.status or '' }}">
+				<td><b>{{ r.name }}</b></td>
+				<td>{{ frappe.utils.formatdate(r.transaction_date, "dd MMM yyyy") }}</td>
+				<td>{{ frappe.utils.formatdate(r.schedule_date, "dd MMM yyyy") if r.schedule_date else "—" }}</td>
+				<td>{%- for i in r["items"][:3] %}{{ i.item_code }} &times;{{ i.qty | int }}{% if not loop.last %}, {% endif %}{%- endfor %}
+					{%- if r["items"] | length > 3 %} <span class="muted">+{{ (r["items"] | length) - 3 }} more</span>{% endif %}</td>
+				<td>{{ status_pill(r.status, r.docstatus) }}</td>
+				<td class="num">{{ "%.0f%%" | format(r.per_ordered or 0) }}
+					{%- for po in r.purchase_orders %}<div><a href="/a3-workshop/purchase-orders?material_request={{ r.name | urlencode }}" style="font-size:12px">{{ po }}</a></div>{% endfor %}</td>
+				<td style="white-space:nowrap">
+					{%- if r.docstatus == 0 %}
+					<button class="btn btn--primary btn--sm" onclick="approveReq('{{ r.name }}')">Approve</button>
+					<button class="btn btn--outline btn--sm" onclick="rejectReq('{{ r.name }}')">Reject</button>
+					{%- elif r.docstatus == 1 and (r.per_ordered or 0) < 100 %}
+					<button class="btn btn--outline btn--sm" onclick="convertReq('{{ r.name }}')">To Order</button>
+					{%- else %}<span class="muted">—</span>{% endif %}
+				</td>
+			</tr>
+		{%- endfor %}
+		</tbody>
+	</table>
+	{%- else %}
+	<div class="empty">No purchase requisitions yet.</div>
+	{%- endif %}
+</div></div>
+
+{{ call_method_js() }}
+<script>
+var COMPLIANT_SUPPLIERS = {{ (suppliers | map(attribute="name") | list) | tojson }};
+function approveReq(name) {
+	if (!confirm("Approve requisition " + name + "?")) return;
+	tradingAction("a3_trading_management.api.buying.approve_requisition", { name: name }, "Requisition approved.");
+}
+function rejectReq(name) {
+	var reason = prompt("Reject " + name + " — reason?");
+	if (reason === null) return;
+	tradingAction("a3_trading_management.api.buying.reject_requisition", { name: name, reason: reason }, "Requisition rejected.");
+}
+function convertReq(name) {
+	if (!COMPLIANT_SUPPLIERS.length) { alert("No compliant supplier is available to order from."); return; }
+	var supplier = prompt("Convert " + name + " to a purchase order.\nSupplier:\n\n" + COMPLIANT_SUPPLIERS.join("\n"));
+	if (!supplier) return;
+	tradingAction("a3_trading_management.api.buying.requisition_to_order",
+		{ name: name, supplier: supplier }, "Purchase order created.");
+}
+</script>
+{{ doc_modals() }}
+{{ filter_script() }}
+<script>
+function newRequisition() {
+	openNewDoc({
+		title: "New Requisition", subtitle: "What the yard needs. Purchase approves it, then turns it into an order.",
+		head: [{ key: "schedule_date", label: "Needed by", type: "date", value: (function(){var d=new Date();d.setDate(d.getDate()+7);return d.toISOString().slice(0,10);})() }],
+		columns: [{ key: "item_code", label: "Item", pick: "item", placeholder: "Search item…" }, { key: "qty", label: "Qty", num: true, value: 1, width: "110px" }, { key: "warehouse", label: "To yard", default: "Stores - A3T" }],
+		validate: function (h, l) { return l.length ? null : "Add at least one item."; },
+		build: function (h, l) { return { items: JSON.stringify(l.map(function (r) { return { item_code: r.item_code, qty: r.qty, warehouse: r.warehouse }; })), schedule_date: h.schedule_date || null }; },
+		method: "a3_trading_management.api.buying.create_requisition"
+	});
+}
+</script>
+{% endblock %}

@@ -1,1 +1,13 @@
-[]
+[
+ {
+  "docstatus": 0,
+  "doctype": "Client Script",
+  "dt": "Supplier",
+  "enabled": 1,
+  "modified": "2026-07-16 16:07:45.272562",
+  "module": "A3 Trading Management",
+  "name": "A3 Trading Supplier",
+  "script": "frappe.ui.form.on('Supplier', {\n    refresh(frm) {\n        const map = { 'Compliant': 'green', 'Under Review': 'orange', 'Documents Pending': 'orange',\n                      'Suspended': 'red', 'Rejected': 'red', 'Not Onboarded': 'grey' };\n        if (frm.doc.custom_compliance_status)\n            frm.dashboard.add_indicator(__(frm.doc.custom_compliance_status), map[frm.doc.custom_compliance_status]);\n        [['custom_compliance_trade_license_expiry', 'Trade License'],\n         ['custom_compliance_vat_cert_expiry', 'VAT Certificate'],\n         ['custom_compliance_establishment_expiry', 'Establishment Card']].forEach(([f, lbl]) => {\n            if (frm.doc[f] && frappe.datetime.get_diff(frm.doc[f], frappe.datetime.now_date()) < 0)\n                frm.dashboard.add_indicator(__('{0} expired', [lbl]), 'red');\n        });\n        if (['Suspended', 'Rejected', 'Not Onboarded'].includes(frm.doc.custom_compliance_status))\n            frm.dashboard.set_headline(\n                `<span class=\"text-danger\">${__('Purchase Orders are blocked until this supplier is compliant.')}</span>`);\n    }\n});",
+  "view": null
+ }
+]

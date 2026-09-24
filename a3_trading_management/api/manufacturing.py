@@ -194,24 +194,30 @@ def get_work_order_options():
 
 @frappe.whitelist()
 def search_items(search=None, limit=20):
-    """Items that can be manufactured -- i.e. that already have at least one
-    active BOM. Used by the 'Item to be manufactured' autocomplete."""
-    txt = "%{0}%".format((search or "").strip())
+    """The 'Item to be manufactured' autocomplete.
+
+    Items with an active BOM come first. Items without one are listed too
+    (flagged `has_bom: 0`) so the page can offer to create the BOM on the spot:
+    with no search text only trailer models are added, so the raw materials do
+    not crowd the list; once something is typed, any stock item that matches."""
+    search = (search or "").strip()
     rows = frappe.db.sql(
         """
-        SELECT DISTINCT b.item AS name, i.item_name, i.stock_uom, i.description
-        FROM `tabBOM` b
-        INNER JOIN `tabItem` i ON i.name = b.item
-        WHERE b.is_active = 1
-          AND (b.item LIKE %(txt)s OR i.item_name LIKE %(txt)s)
-        ORDER BY i.item_name
+        SELECT i.name, i.item_name, i.stock_uom, i.description,
+               i.custom_is_trailer AS is_trailer,
+               EXISTS (SELECT 1 FROM `tabBOM` b WHERE b.item = i.name AND b.is_active = 1) AS has_bom
+        FROM `tabItem` i
+        WHERE i.disabled = 0 AND i.is_stock_item = 1 AND i.has_variants = 0
+          AND (i.name LIKE %(txt)s OR i.item_name LIKE %(txt)s)
+        HAVING has_bom OR is_trailer OR %(searching)s
+        ORDER BY has_bom DESC, is_trailer DESC, i.item_name
         LIMIT %(limit)s
         """,
-        {"txt": txt, "limit": cint(limit) or 20},
+        {"txt": "%{0}%".format(search), "searching": 1 if search else 0, "limit": cint(limit) or 20},
         as_dict=True,
     )
     for r in rows:
-        r["default_bom"] = _default_bom_for_item(r["name"])
+        r["default_bom"] = _default_bom_for_item(r["name"]) if r["has_bom"] else None
     return rows
 
 
@@ -272,6 +278,208 @@ def get_bom_detail(bom, qty=1):
 
 
 # ---------------------------------------------------------------------------
+# New item / new BOM pop-ups on the New Work Order modal
+# ---------------------------------------------------------------------------
+
+
+@frappe.whitelist()
+def get_master_options():
+    """Dropdown data for the New Item and New BOM pop-ups."""
+    from a3_trading_management.integrations.item import next_item_code
+
+    return {
+        "item_groups": frappe.get_all("Item Group", filters={"is_group": 0}, pluck="name", order_by="name"),
+        "uoms": frappe.get_all("UOM", filters={"enabled": 1}, pluck="name", order_by="name"),
+        "operations": frappe.get_all("Operation", fields=["name", "workstation"], order_by="name"),
+        "workstations": frappe.get_all("Workstation", fields=["name", "hour_rate"], order_by="name"),
+        "next_item_code": next_item_code(),
+    }
+
+
+@frappe.whitelist()
+def create_item(item_name, item_code=None, item_group=None, stock_uom=None, is_trailer=0,
+                rate=None, description=None):
+    """Create a stock Item from the portal.
+
+    A trailer model gets `rate` as its selling price and Finished Goods as its
+    default yard; anything else (a raw material or part) gets `rate` as its buying
+    price and valuation rate, and the raw-material yard. Leaving the code empty
+    numbers the item from the Item series (integrations.item.before_naming)."""
+    frappe.has_permission("Item", "create", throw=True)
+    item_name = (item_name or "").strip()
+    if not item_name:
+        frappe.throw(_("Item name is required"))
+    existing = frappe.db.get_value("Item", {"item_name": item_name, "disabled": 0}, "name")
+    if existing:
+        frappe.throw(_("An item called {0} already exists ({1}).").format(item_name, existing))
+    item_code = (item_code or "").strip()
+    if item_code and frappe.db.exists("Item", item_code):
+        frappe.throw(_("Item code {0} is already in use.").format(item_code))
+    if not item_code:
+        from a3_trading_management.integrations.item import next_item_code
+
+        # A code matching the series is re-allocated from the counter at insert,
+        # so two people creating items at once cannot collide.
+        item_code = next_item_code() or item_name
+
+    trailer = cint(is_trailer)
+    rate = flt(rate)
+    wip, fg = _default_warehouses()
+    doc = frappe.new_doc("Item")
+    doc.item_code = item_code
+    doc.item_name = item_name
+    doc.description = (description or "").strip() or item_name
+    doc.item_group = item_group or frappe.db.get_value("Item Group", {"is_group": 0}, "name")
+    doc.stock_uom = stock_uom or "Nos"
+    doc.is_stock_item = 1
+    doc.include_item_in_manufacturing = 0 if trailer else 1
+    doc.custom_is_trailer = trailer
+    if not trailer and rate:
+        doc.valuation_rate = rate
+    company = _current_company()
+    default_yard = fg if trailer else wip
+    if company and default_yard:
+        doc.append("item_defaults", {"company": company, "default_warehouse": default_yard})
+    doc.insert()
+
+    if rate:
+        price_list = frappe.db.get_value("Price List", {"selling" if trailer else "buying": 1, "enabled": 1},
+                                         "name")
+        if price_list:
+            frappe.get_doc({
+                "doctype": "Item Price", "item_code": doc.name, "price_list": price_list,
+                "price_list_rate": rate, "currency": _company_currency(company),
+            }).insert(ignore_permissions=True)
+    frappe.db.commit()
+    return {"name": doc.name, "item_name": doc.item_name, "stock_uom": doc.stock_uom,
+            "valuation_rate": doc.valuation_rate, "is_trailer": trailer}
+
+
+@frappe.whitelist()
+def search_operations(search=None, limit=10):
+    """Operation picker: each operation with its default workstation and that
+    workstation's hour rate, so picking one can fill the whole row."""
+    txt = "%{0}%".format((search or "").strip())
+    return frappe.db.sql(
+        """
+        SELECT o.name, o.workstation, COALESCE(w.hour_rate, 0) AS hour_rate
+        FROM `tabOperation` o
+        LEFT JOIN `tabWorkstation` w ON w.name = o.workstation
+        WHERE o.name LIKE %(txt)s
+        ORDER BY o.name
+        LIMIT %(limit)s
+        """,
+        {"txt": txt, "limit": cint(limit) or 10},
+        as_dict=True,
+    )
+
+
+@frappe.whitelist()
+def search_workstations(search=None, limit=10):
+    """Workstation picker, with the hour rate an operation there is costed at."""
+    txt = "%{0}%".format((search or "").strip())
+    return frappe.get_all(
+        "Workstation",
+        filters={"name": ["like", txt]},
+        fields=["name", "hour_rate"],
+        order_by="name",
+        limit_page_length=cint(limit) or 10,
+    )
+
+
+@frappe.whitelist()
+def create_workstation(name, hour_rate=0):
+    """A workstation from the portal. The rate is booked as labour: ERPNext's
+    hour rate is the sum of its labour, electricity, consumable and rent parts."""
+    frappe.has_permission("Workstation", "create", throw=True)
+    name = (name or "").strip()
+    if not name:
+        frappe.throw(_("Workstation name is required"))
+    if frappe.db.exists("Workstation", name):
+        frappe.throw(_("Workstation {0} already exists").format(name))
+    ws = frappe.new_doc("Workstation")
+    ws.workstation_name = name
+    ws.hour_rate_labour = flt(hour_rate)
+    ws.insert()
+    frappe.db.commit()
+    return {"name": ws.name, "hour_rate": flt(ws.hour_rate)}
+
+
+@frappe.whitelist()
+def create_operation(name, workstation=None):
+    """An operation from the portal, with the workstation it normally runs at."""
+    frappe.has_permission("Operation", "create", throw=True)
+    name = (name or "").strip()
+    if not name:
+        frappe.throw(_("Operation name is required"))
+    if frappe.db.exists("Operation", name):
+        frappe.throw(_("Operation {0} already exists").format(name))
+    workstation = (workstation or "").strip() or None
+    if workstation and not frappe.db.exists("Workstation", workstation):
+        frappe.throw(_("Workstation {0} does not exist").format(workstation))
+    op = frappe.new_doc("Operation")
+    op.workstation = workstation
+    op.insert(set_name=name)
+    frappe.db.commit()
+    return {
+        "name": op.name,
+        "workstation": workstation,
+        "hour_rate": flt(frappe.db.get_value("Workstation", workstation, "hour_rate")) if workstation else 0,
+    }
+
+
+@frappe.whitelist()
+def create_bom(item, items, operations=None, quantity=1):
+    """Create and submit a BOM from the pop-up: the parts list for `quantity` units
+    of `item`, and optionally the operations with minutes. It becomes the item's
+    default BOM, so the work order form picks it straight up."""
+    frappe.has_permission("BOM", "create", throw=True)
+    frappe.has_permission("BOM", "submit", throw=True)
+    if not item or not frappe.db.exists("Item", item):
+        frappe.throw(_("Choose the item this BOM builds"))
+    rows = items if isinstance(items, list) else json.loads(items or "[]")
+    rows = [r for r in rows if (r.get("item_code") or "").strip() and flt(r.get("qty")) > 0]
+    if not rows:
+        frappe.throw(_("Add at least one raw material with a quantity"))
+    if any(r["item_code"] == item for r in rows):
+        frappe.throw(_("{0} cannot be a raw material of its own BOM").format(item))
+    ops = operations if isinstance(operations, list) else json.loads(operations or "[]")
+    ops = [o for o in ops if (o.get("operation") or "").strip()]
+    for o in ops:
+        if flt(o.get("time_in_mins")) <= 0:
+            frappe.throw(_("Operation {0} needs its time in minutes").format(o["operation"]))
+        # ERPNext insists on a workstation per operation; a known operation brings its own.
+        if not (o.get("workstation") or "").strip() and not frappe.db.get_value(
+            "Operation", o["operation"].strip(), "workstation"
+        ):
+            frappe.throw(_("Choose a workstation for operation {0}").format(o["operation"]))
+
+    bom = frappe.new_doc("BOM")
+    bom.item = item
+    bom.company = _current_company()
+    bom.quantity = flt(quantity) or 1
+    bom.currency = _company_currency(bom.company)
+    bom.rm_cost_as_per = "Valuation Rate"
+    bom.is_active = 1
+    bom.is_default = 1
+    bom.with_operations = 1 if ops else 0
+    for r in rows:
+        bom.append("items", {"item_code": r["item_code"], "qty": flt(r["qty"])})
+    for o in ops:
+        operation = _ensure_operation(o["operation"])
+        workstation = _ensure_workstation(
+            o.get("workstation") or frappe.db.get_value("Operation", operation, "workstation")
+        )
+        bom.append("operations", {
+            "operation": operation, "workstation": workstation, "time_in_mins": flt(o["time_in_mins"]),
+        })
+    bom.insert()
+    bom.submit()
+    frappe.db.commit()
+    return {"name": bom.name, "total_cost": _money(bom.total_cost, bom.currency)}
+
+
+# ---------------------------------------------------------------------------
 # Before creating: is the material there, and is this for a customer order?
 # ---------------------------------------------------------------------------
 
@@ -323,6 +531,47 @@ def request_shortfall(bom, qty=1, source_warehouse=None):
     return create_material_request(items=items, force=0)
 
 
+@frappe.whitelist()
+def open_sales_orders_for_item(item):
+    """Confirmed customer orders for `item` with trailers still to build -- what
+    the 'For sales order' box offers. `to_build` is the ordered quantity not yet
+    covered by a work order."""
+    if not item:
+        return []
+    rows = frappe.db.sql(
+        """
+        select so.name, so.customer, so.customer_name, so.delivery_date,
+               sum(soi.qty) as qty, sum(soi.delivered_qty) as delivered_qty,
+               (select coalesce(sum(wo.qty), 0) from `tabWork Order` wo
+                 where wo.sales_order = so.name and wo.production_item = %(item)s and wo.docstatus < 2) as ordered_qty,
+               (select count(*) from `tabTrailer Serial` ts
+                 where ts.sales_order = so.name and ts.trailer_type = %(item)s and ts.status = 'Sold') as reserved_qty
+        from `tabSales Order` so
+        join `tabSales Order Item` soi on soi.parent = so.name
+        where so.docstatus = 1 and so.skip_delivery_note = 0
+          and so.status not in ('Closed', 'Completed', 'Cancelled', 'On Hold')
+          and soi.item_code = %(item)s
+        group by so.name
+        order by so.delivery_date asc, so.name asc
+        """,
+        {"item": item}, as_dict=True,
+    )
+    out = []
+    for r in rows:
+        # Still to build = ordered, less delivered, less reserved from stock, less
+        # already on a work order. An order fully covered is not offered.
+        to_build = flt(r.qty) - flt(r.delivered_qty) - flt(r.reserved_qty) - flt(r.ordered_qty)
+        if to_build <= 0:
+            continue
+        out.append({
+            "name": r.name,
+            "customer_name": r.customer_name or r.customer,
+            "delivery_date": formatdate(r.delivery_date, "dd MMM yyyy") if r.delivery_date else "",
+            "qty": flt(r.qty),
+            "to_build": to_build,
+        })
+    return out
+
 
 # ---------------------------------------------------------------------------
 # Create
@@ -340,15 +589,21 @@ def create_work_order(
     planned_start_date=None,
     expected_delivery_date=None,
     description=None,
+    sales_order=None,
 ):
     """Create a Draft Work Order for `item`, seed required_items + operations
     from its BOM, stamp the first production stage, and return its name.
 
     `source_warehouse` is the yard raw material is taken from (`wip_warehouse` is
-    accepted as its older name). `description` is the specification the floor
-    works to; it prints on the traveler."""
+    accepted as its older name). `sales_order` makes this a build-to-order: the
+    order is carried on the work order and, on completion, the finished trailers
+    are reserved to it (serial_control). `description` is the specification the
+    floor works to; it prints on the traveler."""
     if not item:
         frappe.throw(_("Item to be manufactured is required"))
+    if sales_order:
+        if frappe.db.get_value("Sales Order", sales_order, "docstatus") != 1:
+            frappe.throw(_("Sales Order {0} must be confirmed before building for it").format(sales_order))
 
     bom = bom or _default_bom_for_item(item)
     if not bom:
@@ -375,6 +630,8 @@ def create_work_order(
     wo.use_multi_level_bom = 0
     if description:
         wo.description = description
+    if sales_order:
+        wo.sales_order = sales_order
     if planned_start_date:
         wo.planned_start_date = get_datetime(planned_start_date)
     if expected_delivery_date:
@@ -392,13 +649,13 @@ def create_work_order(
             "entered_on": now_datetime(),
             "entered_by": frappe.session.user,
             "duration_hours": 0,
-            "notes": "Work order created",
+            "notes": "Work order created" + (" for {0}".format(sales_order) if sales_order else ""),
         },
     )
 
     wo.flags.ignore_permissions = True
     wo.insert(ignore_permissions=True)
-    return {"name": wo.name, "stage": "Material"}
+    return {"name": wo.name, "stage": "Material", "sales_order": sales_order}
 
 
 # ---------------------------------------------------------------------------
@@ -600,6 +857,8 @@ def get_work_order(name):
 
     return {
         "name": wo.name,
+        "sales_order": wo.sales_order,
+        "customer": (frappe.db.get_value("Sales Order", wo.sales_order, "customer_name") if wo.sales_order else None),
         "description": wo.description,
         "source_warehouse": wo.source_warehouse or wo.wip_warehouse,
         "item": wo.production_item,

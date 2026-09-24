@@ -16,6 +16,11 @@ def get_context(context):
 
 	context.board = get_stock_board()
 
+	# EXTRA POINT 4 — the total quantity existing for each item with the warehouse
+	# holding it, and serialised trailers as identified units rather than counted.
+	from a3_trading_management.api.stock_board import stock_additions
+
+	context.additions = stock_additions()
 	# The board's headline list is the stock table, so that is what the topbar counts.
 	context.page_count = len(context.board.get("stock") or [])
 	context.page_count_label = "stock rows"
