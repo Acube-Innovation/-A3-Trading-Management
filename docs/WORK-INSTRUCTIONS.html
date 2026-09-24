@@ -1,0 +1,316 @@
+<title>A3 Trading Work Instructions</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@600;700&family=Source+Sans+3:ital,wght@0,400;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+	:root {
+		--ink: #1c2333; --muted: #6b7486; --faint: #98a1b0;
+		--ground: #f4f5f7; --surface: #ffffff; --line: #e3e6ec; --line-strong: #cfd4dd;
+		--red: #ec2e5d; --red-soft: #fde7ee; --red-ink: #b31f47;
+		--navy: #003277; --navy-soft: #e6ecf4;
+		--amber: #b45309; --amber-soft: #fff3df;
+		--green: #15803d; --green-soft: #e4f6ea;
+		--display: "Barlow Semi Condensed", "Arial Narrow", "Helvetica Neue", Arial, sans-serif;
+		--body: "Source Sans 3", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+		--mono: "IBM Plex Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+	}
+	@media (prefers-color-scheme: dark) {
+		:root:not([data-theme="light"]) {
+			--ink: #e9ecf1; --muted: #a3acbb; --faint: #7d8797;
+			--ground: #14171c; --surface: #1c2027; --line: #2b313b; --line-strong: #3a424e;
+			--red: #ff5c85; --red-soft: #3a1f28; --red-ink: #ff8aa8;
+			--navy: #8fb1f0; --navy-soft: #1e2b45;
+			--amber: #f4b25a; --amber-soft: #3a2b12;
+			--green: #5ed08a; --green-soft: #15301f;
+		}
+	}
+	:root[data-theme="dark"] {
+		--ink: #e9ecf1; --muted: #a3acbb; --faint: #7d8797;
+		--ground: #14171c; --surface: #1c2027; --line: #2b313b; --line-strong: #3a424e;
+		--red: #ff5c85; --red-soft: #3a1f28; --red-ink: #ff8aa8;
+		--navy: #8fb1f0; --navy-soft: #1e2b45;
+		--amber: #f4b25a; --amber-soft: #3a2b12;
+		--green: #5ed08a; --green-soft: #15301f;
+	}
+	* { box-sizing: border-box; }
+	body { margin: 0; background: var(--ground); color: var(--ink); font-family: var(--body); font-size: 16px; line-height: 1.55; }
+	a { color: var(--red-ink); }
+	.wrap { max-width: 1100px; margin: 0 auto; padding-inline: 20px; padding-block: 28px 64px; }
+	h1, h2, h3, h4 { font-family: var(--display); line-height: 1.1; margin: 0; text-wrap: balance; }
+	h1 { font-size: clamp(34px, 5vw, 52px); font-weight: 700; }
+	h2 { font-size: 28px; font-weight: 700; margin-top: 52px; padding-top: 16px; border-top: 2px solid var(--ink); display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+	h2 .role { font-family: var(--body); font-size: 13px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--red-ink); background: var(--red-soft); padding: 3px 10px; border-radius: 999px; }
+	h3 { font-size: 19px; font-weight: 700; margin-top: 26px; }
+	p { margin: 10px 0; max-width: 72ch; }
+	ul, ol { max-width: 72ch; padding-left: 22px; margin: 8px 0; }
+	li { margin: 5px 0; }
+	.eyebrow { font-size: 12px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--red-ink); }
+	.lede { font-size: 19px; color: var(--muted); max-width: 66ch; margin-top: 12px; }
+	.mono, code { font-family: var(--mono); font-size: .88em; }
+	kbd { font-weight: 700; font-size: .92em; padding: 1px 8px; border: 1px solid var(--line-strong); border-bottom-width: 2px; border-radius: 6px; background: var(--surface); white-space: nowrap; }
+	.head { padding-bottom: 24px; border-bottom: 1px solid var(--line); display: grid; gap: 12px; }
+	.meta { display: flex; flex-wrap: wrap; gap: 8px 22px; color: var(--muted); font-size: 14px; }
+
+	/* the chain of hand-offs */
+	.chain { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 18px 0; counter-reset: link; }
+	.chain div { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 12px 12px 10px; position: relative; }
+	.chain div::before { counter-increment: link; content: counter(link); font-family: var(--display); font-weight: 700; font-size: 13px; color: var(--red-ink); display: block; margin-bottom: 2px; }
+	.chain b { display: block; font-family: var(--display); font-size: 17px; font-weight: 700; }
+	.chain span { color: var(--muted); font-size: 13px; }
+
+	/* role blocks */
+	.screens { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 4px; }
+	.screens span { background: var(--navy-soft); color: var(--ink); border-radius: 999px; padding: 4px 12px; font-weight: 600; font-size: 14px; }
+	.task { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px 18px; margin: 14px 0; }
+	.task h4 { font-size: 17px; font-weight: 700; margin: 0 0 6px; }
+	.task .when { color: var(--muted); font-size: 13.5px; margin-bottom: 6px; }
+	.task ol { margin: 6px 0 0; max-width: none; }
+	.task ol li { margin: 4px 0; }
+	.hand { border-left: 4px solid var(--navy); background: var(--navy-soft); padding: 10px 14px; border-radius: 0 8px 8px 0; margin: 12px 0; font-size: 15px; }
+	.hand b { color: var(--navy); }
+	.stop { border-left: 4px solid var(--amber); background: var(--amber-soft); padding: 10px 14px; border-radius: 0 8px 8px 0; margin: 12px 0; font-size: 15px; }
+	.morning { background: var(--surface); border: 1px dashed var(--line-strong); border-radius: 10px; padding: 12px 18px; margin: 12px 0; }
+	.morning ul { margin: 4px 0; }
+	.pill { display: inline-block; font-size: 12px; font-weight: 700; padding: 2px 9px; border-radius: 999px; white-space: nowrap; }
+	.pill--ok { background: var(--green-soft); color: var(--green); }
+	.pill--hold { background: var(--amber-soft); color: var(--amber); }
+	.pill--draft { background: var(--ground); color: var(--muted); border: 1px solid var(--line-strong); }
+	.tbl-wrap { overflow-x: auto; margin: 14px 0; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+	table { border-collapse: collapse; width: 100%; font-size: 15px; }
+	th, td { text-align: left; vertical-align: top; padding: 10px 14px; border-top: 1px solid var(--line); }
+	thead th { border-top: 0; font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); font-weight: 700; background: var(--ground); }
+	td:first-child { font-weight: 600; white-space: nowrap; }
+	@media print { body { background: #fff; } .task, .morning { break-inside: avoid; } }
+</style>
+
+<div class="wrap">
+	<header class="head">
+		<div class="eyebrow">A3 Trading Management · work instructions</div>
+		<h1>What you do in the system, role by role</h1>
+		<p class="lede">The system follows one trailer from the material that goes into it to the customer who drives it away. Every role owns one part of that road and hands the trailer to the next. Find your role below; each task is written as the buttons you press, in order.</p>
+		<div class="meta"><span>Sign in at the portal address your administrator gave you</span><span>Everything you need is on the left-hand menu</span><span>Version of 23 Sep 2026</span></div>
+	</header>
+
+	<h2>Before you start: three things everyone needs to know</h2>
+	<p><strong>1. Draft, then approved.</strong> When you save something it is a <span class="pill pill--draft">Draft</span> — you can still change it and it does not count yet. When it is approved (the standard forms call the same button <kbd>Submit</kbd>) it is final and it counts: stock moves, money is owed. If you need to change an approved document, it has to be cancelled first. So check before you approve.</p>
+	<p><strong>2. Two kinds of screen.</strong> The portal screens on the left-hand menu are where you work all day. When you press <kbd>New …</kbd> or <kbd>Open</kbd>, the full entry form opens in a new tab — fill it in, press <kbd>Save</kbd> (Ctrl+S), and if the task says so press <kbd>Submit</kbd> then <kbd>Yes</kbd>. Close that tab and refresh the portal list; your document is there with its number.</p>
+	<p><strong>3. Write the number down.</strong> Every document has a number — <span class="mono">PUR-ORD-2026-00023</span>, <span class="mono">MFG-WO-2026-00018</span>, chassis <span class="mono">A3-26-000304</span>. When you hand work to the next person, hand them the number.</p>
+
+	<h3>The chain of hand-offs</h3>
+	<div class="chain">
+		<div><b>Sales</b><span>takes the customer's order and reserves a trailer, or asks Production to build one</span></div>
+		<div><b>Production</b><span>raises the work order, checks material, builds through the six stages</span></div>
+		<div><b>Fabrication bay</b><span>embosses the chassis plates from the sheet and works to the traveler</span></div>
+		<div><b>Stores</b><span>receives material, keeps the yard stocked, asks Purchase for what is short</span></div>
+		<div><b>Purchase</b><span>turns requests into orders with compliant suppliers</span></div>
+		<div><b>Accounts</b><span>approves bills, pays suppliers, receives from customers</span></div>
+		<div><b>Sales again</b><span>dispatches the reserved trailer, invoices it, records the money</span></div>
+	</div>
+
+	<!-- ============================================================ PURCHASE -->
+	<h2><span class="role">Role</span> Purchase clerk</h2>
+	<div class="screens"><span>Transactions › Requisitions</span><span>Transactions › Purchase Orders</span><span>Suppliers</span></div>
+	<div class="morning"><strong>Every morning</strong><ul>
+		<li>Open <em>Requisitions</em>: anything under Awaiting Approval is a request from Stores or Production waiting on you.</li>
+		<li>Open <em>Suppliers</em>: the banner tells you if a supplier's papers have lapsed. Chase the papers before you need to order from them.</li>
+	</ul></div>
+
+	<div class="task"><h4>Task 1 — Approve or reject a request for material</h4>
+		<div class="when">When a requisition appears as Draft.</div>
+		<ol>
+			<li>Read the line: item, quantity, which yard it should go to.</li>
+			<li><kbd>Approve</kbd> → confirm. Or <kbd>Reject</kbd> and type the reason — the requester sees it.</li>
+		</ol></div>
+
+	<div class="task"><h4>Task 2 — Turn an approved request into an order</h4>
+		<ol>
+			<li>Press <kbd>To Order</kbd> on the approved requisition. The box lists only suppliers whose papers are in order — type the one you want.</li>
+			<li>Go to <em>Purchase Orders</em>. The new order is a Draft. Press <kbd>Open</kbd> and check the price on each line (a request carries no price; the order takes the item's buying price — if it shows 0, type the agreed rate). Save.</li>
+			<li>Back on the list, <kbd>Approve</kbd> → confirm. The order is now with the supplier; Order Value at the top includes it.</li>
+		</ol>
+		<div class="stop"><strong>If the system refuses:</strong> "Supplier not compliant — lapsed: trade licence …" means that supplier's papers have expired. Get the new papers, update the dates on the supplier (Suppliers › <kbd>Open</kbd>), then order.</div>
+		<div class="hand"><b>Hand-off →</b> Stores, with the order number, so they know what is coming.</div></div>
+
+	<div class="task"><h4>Task 3 — An order without a request</h4>
+		<div class="when">When you buy something nobody requisitioned.</div>
+		<ol><li><em>Purchase Orders</em> › <kbd>New Order</kbd> → supplier, items, quantities, rates → Save → back on the list, <kbd>Approve</kbd>.</li></ol></div>
+
+	<div class="task"><h4>Task 4 — Keep supplier papers current</h4>
+		<ol><li><em>Suppliers</em> › <kbd>Open</kbd> the supplier → enter the expiry dates of the trade licence, VAT certificate and establishment card, set the compliance status → Save. Clear means orders allowed; Expiring means a paper lapses within 30 days; Blocked means orders refused.</li></ol></div>
+
+	<!-- ============================================================ STORES -->
+	<h2><span class="role">Role</span> Storekeeper</h2>
+	<div class="screens"><span>Transactions › Goods Receipt</span><span>Live Stock</span><span>Transactions › Requisitions</span></div>
+	<div class="morning"><strong>Every morning</strong><ul>
+		<li>Open <em>Live Stock</em>: Low Stock Alerts is your shopping list; Payments Missing is material received that Accounts has not been billed for yet.</li>
+		<li>Open <em>Goods Receipt</em>: Awaiting Receipt lists the orders due in.</li>
+	</ul></div>
+
+	<div class="task"><h4>Task 1 — Receive material against an order</h4>
+		<div class="when">When the truck arrives.</div>
+		<ol>
+			<li>On <em>Goods Receipt</em>, find the order under Awaiting Receipt and press <kbd>Receive</kbd> → confirm. A Draft receipt is made with the ordered quantities.</li>
+			<li>Count what actually came. If it differs, press <kbd>Edit</kbd>, correct the quantities (or mark rejected ones), Save.</li>
+			<li>When the material is physically in the yard, press <kbd>Submit</kbd> → confirm "This posts the stock". Not before — this is the moment the yard's figure changes.</li>
+		</ol>
+		<div class="hand"><b>Hand-off →</b> Accounts: press <kbd>Bill</kbd> on the receipt when the supplier's invoice arrives, or tell Accounts the receipt number so they can.</div></div>
+
+	<div class="task"><h4>Task 2 — Ask for what is running low</h4>
+		<ol>
+			<li>On <em>Live Stock</em>, tick the rows under Low Stock Alerts that need ordering.</li>
+			<li>Press <kbd>Request Selected</kbd>. One requisition is raised for all of them; items already on an open request are skipped.</li>
+		</ol>
+		<div class="hand"><b>Hand-off →</b> Purchase, who approve and order (their Task 1 and 2).</div></div>
+
+	<!-- ============================================================ PRODUCTION -->
+	<h2><span class="role">Role</span> Production supervisor</h2>
+	<div class="screens"><span>Manufacturing</span><span>Serial Register</span><span>Chassis Plates</span></div>
+	<div class="morning"><strong>Every morning</strong><ul>
+		<li>Open <em>Home</em>: the Production Board shows every open work order with its stage and progress; Trailers by Stage shows where the floor is.</li>
+		<li>Open <em>Manufacturing</em> and walk the list: anything that moved on the floor yesterday gets its stage moved today.</li>
+	</ul></div>
+
+	<div class="task"><h4>Task 1 — Raise a work order</h4>
+		<div class="when">When Sales asks for trailers to be built for an order, or when stock of a model is low.</div>
+		<ol>
+			<li><em>Manufacturing</em> › <kbd>New</kbd>.</li>
+			<li>Search the trailer model. Its parts list (BOM) is selected for you.</li>
+			<li>Set the quantity. <strong>Read the material check</strong> that appears: green means the yard holds everything; a warning lists what is short. If short, you may still create the order — press <kbd>Request the shortfall</kbd> so Stores and Purchase get a requisition for exactly the missing quantity.</li>
+			<li>Planned start and target delivery dates.</li>
+			<li>"Take raw material from" — Stores. "Finished trailers go to" — Finished Goods. Leave these unless told otherwise.</li>
+			<li>"For sales order": if a customer has already ordered these trailers, pick their order — the finished trailers will then go to that order by themselves. Otherwise leave <em>Build to stock</em>.</li>
+			<li>Write the specification for the floor — colour, axles, options. It prints on the traveler.</li>
+			<li><kbd>Create Work Order</kbd>. The chassis numbers are issued at this moment, one per trailer. Open <em>Serial Register</em> and you will see them, status In Production.</li>
+		</ol>
+		<div class="stop"><strong>If the system refuses:</strong> "Chassis Numbering Rule not confirmed" — the chassis format has not been confirmed by management; nothing can be built until it is. "No active BOM found" — the model has no parts list yet.</div>
+		<div class="hand"><b>Hand-off →</b> Fabrication bay: print the traveler (<kbd>Print</kbd> on the order) and the plate sheet (their Task 1).</div></div>
+
+	<div class="task"><h4>Task 2 — Move the order through the stages</h4>
+		<div class="when">Each time the floor finishes a stage.</div>
+		<ol>
+			<li>On <em>Manufacturing</em>, select the order. The button names the next stage: <kbd>Move to Fabrication</kbd>, then Assembly, Paint, QC.</li>
+			<li>Type a note if there is something worth recording (who, what was done, a problem) — it goes into the Stage History with the time and your name.</li>
+			<li>Press the button. Do this on the day it happens; the history is the record.</li>
+		</ol></div>
+
+	<div class="task"><h4>Task 3 — Finish: put the trailers into stock</h4>
+		<div class="when">When QC has passed.</div>
+		<ol>
+			<li>Press <kbd>Deliver &amp; Add to Stock</kbd>. Two things happen at once: the raw material is taken out of the yard, and the finished trailers appear in Finished Goods — as chassis numbers, not a quantity.</li>
+			<li>Check the card reads "Delivered — added to stock". If it instead shows "Stock not posted: …", the yard was short of material: get the material in (Stores) and press the button again.</li>
+			<li>On <em>Serial Register</em> the trailers now read <span class="pill pill--ok">In Stock</span> — or <span class="pill pill--hold">Sold</span> if the order was built for a customer, already reserved to them.</li>
+		</ol>
+		<div class="hand"><b>Hand-off →</b> Sales: the trailers are ready to reserve or dispatch.</div></div>
+
+	<!-- ============================================================ FABRICATION -->
+	<h2><span class="role">Role</span> Fabrication bay</h2>
+	<div class="screens"><span>Chassis Plates</span><span>the printed traveler</span></div>
+	<div class="task"><h4>Task 1 — Emboss the plates</h4>
+		<ol>
+			<li>Open <em>Chassis Plates</em>. Every trailer still waiting for its plate is listed with its chassis number. Press <kbd>Print sheet</kbd>.</li>
+			<li>Strike the numbers into the plates exactly as printed — the number cannot be changed afterwards.</li>
+			<li>Tick the trailers you have done and press <kbd>Mark embossed</kbd> → confirm. Their Plate column reads Embossed, with your name.</li>
+		</ol></div>
+	<div class="task"><h4>Task 2 — Work to the traveler</h4>
+		<ol><li>The traveler (printed by the supervisor) carries the specification, the materials, the operations and the stage history. Tell the supervisor when a stage is finished so they move it in the system.</li></ol></div>
+
+	<!-- ============================================================ SALES -->
+	<h2><span class="role">Role</span> Sales</h2>
+	<div class="screens"><span>Customers</span><span>Transactions › Sales Orders</span><span>Transactions › Delivery &amp; Invoice</span><span>Serial Register</span></div>
+	<div class="morning"><strong>Every morning</strong><ul>
+		<li>Open <em>Sales Orders</em>: Trailers in Stock tells you what you can promise today.</li>
+		<li>Open <em>Delivery &amp; Invoice</em>: Awaiting Dispatch is what is ready to go; Outstanding is what customers still owe.</li>
+	</ul></div>
+
+	<div class="task"><h4>Task 1 — Take an order</h4>
+		<ol>
+			<li>If the customer is new: <em>Customers</em> › <kbd>Add Customer</kbd> → name, phone, email → Save.</li>
+			<li><em>Sales Orders</em> › <kbd>New Order</kbd> → customer, trailer model, quantity, price, delivery date → Save.</li>
+			<li>Back on the list, <kbd>Confirm</kbd> → confirm. The order is now firm.</li>
+		</ol></div>
+
+	<div class="task"><h4>Task 2 — Give the customer a trailer: reserve or build</h4>
+		<ol>
+			<li>If a suitable trailer is in stock: <kbd>Reserve</kbd>. The box lists every chassis in stock; type the serial id of the one this customer gets. It becomes <span class="pill pill--hold">Sold</span> and disappears from the free list — nobody else can promise it.</li>
+			<li>If nothing suitable is in stock: <kbd>Build</kbd>. Type the model and quantity. A work order is raised <em>for this order</em> and Production takes over. When they finish, the trailers are reserved to your order automatically — you will see the chassis on the order row.</li>
+		</ol>
+		<div class="hand"><b>Hand-off →</b> Production (if built). Tell them the order number and the specification the customer wants.</div></div>
+
+	<div class="task"><h4>Task 3 — Dispatch</h4>
+		<div class="when">When the trailer leaves the yard.</div>
+		<ol>
+			<li><em>Delivery &amp; Invoice</em>: under Awaiting Dispatch, press <kbd>Dispatch</kbd> on the order → confirm. A Draft delivery note is made carrying the chassis number.</li>
+			<li>Press <kbd>Open</kbd>, check the customer and the chassis, then <kbd>Submit</kbd> → Yes. The trailer now reads <span class="pill pill--ok">Delivered</span> with the customer as owner.</li>
+			<li><kbd>Print</kbd> the delivery note for the driver — the chassis number is on it.</li>
+		</ol></div>
+
+	<div class="task"><h4>Task 4 — Invoice and record the money</h4>
+		<ol>
+			<li>On the delivery note row, press <kbd>Invoice</kbd> → confirm. A Draft invoice is made with the chassis on it. <kbd>Open</kbd> → <kbd>Submit</kbd> → Yes.</li>
+			<li>When the customer pays, press <kbd>Receive</kbd> on the invoice, accept the amount (or type a part payment). Accounts submits the receipt (their Task 3).</li>
+		</ol>
+		<div class="stop"><strong>Do not use Delete on a submitted invoice</strong> — the system refuses; a posted invoice must be cancelled by Accounts. Delete only removes a draft.</div></div>
+
+	<div class="task"><h4>Task 5 — Warranty</h4>
+		<ol><li>On <em>Serial Register</em>, open the delivered trailer's record and set Warranty Start (delivery date) and Warranty Expiry. The register then shows every trailer's warranty position for as long as A3 keeps records.</li></ol></div>
+
+	<!-- ============================================================ ACCOUNTS -->
+	<h2><span class="role">Role</span> Accounts</h2>
+	<div class="screens"><span>Transactions › Purchase Invoices</span><span>Transactions › Supplier Payments</span><span>Transactions › Payments &amp; Receipts</span><span>Transactions › Journal Entries</span></div>
+	<div class="morning"><strong>Every morning</strong><ul>
+		<li><em>Payments &amp; Receipts</em>: Owed to Us and Owed by Us are the two numbers that matter.</li>
+		<li><em>Purchase Invoices</em>: anything On Hold is waiting for a decision; anything in Draft is waiting for approval.</li>
+		<li><em>Supplier Payments</em>: the balance by age shows who has waited longest.</li>
+	</ul></div>
+
+	<div class="task"><h4>Task 1 — Approve a supplier's bill (or hold it)</h4>
+		<ol>
+			<li>A bill arrives as a Draft after Stores pressed <kbd>Bill</kbd> on the receipt (or press <kbd>Bill</kbd> yourself on <em>Goods Receipt</em>).</li>
+			<li>Compare it with the receipt and the order. If something is wrong, press <kbd>Hold</kbd> and type the reason — the bill cannot enter the books while held.</li>
+			<li>When it is right: <kbd>Release</kbd> (if held), then <kbd>Approve</kbd> → confirm "This posts it to the ledger". The amount is now owed.</li>
+		</ol></div>
+
+	<div class="task"><h4>Task 2 — Pay a supplier</h4>
+		<ol>
+			<li>On the approved bill, press <kbd>Pay</kbd>. Accept the outstanding amount or type a part payment. A Draft payment is made.</li>
+			<li>On <em>Supplier Payments</em>, once the money has actually left the bank, press <kbd>Submit</kbd> → confirm. The supplier's balance falls; the bill reads Paid.</li>
+		</ol></div>
+
+	<div class="task"><h4>Task 3 — Record a customer's payment</h4>
+		<ol><li>Sales press <kbd>Receive</kbd> on the invoice; you find the Draft receipt on <em>Payments &amp; Receipts</em> and press <kbd>Submit</kbd> once the money is in the bank. Owed to Us falls; the invoice reads Paid.</li></ol></div>
+
+	<div class="task"><h4>Task 4 — Journals</h4>
+		<ol>
+			<li>For anything that is not a bill, invoice or payment (a correction, an accrual, an opening balance): <em>Journal Entries</em> › <kbd>New Journal</kbd> → account lines → Save. Debits must equal credits or it will not save.</li>
+			<li>Back on the list, <kbd>Post</kbd> → confirm.</li>
+		</ol></div>
+
+	<!-- ============================================================ OWNER -->
+	<h2><span class="role">Role</span> Owner / manager</h2>
+	<div class="screens"><span>Home</span><span>Serial Register</span><span>Live Stock</span><span>every Transactions screen</span></div>
+	<div class="morning"><strong>Every morning, one screen</strong><ul>
+		<li><em>Home</em>: trailers in stock and in production, deliveries and revenue this month, money owed each way, the production board, recent deliveries, low stock. If a number looks wrong, the link on each card takes you to the screen behind it.</li>
+	</ul></div>
+	<div class="task"><h4>The decisions only you make</h4>
+		<ol>
+			<li><strong>The chassis format.</strong> Once, before the first trailer: set the format in Chassis Numbering Rule and tick Format Confirmed. Nothing can be built until you do. Never change the format after the first number is issued.</li>
+			<li><strong>Bills on hold.</strong> Accounts hold a bill when something is wrong; you decide whether it is released.</li>
+			<li><strong>Cancellations.</strong> A posted document (invoice, delivery note, work order) is undone only by cancelling it in the standard form. Cancelling a work order scraps its trailers; their chassis numbers are never reused.</li>
+		</ol></div>
+
+	<h2>One trailer, start to finish — who touches it and when</h2>
+	<div class="tbl-wrap"><table>
+		<thead><tr><th>Step</th><th>Who</th><th>Screen</th><th>Result</th></tr></thead>
+		<tbody>
+			<tr><td>Customer orders a trailer</td><td>Sales</td><td>Sales Orders › New Order › Confirm</td><td>A firm order</td></tr>
+			<tr><td>Nothing in stock — build it</td><td>Sales</td><td>Sales Orders › Build</td><td>A work order for that order; chassis numbers issued</td></tr>
+			<tr><td>Material is short</td><td>Production</td><td>Manufacturing › New › Request the shortfall</td><td>A requisition for what is missing</td></tr>
+			<tr><td>Approve and order</td><td>Purchase</td><td>Requisitions › Approve › To Order; Purchase Orders › Approve</td><td>An order with a compliant supplier</td></tr>
+			<tr><td>Material arrives</td><td>Stores</td><td>Goods Receipt › Receive › Submit</td><td>Stock in the yard</td></tr>
+			<tr><td>Bill and pay</td><td>Accounts</td><td>Purchase Invoices › Approve › Pay; Supplier Payments › Submit</td><td>Supplier paid</td></tr>
+			<tr><td>Plates embossed</td><td>Fabrication</td><td>Chassis Plates › Print sheet › Mark embossed</td><td>Numbers on metal</td></tr>
+			<tr><td>Built through the stages</td><td>Production</td><td>Manufacturing › Move to … › Deliver &amp; Add to Stock</td><td>Trailer in Finished Goods, reserved to the order</td></tr>
+			<tr><td>Dispatched</td><td>Sales</td><td>Delivery &amp; Invoice › Dispatch › Open › Submit</td><td>Delivered; customer is owner</td></tr>
+			<tr><td>Invoiced and paid</td><td>Sales, Accounts</td><td>Invoice › Submit; Receive; Payments &amp; Receipts › Submit</td><td>Invoice Paid</td></tr>
+			<tr><td>Warranty recorded</td><td>Sales</td><td>Serial Register › trailer record</td><td>Warranty dates on the chassis</td></tr>
+		</tbody>
+	</table></div>
+</div>
