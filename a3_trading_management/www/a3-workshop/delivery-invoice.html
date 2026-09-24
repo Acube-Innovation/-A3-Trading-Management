@@ -1,0 +1,140 @@
+{% extends "templates/workshop_base.html" %}
+{% from "templates/macros/trading.html" import status_pill, call_method_js, stat_row, doc_modals %}
+
+{% block page_content %}
+{#- Dispatch a trailer against its serial and invoice it, so the customer is
+    invoiced for a specific identified trailer rather than a quantity. The serial
+    and chassis number ride on the Delivery Note and Sales Invoice through the
+    custom_trailer_serial / custom_chassis_number fields (task 24), which are not
+    print-hidden — they land on the printed note and bill. -#}
+
+{{ stat_row([
+	{"label": "To Dispatch", "value": to_dispatch | length, "sub": "Confirmed, not yet delivered"},
+	{"label": "Deliveries", "value": deliveries | length, "sub": "Delivery notes"},
+	{"label": "Sales Invoices", "value": invoices | length, "sub": "Raised"},
+	{"label": "Outstanding", "value": frappe.utils.fmt_money(invoices | selectattr("docstatus", "equalto", 1) | sum(attribute="outstanding_amount")), "sub": "Invoiced, unpaid"},
+]) }}
+
+<div class="toolbar">
+	<div class="section-title" style="margin:0">Delivery &amp; Sales Invoice</div>
+	<div class="toolbar__right">
+		<a class="btn btn--outline btn--sm" href="/a3-workshop/sales-orders">
+			<i class="fa-solid fa-cart-shopping"></i> Sales Orders</a>
+	</div>
+</div>
+
+{%- if to_dispatch %}
+<div class="card" style="margin-bottom:14px"><div class="card__body">
+	<div class="section-title" style="margin-top:0">Awaiting dispatch</div>
+	<table class="table">
+		<thead><tr><th>Order</th><th>Customer</th><th>Trailer reserved</th><th class="num">Delivered</th><th></th></tr></thead>
+		<tbody>
+		{%- for o in to_dispatch %}
+			<tr>
+				<td><b>{{ o.name }}</b></td>
+				<td>{{ o.customer_name or o.customer }}</td>
+				<td>{%- if o.reserved_serials %}{%- for s in o.reserved_serials %}{{ s.chassis_number }}{% if not loop.last %}, {% endif %}{% endfor %}
+					{%- else %}<span class="muted">none reserved</span>{% endif %}</td>
+				<td class="num">{{ "%.0f%%" | format(o.per_delivered or 0) }}</td>
+				<td><button class="btn btn--primary btn--sm"
+					onclick="dispatch('{{ o.name }}', {{ (o.reserved_serials | map(attribute='name') | list) | tojson | forceescape }})">Dispatch</button></td>
+			</tr>
+		{%- endfor %}
+		</tbody>
+	</table>
+</div></div>
+{%- endif %}
+
+<div class="card" style="margin-bottom:14px"><div class="card__body" style="overflow-x:auto">
+	<div class="section-title" style="margin-top:0">Delivery notes</div>
+	{%- if deliveries %}
+	<table class="table">
+		<thead><tr><th>Note</th><th>Customer</th><th>Date</th><th class="num">Total</th><th>Status</th><th>Action</th></tr></thead>
+		<tbody>
+		{%- for d in deliveries %}
+			<tr>
+				<td><b>{{ d.name }}</b></td>
+				<td>{{ d.customer_name or d.customer }}</td>
+				<td>{{ frappe.utils.formatdate(d.posting_date, "dd MMM yyyy") }}</td>
+				<td class="num">{{ frappe.utils.fmt_money(d.grand_total, currency=d.currency) }}</td>
+				<td>{{ status_pill(d.status, d.docstatus) }}</td>
+				<td style="white-space:nowrap">
+					{%- if d.docstatus == 1 %}
+					<button class="btn btn--outline btn--sm" onclick="invoice('{{ d.name }}')">Invoice</button>
+					<a class="btn btn--outline btn--sm" href="/printview?doctype=Delivery%20Note&name={{ d.name | urlencode }}&trigger_print=1" target="_blank" rel="noopener">Print</a>
+					{%- else %}<button type="button" class="btn btn--primary btn--sm" onclick="openDoc('Delivery Note', '{{ d.name }}', { submit: { method: 'a3_trading_management.api.selling.submit_delivery_note', label: 'Submit — trailer has left', confirm: 'Submit {{ d.name }}? The trailer leaves stock and the customer becomes its owner.' } })">Open &amp; Submit</button>{% endif %}
+				</td>
+			</tr>
+		{%- endfor %}
+		</tbody>
+	</table>
+	{%- else %}<div class="empty">Nothing dispatched yet.</div>{% endif %}
+</div></div>
+
+<div class="card"><div class="card__body" style="overflow-x:auto">
+	<div class="section-title" style="margin-top:0">Sales invoices</div>
+	{%- if invoices %}
+	<table class="table">
+		<thead><tr><th>Invoice</th><th>Customer</th><th>Date</th><th>Due</th>
+			<th class="num">Total</th><th class="num">Outstanding</th><th>Status</th><th>Action</th></tr></thead>
+		<tbody>
+		{%- for i in invoices %}
+			<tr>
+				<td><b>{{ i.name }}</b></td>
+				<td>{{ i.customer_name or i.customer }}</td>
+				<td>{{ frappe.utils.formatdate(i.posting_date, "dd MMM yyyy") }}</td>
+				<td>{{ frappe.utils.formatdate(i.due_date, "dd MMM yyyy") if i.due_date else "—" }}</td>
+				<td class="num">{{ frappe.utils.fmt_money(i.grand_total, currency=i.currency) }}</td>
+				<td class="num">{{ frappe.utils.fmt_money(i.outstanding_amount, currency=i.currency) }}</td>
+				<td>{{ status_pill(i.status, i.docstatus) }}</td>
+				<td style="white-space:nowrap">
+					{%- if i.docstatus == 1 and (i.outstanding_amount or 0) > 0 %}
+					<button class="btn btn--outline btn--sm" onclick="receive('{{ i.name }}', {{ i.outstanding_amount or 0 }})">Receive</button>
+					{%- endif %}
+					{%- if i.docstatus == 0 %}<button type="button" class="btn btn--primary btn--sm" onclick="openDoc('Sales Invoice', '{{ i.name }}', { submit: { method: 'a3_trading_management.api.selling.submit_sales_invoice', label: 'Submit — post to ledger', confirm: 'Submit {{ i.name }}? This posts it to the ledger.' } })">Open &amp; Submit</button>
+					{%- else %}<button type="button" class="btn btn--outline btn--sm" onclick="openDoc('Sales Invoice', '{{ i.name }}', { print: '/printview?doctype=Sales%20Invoice&name={{ i.name | urlencode }}&trigger_print=1' })">Open</button>{% endif %}
+					{#- Task 28: permission-guarded delete with a confirm step. A submitted
+					    invoice is refused server-side — the ledger's rule, not ours. -#}
+					{%- if can_delete_invoice %}
+					<button class="btn btn--outline btn--sm" style="color:#b3261e"
+						onclick="deleteInvoice('{{ i.name }}', {{ i.docstatus }})">Delete</button>
+					{%- endif %}
+				</td>
+			</tr>
+		{%- endfor %}
+		</tbody>
+	</table>
+	{%- else %}<div class="empty">No sales invoices yet.</div>{% endif %}
+</div></div>
+
+{{ call_method_js() }}
+<script>
+function dispatch(so, serials) {
+	if (!confirm("Dispatch " + so + (serials && serials.length ? " with " + serials.length + " trailer(s)?" : "?"))) return;
+	tradingAction("a3_trading_management.api.selling.dispatch_serial",
+		{ sales_order: so, serials: JSON.stringify(serials || []) }, "Delivery note created.");
+}
+function invoice(dn) {
+	if (!confirm("Invoice delivery " + dn + "?")) return;
+	tradingAction("a3_trading_management.api.selling.invoice_delivery",
+		{ delivery_note: dn }, "Sales invoice created, carrying the serial and chassis number.");
+}
+function deleteInvoice(name, docstatus) {
+	if (docstatus === 1) {
+		alert("Sales invoice " + name + " is posted to the ledger. Cancel it first — a posted invoice cannot simply be deleted.");
+		return;
+	}
+	if (!confirm("Delete sales invoice " + name + "?\n\nThis cannot be undone.")) return;
+	if (!confirm("Confirm once more: permanently delete " + name + "?")) return;
+	tradingAction("a3_trading_management.api.selling.delete_sales_invoice",
+		{ name: name, confirm: 1 }, "Sales invoice " + name + " deleted.");
+}
+function receive(si, outstanding) {
+	var amt = prompt("Receive against " + si + "\nOutstanding: " + outstanding + "\nAmount:", outstanding);
+	if (!amt) return;
+	tradingAction("a3_trading_management.api.selling.receive_against_invoice",
+		{ sales_invoice: si, amount: amt }, "Receipt drafted — submit it on Payments & Receipts.");
+}
+</script>
+{{ doc_modals() }}
+{% endblock %}
