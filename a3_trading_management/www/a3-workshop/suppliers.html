@@ -1,0 +1,156 @@
+{% extends "templates/workshop_base.html" %}
+{% from "templates/macros/trading.html" import status_pill, filter_bar, filter_script, stat_row %}
+
+{% block page_content %}
+{#- Supplier list and profile, carrying the trade licence, VAT certificate and
+    establishment expiry dates and the compliance status and score. The same
+    compliance_state() that decides the colour here is what blocks a purchase
+    order in a3_trading_management.api.buying, so the two cannot disagree. -#}
+
+{{ stat_row([
+	{"label": "Suppliers", "value": suppliers | length, "sub": "On the books"},
+	{"label": "Clear", "value": suppliers | selectattr("compliance.state", "equalto", "Clear") | list | length, "sub": "Can be ordered from"},
+	{"label": "Expiring", "value": expiring | length, "sub": "Papers lapse within 30 days"},
+	{"label": "Blocked", "value": blocked | length, "sub": "Cannot receive an order"},
+]) }}
+
+<div class="toolbar">
+	<div class="section-title" style="margin:0">Suppliers</div>
+	<div class="toolbar__right">
+		<button type="button" class="btn btn--primary btn--sm" id="sp-add"><i class="fa-solid fa-plus"></i> New Supplier</button>
+	</div>
+</div>
+
+{%- if blocked %}
+<div class="card" style="margin-bottom:14px;border-left:4px solid #b3261e">
+	<div class="card__body">
+		<b>{{ blocked | length }} supplier(s) cannot receive a purchase order.</b>
+		<div class="muted" style="font-size:12px;margin-top:4px">
+			{%- for s in blocked[:6] %}{{ s.supplier_name or s.name }}
+				({{ s.compliance.expired | join(", ") or s.custom_compliance_status }}){% if not loop.last %} &middot; {% endif %}
+			{%- endfor %}
+		</div>
+	</div>
+</div>
+{%- endif %}
+
+{{ filter_bar("Search supplier name or code…", [
+	{"key": "state", "label": "All compliance states", "options": ["Clear", "Expiring", "Blocked"]}
+]) }}
+
+<div class="card"><div class="card__body" style="overflow-x:auto">
+	{%- if suppliers %}
+	<table class="table" id="tf-table">
+		<thead><tr>
+			<th>Supplier</th><th>Group</th><th>Compliance</th><th>Score</th>
+			<th>Trade Licence</th><th>VAT Certificate</th><th>Establishment</th><th>Orders</th>
+		</tr></thead>
+		<tbody>
+		{%- for s in suppliers %}
+			<tr data-hay="{{ ((s.name or '') ~ ' ' ~ (s.supplier_name or '')) | lower }}"
+				data-state="{{ s.compliance.state }}">
+				<td><b>{{ s.supplier_name or s.name }}</b>
+					<div class="muted" style="font-size:11px">{{ s.name }}</div></td>
+				<td>{{ s.supplier_group or "—" }}</td>
+				<td>{{ status_pill(s.compliance.state) }}
+					{%- if s.compliance.expired %}
+					<div class="muted" style="font-size:11px">lapsed: {{ s.compliance.expired | join(", ") }}</div>
+					{%- elif s.compliance.expiring_soon %}
+					<div class="muted" style="font-size:11px">{{ s.compliance.expiring_soon | join(", ") }}</div>
+					{%- endif %}</td>
+				<td class="num">{{ "%.0f%%" | format(s.custom_compliance_score or 0) }}</td>
+				<td>{{ frappe.utils.formatdate(s.custom_compliance_trade_license_expiry, "dd MMM yyyy") if s.custom_compliance_trade_license_expiry else "—" }}</td>
+				<td>{{ frappe.utils.formatdate(s.custom_compliance_vat_cert_expiry, "dd MMM yyyy") if s.custom_compliance_vat_cert_expiry else "—" }}</td>
+				<td>{{ frappe.utils.formatdate(s.custom_compliance_establishment_expiry, "dd MMM yyyy") if s.custom_compliance_establishment_expiry else "—" }}</td>
+				<td><button type="button" class="btn btn--outline btn--sm" data-edit
+					data-name="{{ s.name }}" data-supplier="{{ s.supplier_name or s.name }}"
+					data-tl="{{ s.custom_compliance_trade_license_expiry or '' }}" data-vat="{{ s.custom_compliance_vat_cert_expiry or '' }}"
+					data-est="{{ s.custom_compliance_establishment_expiry or '' }}" data-status="{{ s.custom_compliance_status or '' }}">Update papers</button></td>
+			</tr>
+		{%- endfor %}
+		</tbody>
+	</table>
+	{%- else %}
+	<div class="empty">No suppliers yet.</div>
+	{%- endif %}
+</div></div>
+
+<!-- Add / update supplier: what buying needs to know, and the three papers the
+     purchase-order gate reads. -->
+<div class="modal-overlay" id="sp-modal" role="dialog" aria-modal="true" aria-labelledby="sp-title">
+	<div class="modal">
+		<div class="modal__head">
+			<div><h3 id="sp-title">New Supplier</h3><div class="sub" id="sp-sub">Name, contact and the three papers. Orders are refused while a paper is lapsed.</div></div>
+			<button type="button" class="modal__close" data-close><i class="fa-solid fa-xmark"></i></button>
+		</div>
+		<div class="modal__body">
+			<form class="form-grid" id="sp-form" autocomplete="off">
+				<input type="hidden" id="sp-name">
+				<div class="field field--full" id="sp-name-field"><label>Supplier name <span class="req">*</span></label><input id="sp-supplier" required placeholder="Company name"></div>
+				<div class="field" id="sp-mobile-field"><label>Mobile</label><input id="sp-mobile"></div>
+				<div class="field" id="sp-email-field"><label>Email</label><input id="sp-email" type="email"></div>
+				<div class="field field--full" id="sp-trn-field"><label>TRN / VAT number</label><input id="sp-trn" placeholder="15 digits"></div>
+				<div class="field"><label>Trade licence expires</label><input id="sp-tl" type="date"></div>
+				<div class="field"><label>VAT certificate expires</label><input id="sp-vat" type="date"></div>
+				<div class="field"><label>Establishment card expires</label><input id="sp-est" type="date"></div>
+				<div class="field"><label>Compliance status</label>
+					<select id="sp-status">
+						<option value="">— keep as is —</option>
+						{%- for o in ["Not Onboarded", "Documents Pending", "Under Review", "Compliant", "Suspended", "Rejected"] %}<option value="{{ o }}">{{ o }}</option>{% endfor %}
+					</select></div>
+				<div class="field field--full" id="sp-error" style="color:#b3261e;display:none"></div>
+			</form>
+		</div>
+		<div class="modal__foot">
+			<button type="button" class="btn btn--outline" data-close>Cancel</button>
+			<button type="button" class="btn btn--primary" id="sp-save"><i class="fa-solid fa-check"></i> Save</button>
+		</div>
+	</div>
+</div>
+<script>
+(function () {
+	var modal = document.getElementById("sp-modal"), editing = null;
+	function $(id) { return document.getElementById(id); }
+	function open(row) {
+		editing = row ? row.name : null;
+		$("sp-form").reset(); $("sp-error").style.display = "none";
+		$("sp-title").textContent = row ? "Update papers — " + row.supplier : "New Supplier";
+		["sp-name-field", "sp-mobile-field", "sp-email-field", "sp-trn-field"].forEach(function (id) { $(id).style.display = row ? "none" : ""; });
+		if (row) { $("sp-tl").value = row.tl || ""; $("sp-vat").value = row.vat || ""; $("sp-est").value = row.est || ""; $("sp-status").value = row.status || ""; }
+		modal.classList.add("is-open"); document.body.style.overflow = "hidden";
+		setTimeout(function () { (row ? $("sp-tl") : $("sp-supplier")).focus(); }, 50);
+	}
+	function close() { modal.classList.remove("is-open"); document.body.style.overflow = ""; }
+	$("sp-add").addEventListener("click", function () { open(null); });
+	document.querySelectorAll("[data-edit]").forEach(function (b) { b.addEventListener("click", function () { open(b.dataset); }); });
+	modal.querySelectorAll("[data-close]").forEach(function (b) { b.addEventListener("click", close); });
+	modal.addEventListener("click", function (e) { if (e.target === modal) close(); });
+	document.addEventListener("keydown", function (e) { if (e.key === "Escape" && modal.classList.contains("is-open")) close(); });
+	function post(method, args) {
+		return fetch("/api/method/" + method, {
+			method: "POST", credentials: "same-origin",
+			headers: { "Content-Type": "application/json", "Accept": "application/json", "X-Frappe-CSRF-Token": (window.frappe && frappe.csrf_token) || "{{ csrf_token or '' }}" },
+			body: JSON.stringify(args || {})
+		}).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, body: j }; }); }).then(function (x) {
+			if (x.ok) return x.body.message;
+			var msg = x.body.exception || x.body.message || "Request failed";
+			try { var sm = JSON.parse(x.body._server_messages || "[]"); if (sm.length) msg = JSON.parse(sm[0]).message || msg; } catch (e) {}
+			throw new Error(String(msg).replace(/<[^>]+>/g, ""));
+		});
+	}
+	$("sp-save").addEventListener("click", function () {
+		var err = $("sp-error"), btn = this;
+		if (!editing && !$("sp-supplier").value.trim()) { err.textContent = "Supplier name is required."; err.style.display = "block"; return; }
+		btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving…';
+		post("a3_trading_management.api.buying.save_supplier", {
+			name: editing, supplier_name: $("sp-supplier").value, mobile_no: $("sp-mobile").value, email_id: $("sp-email").value, tax_id: $("sp-trn").value,
+			trade_license_expiry: $("sp-tl").value, vat_cert_expiry: $("sp-vat").value, establishment_expiry: $("sp-est").value,
+			compliance_status: $("sp-status").value || null
+		}).then(function () { location.reload(); })
+		.catch(function (e) { err.textContent = e.message; err.style.display = "block"; btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-check"></i> Save'; });
+	});
+})();
+</script>
+
+{{ filter_script() }}
+{% endblock %}

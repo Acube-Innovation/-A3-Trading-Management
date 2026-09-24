@@ -25,6 +25,27 @@ CUSTOM_FIELDS = {
 	],
 }
 
+# Task 18 — the hold that keeps a bill OUT of the ledger.
+# ERPNext's own `on_hold` is a payment hold and can only be set AFTER submitting
+# ("Purchase Invoice can be held after submitting"), so it cannot express "hold
+# this before it posts". This is a separate, draft-stage gate.
+CUSTOM_FIELDS["Purchase Invoice"] = [
+	{
+		"fieldname": "custom_approval_hold",
+		"fieldtype": "Check",
+		"label": "Held for Approval",
+		"insert_after": "supplier_name",
+		"description": "A bill on hold cannot be approved into the ledger.",
+	},
+	{
+		"fieldname": "custom_hold_reason",
+		"fieldtype": "Small Text",
+		"label": "Hold Reason",
+		"insert_after": "custom_approval_hold",
+		"depends_on": "custom_approval_hold",
+	},
+]
+
 
 def after_install():
 	setup_custom_fields()
