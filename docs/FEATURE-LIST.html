@@ -1,0 +1,775 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>A3 Trading Feature List</title>
+<style>
+:root {
+	--ink: #1b2430;
+	--muted: #5b6675;
+	--line: #d9dee5;
+	--soft: #f3f5f8;
+	--accent: #0f5c8c;
+	--accent-soft: #e6f0f7;
+	--warn: #9a4a00;
+	--warn-soft: #fdf1e4;
+	--ok: #1d6b3a;
+	--ok-soft: #e7f4ec;
+}
+@page {
+	size: A4;
+	margin: 18mm 16mm 20mm 16mm;
+	@bottom-left { content: "A3 Trading Management · Feature List"; font: 8pt Lato, sans-serif; color: #5b6675; }
+	@bottom-right { content: "Page " counter(page) " of " counter(pages); font: 8pt Lato, sans-serif; color: #5b6675; }
+}
+@page :first {
+	@bottom-left { content: none; }
+	@bottom-right { content: none; }
+}
+* { box-sizing: border-box; }
+html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+body {
+	margin: 0;
+	background: #fff;
+	color: var(--ink);
+	font: 10pt/1.5 Lato, "Liberation Sans", sans-serif;
+}
+h1, h2, h3, h4 { line-height: 1.2; margin: 0; }
+h2 {
+	font-size: 17pt;
+	color: var(--accent);
+	margin: 0 0 4mm;
+	padding-bottom: 2mm;
+	border-bottom: 2px solid var(--accent);
+}
+h2 .num { color: var(--muted); font-weight: 400; margin-right: 2mm; }
+h3 { font-size: 12.5pt; margin: 6mm 0 2mm; }
+h4 { font-size: 10pt; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 3mm 0 1mm; }
+p { margin: 0 0 2.5mm; }
+ul { margin: 0 0 2.5mm; padding-left: 5mm; }
+li { margin: 0 0 1mm; }
+b, strong { font-weight: 700; }
+.muted { color: var(--muted); }
+section { break-before: auto; margin-top: 9mm; }
+section.page { break-before: page; margin-top: 0; }
+h2, h3, h4, .where { break-after: avoid; }
+p { break-inside: avoid; }
+
+/* cover */
+.cover { height: 257mm; display: flex; flex-direction: column; justify-content: space-between; }
+.cover .band { background: var(--accent); color: #fff; padding: 16mm 12mm 14mm; border-radius: 3mm; }
+.cover .kicker { font-size: 10pt; letter-spacing: .12em; text-transform: uppercase; opacity: .85; }
+.cover h1 { font-size: 32pt; margin: 4mm 0 3mm; font-weight: 900; }
+.cover .sub { font-size: 13pt; opacity: .95; max-width: 150mm; }
+.cover .lead { font-size: 11.5pt; max-width: 165mm; margin-top: 10mm; }
+.cover .meta { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4mm; font-size: 9pt; }
+.cover .meta div { border-top: 2px solid var(--line); padding-top: 2mm; }
+.cover .meta b { display: block; font-size: 8pt; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 700; }
+
+/* contents */
+.toc { columns: 2; column-gap: 10mm; padding: 0; list-style: none; margin-top: 8mm; }
+.toc li { break-inside: avoid; padding: 1.5mm 0; border-bottom: 1px dotted var(--line); }
+.toc .n { display: inline-block; width: 8mm; color: var(--accent); font-weight: 700; }
+
+/* boxes */
+.idea { background: var(--accent-soft); border-left: 4px solid var(--accent); padding: 3mm 4mm; margin: 3mm 0 4mm; border-radius: 0 2mm 2mm 0; }
+.idea b { color: var(--accent); }
+.note { background: var(--warn-soft); border-left: 4px solid var(--warn); padding: 3mm 4mm; margin: 3mm 0; border-radius: 0 2mm 2mm 0; }
+.stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 3mm; margin: 4mm 0; }
+.stats div { background: var(--soft); border-radius: 2mm; padding: 3mm; text-align: center; }
+.stats .v { font-size: 20pt; font-weight: 900; color: var(--accent); display: block; line-height: 1.1; }
+.stats .l { font-size: 8.5pt; color: var(--muted); }
+
+/* lifecycle */
+.flowline { display: flex; gap: 1.5mm; margin: 4mm 0; }
+.flowline div { flex: 1; background: var(--soft); border-top: 3px solid var(--accent); padding: 2.5mm 2mm; font-size: 8.5pt; border-radius: 0 0 1.5mm 1.5mm; }
+.flowline b { display: block; font-size: 9.5pt; color: var(--accent); margin-bottom: .5mm; }
+.stages { display: flex; align-items: center; gap: 1mm; margin: 2mm 0 3mm; font-size: 9pt; }
+.stages span.s { background: var(--accent); color: #fff; padding: 1mm 2.5mm; border-radius: 3mm; font-weight: 700; }
+.stages span.a { color: var(--muted); }
+
+/* feature card */
+.feature { break-inside: avoid; border: 1px solid var(--line); border-radius: 2mm; padding: 3.5mm 4mm 2mm; margin: 0 0 4mm; }
+.feature h3 { margin: 0 0 1.5mm; color: var(--ink); }
+.feature .where { font-size: 8.5pt; color: var(--muted); margin-bottom: 2mm; }
+.feature .where b { color: var(--accent); }
+.cols { display: grid; grid-template-columns: 1fr 1fr; gap: 5mm; }
+
+/* tables */
+table { width: 100%; border-collapse: collapse; margin: 2mm 0 4mm; font-size: 9pt; }
+th { text-align: left; background: var(--soft); font-weight: 700; padding: 2mm; border-bottom: 1.5px solid var(--line); }
+td { padding: 1.8mm 2mm; border-bottom: 1px solid var(--line); vertical-align: top; }
+tr { break-inside: avoid; }
+td:first-child { font-weight: 700; }
+.ops td:first-child { white-space: nowrap; }
+code { font: 8.5pt "DejaVu Sans Mono", monospace; background: var(--soft); padding: .2mm 1mm; border-radius: 1mm; }
+.pill { display: inline-block; font-size: 8pt; font-weight: 700; padding: .3mm 2mm; border-radius: 3mm; }
+.pill.ok { background: var(--ok-soft); color: var(--ok); }
+.pill.warn { background: var(--warn-soft); color: var(--warn); }
+.pill.info { background: var(--accent-soft); color: var(--accent); }
+</style>
+</head>
+<body>
+
+<!-- ============ COVER ============ -->
+<div class="cover">
+	<div>
+		<div class="band">
+			<div class="kicker">Feature list · Operations · Functions</div>
+			<h1>A3 Trading Management</h1>
+			<div class="sub">Trailer trading and manufacturing on ERPNext — buying, building, chassis control, stock, selling and accounts in one portal.</div>
+		</div>
+		<p class="lead">This document describes everything the system does: each screen, what it is for, the operations you can carry out on it, and the rules the system enforces. It is written so that someone who has never used the system can understand what it offers and how a trailer moves through it from the first purchase to after-sales warranty.</p>
+
+		<ul class="toc">
+			<li><span class="n">1</span>The system in one page</li>
+			<li><span class="n">2</span>How a trailer moves through the system</li>
+			<li><span class="n">3</span>The portal and how you work in it</li>
+			<li><span class="n">4</span>Home dashboard</li>
+			<li><span class="n">5</span>Buying</li>
+			<li><span class="n">6</span>Suppliers and compliance</li>
+			<li><span class="n">7</span>Manufacturing</li>
+			<li><span class="n">8</span>Chassis numbers and serial control</li>
+			<li><span class="n">9</span>Selling and delivery</li>
+			<li><span class="n">10</span>Money and accounts</li>
+			<li><span class="n">11</span>Live Stock</li>
+			<li><span class="n">12</span>Customers</li>
+			<li><span class="n">13</span>Background functions</li>
+			<li><span class="n">14</span>Built-in rules and safeguards</li>
+			<li><span class="n">15</span>Statuses and document numbers</li>
+			<li><span class="n">16</span>Who does what</li>
+			<li><span class="n">17</span>Setup before first use</li>
+			<li><span class="n">18</span>Scope: what is not included</li>
+		</ul>
+	</div>
+	<div class="meta">
+		<div><b>Product</b>A3 Trading Management</div>
+		<div><b>Platform</b>Frappe / ERPNext</div>
+		<div><b>Version of</b>24 September 2026</div>
+	</div>
+</div>
+
+<!-- ============ 1 ============ -->
+<section class="page">
+	<h2><span class="num">1</span>The system in one page</h2>
+	<p>A3 buys material from suppliers, builds trailers from it, gives every trailer its own chassis number, holds finished trailers in stock, sells them to customers, delivers and invoices them, and keeps the warranty on record afterwards. A3 Trading Management runs that whole business on ERPNext, through a portal made for daily use.</p>
+
+	<div class="idea"><b>The central idea:</b> a trailer is an individual, not a quantity. The moment A3 decides to build one, it receives a chassis number, and that number follows it through the whole system: the plate in the fabrication bay, the stock list, the sales reservation, the delivery note, the invoice and the warranty record. A3 never sells "3 flatbeds"; it sells chassis <b>A3-26-000296</b>.</div>
+
+	<div class="stats">
+		<div><span class="v">8</span><span class="l">portal menu entries</span></div>
+		<div><span class="v">9</span><span class="l">buying, selling &amp; accounts screens</span></div>
+		<div><span class="v">6</span><span class="l">production stages per trailer</span></div>
+		<div><span class="v">1</span><span class="l">set of books: the standard ERPNext ledger</span></div>
+	</div>
+
+	<h3>Main capabilities</h3>
+	<div class="cols">
+		<ul>
+			<li><b>Buying:</b> requisitions, purchase orders, goods receipt, supplier bills with an approval hold, supplier payments.</li>
+			<li><b>Supplier compliance:</b> licence, VAT and establishment expiry tracking; orders to lapsed suppliers are refused.</li>
+			<li><b>Manufacturing:</b> work orders with a material check, build to stock or to a customer order, six tracked production stages and a printed traveler.</li>
+			<li><b>Chassis and serial control:</b> chassis numbers issued automatically from a configurable format, frozen once issued, never reused.</li>
+		</ul>
+		<ul>
+			<li><b>Selling:</b> sales orders that reserve a specific chassis, build-to-order, dispatch and invoicing that carry the chassis number.</li>
+			<li><b>Accounts:</b> customer receipts, supplier payments, journal entries, receivables and payables — all on the standard ledger.</li>
+			<li><b>Live Stock:</b> stock value, stock by warehouse, low-stock alerts with one-click requisitions, trailers listed by chassis.</li>
+			<li><b>Dashboard:</b> trailers in stock and in production, deliveries, revenue and money owed each way.</li>
+		</ul>
+	</div>
+
+	<h3>No separate books</h3>
+	<p>Every portal screen is a view onto standard ERPNext documents. Approving a purchase invoice in the portal submits the real Purchase Invoice; posting a journal submits the real Journal Entry. The figures on the portal are the same figures the accountant sees in ERPNext's own reports.</p>
+
+	<h3>Draft first, then approved</h3>
+	<p>Almost every document has two states. Saved, it is a <b>draft</b>: it can still be changed or deleted and has no effect on stock or money. Approved (ERPNext calls this <b>Submit</b>), it is <b>posted</b>: stock moves, money is owed, and it can no longer be edited. A posted document is undone by cancelling it and, if needed, amending a copy. Nothing counts until a person approves it.</p>
+</section>
+
+<!-- ============ 2 ============ -->
+<section class="page">
+	<h2><span class="num">2</span>How a trailer moves through the system</h2>
+	<p>The whole business is one chain. Each link is a screen in the portal, and each hands its result to the next.</p>
+
+	<div class="flowline">
+		<div><b>Buy</b>Material is requisitioned, ordered, received and billed</div>
+		<div><b>Build</b>A work order issues the chassis numbers</div>
+		<div><b>Stages</b>The trailer moves through six production stages</div>
+		<div><b>Stock</b>The finished trailer enters the Finished Goods yard</div>
+		<div><b>Sell</b>A sales order reserves a specific chassis</div>
+		<div><b>Deliver</b>Delivery note and invoice carry the chassis</div>
+		<div><b>Warranty</b>Start and expiry held on the same number</div>
+	</div>
+
+	<h3>The full cycle, step by step</h3>
+	<table class="ops">
+		<tr><th style="width:6mm">#</th><th style="width:48mm">Step</th><th style="width:42mm">Screen</th><th>What happens</th></tr>
+		<tr><td>1</td><td>Request material</td><td>Requisitions</td><td>A requisition lists the items and quantities needed and the yard they go to. It is approved, rejected, or turned into a purchase order.</td></tr>
+		<tr><td>2</td><td>Order it</td><td>Purchase Orders</td><td>The order is checked (prices, supplier compliance) and approved. It now waits to be received and billed.</td></tr>
+		<tr><td>3</td><td>Receive it</td><td>Goods Receipt</td><td>A receipt is drafted with the ordered quantities, corrected if less arrived, and submitted. The stock is now in the Stores yard.</td></tr>
+		<tr><td>4</td><td>Get the bill</td><td>Purchase Invoices</td><td>The supplier's bill is raised from the receipt. It can be put on hold with a reason, released, then approved into the ledger.</td></tr>
+		<tr><td>5</td><td>Pay the supplier</td><td>Supplier Payments</td><td>A full or part payment is drafted against the bill and submitted when the money goes.</td></tr>
+		<tr><td>6</td><td>Raise the work order</td><td>Manufacturing</td><td>The system checks material availability, then issues one chassis number and one trailer record per unit, reserved to the work order.</td></tr>
+		<tr><td>7</td><td>Emboss the plates</td><td>Chassis Plates</td><td>An embossing sheet is printed for the fabrication bay; once struck, the plates are marked embossed.</td></tr>
+		<tr><td>8</td><td>Build through six stages</td><td>Manufacturing</td><td>The work order moves Material → Fabrication → Assembly → Paint → QC → Delivery. The last move completes it and posts the trailers into Finished Goods.</td></tr>
+		<tr><td>9</td><td>Take the customer's order</td><td>Sales Orders</td><td>A sales order is created and confirmed.</td></tr>
+		<tr><td>10</td><td>Reserve or build a trailer</td><td>Sales Orders</td><td>A specific in-stock chassis is reserved to the order, or a new work order is raised for it (build to order).</td></tr>
+		<tr><td>11</td><td>Dispatch it</td><td>Delivery &amp; Invoice</td><td>A delivery note carrying the chassis is created and submitted when the trailer leaves the yard. The customer becomes its owner.</td></tr>
+		<tr><td>12</td><td>Invoice it</td><td>Delivery &amp; Invoice</td><td>The sales invoice is made from the delivery note and carries the chassis number.</td></tr>
+		<tr><td>13</td><td>Receive payment</td><td>Payments &amp; Receipts</td><td>A full or part receipt is recorded against the invoice.</td></tr>
+		<tr><td>14</td><td>Warranty</td><td>Serial Register</td><td>Warranty start and expiry dates are held on the trailer's record for life.</td></tr>
+	</table>
+	<p class="muted">This same chain is automated as an end-to-end test that posts every document in order and fails loudly if any link breaks.</p>
+</section>
+
+<!-- ============ 3 ============ -->
+<section class="page">
+	<h2><span class="num">3</span>The portal and how you work in it</h2>
+	<p>The portal is the daily workspace. It opens at the site's home address after login and has a fixed left-hand menu of eight entries. Buying, selling and accounts screens are grouped under one entry, <b>Transactions</b>.</p>
+
+	<table>
+		<tr><th style="width:36mm">Menu entry</th><th>What it is for</th><th style="width:36mm">Typical user</th></tr>
+		<tr><td>Home</td><td>The business at a glance: trailers in stock and in production, deliveries and revenue, money owed each way, open work orders, recent deliveries, low stock.</td><td>Everyone</td></tr>
+		<tr><td>Customers</td><td>Customer list with orders placed and total spent; add and edit customers.</td><td>Sales</td></tr>
+		<tr><td>Manufacturing</td><td>Work orders from creation to "Delivered — added to stock": material check, six stages, notes, stage history, costing, traveler print.</td><td>Production supervisor</td></tr>
+		<tr><td>Serial Register</td><td>Every chassis number ever issued, searchable and filterable, with stage, status, owner, plate and warranty.</td><td>Everyone</td></tr>
+		<tr><td>Chassis Plates</td><td>The embossing sheet for the fabrication bay; records the embossing step.</td><td>Fabrication</td></tr>
+		<tr><td>Suppliers</td><td>Supplier list with compliance position (Clear, Expiring, Blocked) and paper expiry dates.</td><td>Purchasing</td></tr>
+		<tr><td>Transactions</td><td>The nine buying, selling and accounts screens, grouped on one page.</td><td>Purchasing, accounts, sales</td></tr>
+		<tr><td>Live Stock</td><td>Stock value, items in stock, low-stock alerts, open requisitions, payments missing, stock by yard, trailers by chassis.</td><td>Stores, manager</td></tr>
+	</table>
+
+	<h3>Screens under Transactions</h3>
+	<div class="cols">
+		<div>
+			<h4>Buying</h4>
+			<ul><li>Purchase Requisitions</li><li>Purchase Orders</li><li>Goods Receipt</li><li>Purchase Invoices</li><li>Supplier Payments</li></ul>
+		</div>
+		<div>
+			<h4>Selling and accounts</h4>
+			<ul><li>Sales Orders</li><li>Delivery &amp; Invoice</li><li>Payments &amp; Receipts</li><li>Journal Entries</li></ul>
+		</div>
+	</div>
+
+	<h3>Common features of every portal screen</h3>
+	<ul>
+		<li><b>Summary figures at the top</b> — live totals for that screen (how many are waiting, how much is outstanding) so you see where you stand before scrolling.</li>
+		<li><b>Search and filters</b> on every list, and a count of the records shown.</li>
+		<li><b>Action buttons on each row</b> that move a document to its next step (Approve, Receive, Bill, Pay, Reserve, Dispatch, Invoice…). Each asks for confirmation before it posts anything.</li>
+		<li><b>New / Open</b> opens the full standard ERPNext form in a new tab, where every field is available. Save, close the tab, and the document appears on the portal list.</li>
+		<li><b>Clear refusals</b> — when a rule stops an action, the screen says why and what to do (see section 14).</li>
+		<li><b>Role selection</b> — a user with more than one role can choose how they want to use the system.</li>
+		<li><b>Old links are redirected</b> — addresses of screens from the earlier workshop product land on the portal home instead of failing.</li>
+	</ul>
+</section>
+
+<!-- ============ 4 ============ -->
+<section>
+	<h2><span class="num">4</span>Home dashboard</h2>
+	<p>The first screen after login. It answers "where does the business stand today?" without opening anything.</p>
+
+	<div class="feature">
+		<h3>Headline figures</h3>
+		<table>
+			<tr><th style="width:40mm">Tile</th><th>Shows</th></tr>
+			<tr><td>Trailers in Stock</td><td>Finished trailers that are free to sell.</td></tr>
+			<tr><td>In Production</td><td>Trailers on the floor at any of the six stages.</td></tr>
+			<tr><td>Delivered</td><td>Trailer deliveries this month.</td></tr>
+			<tr><td>Revenue</td><td>Invoiced revenue this month.</td></tr>
+			<tr><td>Owed to Us</td><td>Customer receivables outstanding.</td></tr>
+			<tr><td>Owed by Us</td><td>Supplier payables outstanding.</td></tr>
+		</table>
+	</div>
+	<div class="feature">
+		<h3>Panels</h3>
+		<ul>
+			<li><b>Production Board / Trailers on the Floor</b> — how many trailers are at each stage.</li>
+			<li><b>Open work orders</b> — work order, trailer, stage and progress, with a link to Manufacturing.</li>
+			<li><b>Recent Deliveries</b> — date, customer, trailer and chassis of the latest dispatches.</li>
+			<li><b>Low Stock</b> — items at or below their reorder level, with what is available, linked to Live Stock.</li>
+		</ul>
+	</div>
+</section>
+
+<!-- ============ 5 ============ -->
+<section class="page">
+	<h2><span class="num">5</span>Buying</h2>
+	<p>From a request for material to paying the supplier. Five screens, each handing its document to the next.</p>
+
+	<div class="feature">
+		<h3>Purchase Requisitions</h3>
+		<div class="where">Transactions › Requisitions · creates <b>MAT-MR-…</b></div>
+		<p>A request for material ("we need 20 sheets of steel"), not yet an order.</p>
+		<table class="ops">
+			<tr><th style="width:34mm">Operation</th><th>What it does</th></tr>
+			<tr><td>New Requisition</td><td>Items, quantities and the destination yard (usually Stores).</td></tr>
+			<tr><td>Approve</td><td>Marks the requisition approved.</td></tr>
+			<tr><td>Reject</td><td>Removes it, with a reason recorded.</td></tr>
+			<tr><td>To Order</td><td>Asks which supplier and converts the requisition into a draft purchase order.</td></tr>
+		</table>
+		<p class="muted">Summary: Requisitions · Awaiting Approval · Approved. Requisitions can also be raised from Live Stock's low-stock alerts and from a work order's material shortfall.</p>
+	</div>
+
+	<div class="feature">
+		<h3>Purchase Orders</h3>
+		<div class="where">Transactions › Purchase Orders · creates <b>PUR-ORD-…</b></div>
+		<table class="ops">
+			<tr><th style="width:34mm">Operation</th><th>What it does</th></tr>
+			<tr><td>New Order</td><td>Starts an order from scratch (or one arrives from a requisition's To Order).</td></tr>
+			<tr><td>Open / edit rates</td><td>Check and correct prices. An order from a requisition takes the item's buying price; if none exists the rate is typed in.</td></tr>
+			<tr><td>Approve</td><td>Submits the order; status becomes <i>To Receive and Bill</i> and a Receive button appears.</td></tr>
+			<tr><td>Cancel</td><td>Cancels an approved order.</td></tr>
+		</table>
+		<p><b>Rule:</b> an order to a supplier whose papers have lapsed or whose status is not compliant is refused, with the reason. The check runs wherever an order is made, including the standard form and imports.</p>
+		<p class="muted">Summary: Order Value of approved orders.</p>
+	</div>
+
+	<div class="feature">
+		<h3>Goods Receipt</h3>
+		<div class="where">Transactions › Goods Receipt · creates <b>MAT-PRE-…</b></div>
+		<table class="ops">
+			<tr><th style="width:34mm">Operation</th><th>What it does</th></tr>
+			<tr><td>Receive</td><td>On an order under <i>Awaiting Receipt</i>, drafts a receipt with the ordered quantities.</td></tr>
+			<tr><td>Edit quantities</td><td>Correct for short delivery or rejected items.</td></tr>
+			<tr><td>Submit</td><td>Posts the stock into the yard. The receipt gains a Bill button.</td></tr>
+		</table>
+	</div>
+
+	<div class="feature">
+		<h3>Purchase Invoices — with an approval hold</h3>
+		<div class="where">Transactions › Purchase Invoices · creates <b>ACC-PINV-…</b></div>
+		<table class="ops">
+			<tr><th style="width:34mm">Operation</th><th>What it does</th></tr>
+			<tr><td>Bill</td><td>Raises a draft purchase invoice from a goods receipt.</td></tr>
+			<tr><td>Hold</td><td>Parks the draft with a typed reason; the row shows <span class="pill warn">On Hold</span>.</td></tr>
+			<tr><td>Release</td><td>Clears the hold.</td></tr>
+			<tr><td>Approve</td><td>Posts the bill to the ledger. Refused while on hold.</td></tr>
+			<tr><td>Pay</td><td>Shows the outstanding amount and drafts a full or part payment.</td></tr>
+		</table>
+		<div class="note"><b>Why the hold matters:</b> ERPNext's own hold can only be set after a bill has already posted. A3's "Held for Approval" gate keeps a questionable bill out of the books entirely until someone releases it.</div>
+	</div>
+
+	<div class="feature">
+		<h3>Supplier Payments</h3>
+		<div class="where">Transactions › Supplier Payments · creates <b>ACC-PAY-…</b></div>
+		<ul>
+			<li>Lists payments drafted from bills; <b>Submit</b> once the money has gone.</li>
+			<li>Shows <b>Owed to Suppliers</b> and each supplier's balance <b>aged</b> by how long each bill has been waiting.</li>
+			<li>A paid bill reads <span class="pill ok">Paid</span>. A bill that totals zero (order had no prices) cannot be paid and says so.</li>
+		</ul>
+	</div>
+</section>
+
+<!-- ============ 6 ============ -->
+<section class="page">
+	<h2><span class="num">6</span>Suppliers and compliance</h2>
+	<p>A3 may only buy from suppliers whose papers are in date. The system tracks them and enforces it.</p>
+	<div class="feature">
+		<h3>Suppliers screen</h3>
+		<div class="where">Menu › Suppliers</div>
+		<ul>
+			<li>Supplier list with contact details, balances and compliance position.</li>
+			<li>Add and edit suppliers, including their compliance papers.</li>
+			<li>Each supplier shows one of three positions:
+				<span class="pill ok">Clear</span> papers in date, orders allowed ·
+				<span class="pill warn">Expiring</span> a paper lapses within 30 days ·
+				<span class="pill" style="background:#fbe7e7;color:#9b1c1c">Blocked</span> orders refused.</li>
+		</ul>
+		<h4>Compliance data held on each supplier</h4>
+		<ul>
+			<li>Trade licence expiry date</li>
+			<li>VAT certificate expiry date and whether VAT input is eligible</li>
+			<li>Establishment card expiry date</li>
+			<li>Compliance status, compliance score and country</li>
+			<li>Whether non-compliance blocks purchase orders</li>
+		</ul>
+	</div>
+	<div class="idea"><b>Enforcement:</b> every purchase order is checked when it is saved. If any paper has lapsed, or the status is not compliant, the order is refused with the exact reason, e.g. <i>"Purchase Order cannot be raised for &lt;supplier&gt;: lapsed: trade licence …"</i>.</div>
+</section>
+
+<!-- ============ 7 ============ -->
+<section>
+	<h2><span class="num">7</span>Manufacturing</h2>
+	<p>Where trailers are built. A work order is the instruction to build a number of trailers of one model, either to stock or for a named customer order. Raising it is also the moment chassis numbers are issued.</p>
+
+	<div class="feature">
+		<h3>Creating a work order</h3>
+		<div class="where">Manufacturing › New · creates <b>MFG-WO-…</b></div>
+		<table class="ops">
+			<tr><th style="width:40mm">Field / feature</th><th>Function</th></tr>
+			<tr><td>Item to be manufactured</td><td>Search for the trailer model; only items with an active bill of materials (BOM) are offered.</td></tr>
+			<tr><td>BOM</td><td>The parts list and operations; the default BOM is chosen automatically.</td></tr>
+			<tr><td>Quantity &amp; dates</td><td>Number of trailers, planned start and target delivery.</td></tr>
+			<tr><td>Take raw material from</td><td>The yard material is drawn from (usually Stores).</td></tr>
+			<tr><td>Finished trailers go to</td><td>The yard finished units enter (usually Finished Goods).</td></tr>
+			<tr><td>For sales order</td><td>Pick a customer's open order to build to order, or leave as <i>Build to stock</i>.</td></tr>
+			<tr><td>Specification</td><td>Notes for the floor — colour, axles, options. Printed on the traveler.</td></tr>
+		</table>
+	</div>
+
+	<div class="feature">
+		<h3>Material check and shortfall request</h3>
+		<p>As soon as the BOM and quantity are set, the form lists every raw material with what is <b>needed</b>, what the yard <b>holds</b>, and any <b>shortfall</b>. Green means everything is there. The order can still be created when something is short, and <b>Request the shortfall</b> raises a requisition for exactly the missing quantities — so the shortage is found at the start, not at the last stage.</p>
+	</div>
+
+	<div class="feature">
+		<h3>Six production stages</h3>
+		<div class="stages">
+			<span class="s">Material</span><span class="a">→</span><span class="s">Fabrication</span><span class="a">→</span><span class="s">Assembly</span><span class="a">→</span><span class="s">Paint</span><span class="a">→</span><span class="s">QC</span><span class="a">→</span><span class="s">Delivery</span>
+		</div>
+		<ul>
+			<li>Open a work order to see its current stage and a progress percentage.</li>
+			<li><b>Move to Fabrication / Assembly / Paint / QC</b> advances one stage, with an optional transition note.</li>
+			<li><b>Deliver &amp; Add to Stock</b> is the last move: it completes the work order <i>and</i> posts the Manufacture stock entry that puts the finished trailers into Finished Goods. The card then reads "Delivered — added to stock".</li>
+			<li><b>Stage History</b> records every move with time, person and note.</li>
+			<li>Each trailer's record mirrors its work order's stage automatically.</li>
+			<li>Only the final stage puts anything into stock; a trailer at QC is still In Production and cannot be sold.</li>
+		</ul>
+	</div>
+
+	<div class="cols">
+		<div class="feature">
+			<h3>Production detail and costing</h3>
+			<ul>
+				<li>Raw material lines with rate and amount.</li>
+				<li>Operations with workstation, minutes and hourly rate.</li>
+				<li>Operating cost, total production cost and cost per unit.</li>
+				<li>Work-in-progress value across open orders.</li>
+			</ul>
+		</div>
+		<div class="feature">
+			<h3>Work order traveler (print)</h3>
+			<ul>
+				<li>The printed sheet the floor works from.</li>
+				<li>Work order, quantity, planned start, target delivery, sales order, yards.</li>
+				<li>Specification, raw materials, operations.</li>
+				<li>Stage table with "Done By / Sign" boxes, stage history, and sign-off for production supervisor, quality check and store / dispatch.</li>
+			</ul>
+		</div>
+	</div>
+
+	<div class="feature">
+		<h3>Build to order</h3>
+		<p>When a work order is linked to a sales order — chosen on the form, or raised with <b>Build</b> from the Sales Orders screen — its finished trailers are <b>reserved to that order automatically</b> when they reach stock (never more than the order's quantity). Nobody has to come back and reserve them.</p>
+	</div>
+</section>
+
+<!-- ============ 8 ============ -->
+<section class="page">
+	<h2><span class="num">8</span>Chassis numbers and serial control</h2>
+	<p>Each physical trailer has one <b>Trailer Serial</b> record carrying its chassis number for life.</p>
+
+	<div class="feature">
+		<h3>Chassis Numbering Rule</h3>
+		<div class="where">Standard form › Chassis Numbering Rule (one setting for the company)</div>
+		<table>
+			<tr><th style="width:40mm">Setting</th><th>Meaning</th></tr>
+			<tr><td>Prefix</td><td>Leading letters, e.g. <code>A3</code>.</td></tr>
+			<tr><td>Include year / year format</td><td>Whether the year appears, as <code>26</code> or <code>2026</code>.</td></tr>
+			<tr><td>Separator</td><td>Character between parts, e.g. <code>-</code>.</td></tr>
+			<tr><td>Sequence length / next number</td><td>Digits in the running number and the number to start from.</td></tr>
+			<tr><td>Check digit</td><td>None, Mod 10 (Luhn) or Mod 11.</td></tr>
+			<tr><td>Next chassis number</td><td>A live preview of the next number, e.g. <code>A3-26-000297</code>.</td></tr>
+			<tr><td>Format Confirmed</td><td>Must be ticked before any chassis number is issued.</td></tr>
+		</table>
+		<div class="note">The number is embossed into steel and cannot be taken back, so the system never guesses a format: until the format is confirmed, trailer work orders are refused.</div>
+	</div>
+
+	<div class="feature">
+		<h3>Automatic issue</h3>
+		<ul>
+			<li>A work order for N trailers issues N chassis numbers and N trailer records <b>at the moment it is created</b>, reserved to that work order — whether raised from the portal, the standard form or an import.</li>
+			<li>Only items ticked <b>Is a Trailer</b> receive chassis numbers; parts and raw material get ordinary work orders.</li>
+			<li>Once issued, the chassis number is <b>frozen</b> — nobody can edit it.</li>
+			<li>Cancelling a work order marks its trailers <b>Scrapped</b> but keeps the numbers on record; they are <b>never reissued</b>, so no two trailers can share a number.</li>
+		</ul>
+	</div>
+
+	<div class="feature">
+		<h3>What each trailer record holds</h3>
+		<div class="cols">
+			<ul><li>Serial number and chassis number</li><li>Trailer type (model)</li><li>Status and production stage</li><li>Originating work order</li><li>Current warehouse and company</li></ul>
+			<ul><li>Sales order it is reserved for</li><li>Current owner (customer) and name</li><li>Warranty start and expiry</li><li>Embossed flag, embossed on, embossed by</li></ul>
+		</div>
+	</div>
+
+	<div class="cols">
+		<div class="feature">
+			<h3>Serial Register</h3>
+			<div class="where">Menu › Serial Register</div>
+			<ul>
+				<li>Every chassis A3 has ever issued.</li>
+				<li>Search by chassis, serial, model, work order, yard or owner.</li>
+				<li>Filter by stage and status.</li>
+				<li>Shows plate (Pending / Embossed) and warranty position.</li>
+				<li>Summary counts, including Awaiting Embossing.</li>
+			</ul>
+		</div>
+		<div class="feature">
+			<h3>Chassis Plates</h3>
+			<div class="where">Menu › Chassis Plates</div>
+			<ul>
+				<li>Lists trailers awaiting embossing, or one work order's batch.</li>
+				<li><b>Print sheet</b> for the fabrication bay.</li>
+				<li><b>Mark embossed</b> on the ticked trailers records who did it and when; Plate turns from Pending to Embossed.</li>
+			</ul>
+		</div>
+	</div>
+
+	<div class="feature">
+		<h3>Chassis number on selling documents</h3>
+		<p>Sales orders, delivery notes and sales invoices carry the trailer serial and chassis number on each line, and the chassis prints on the delivery note and invoice.</p>
+	</div>
+</section>
+
+<!-- ============ 9 ============ -->
+<section>
+	<h2><span class="num">9</span>Selling and delivery</h2>
+
+	<div class="feature">
+		<h3>Sales Orders</h3>
+		<div class="where">Transactions › Sales Orders · creates <b>SAL-ORD-…</b></div>
+		<table class="ops">
+			<tr><th style="width:30mm">Operation</th><th>What it does</th></tr>
+			<tr><td>New Order</td><td>Customer, trailer model, quantity and price.</td></tr>
+			<tr><td>Confirm</td><td>Submits the order.</td></tr>
+			<tr><td>Reserve</td><td>Lists the chassis numbers in stock and reserves the chosen one to this order. Its status becomes <i>Sold</i> and it leaves free stock, so two salespeople cannot promise the same unit.</td></tr>
+			<tr><td>Build</td><td>When nothing suitable is in stock, raises a work order for this order (model and quantity). New chassis numbers are issued immediately and reserved to the order when finished.</td></tr>
+		</table>
+		<p class="muted">Summary: Trailers in Stock (free to sell). Each row shows its reserved trailers and delivery progress. A sales order print format is included.</p>
+	</div>
+
+	<div class="feature">
+		<h3>Delivery &amp; Invoice</h3>
+		<div class="where">Transactions › Delivery &amp; Invoice · creates <b>MAT-DN-…</b> and <b>ACC-SINV-…</b></div>
+		<table class="ops">
+			<tr><th style="width:30mm">Operation</th><th>What it does</th></tr>
+			<tr><td>Dispatch</td><td>For confirmed orders under <i>Awaiting Dispatch</i>, drafts a delivery note naming every reserved chassis.</td></tr>
+			<tr><td>Submit (delivery)</td><td>When the trailer leaves the yard: its status becomes <i>Delivered</i>, the customer becomes its owner, and it leaves stock.</td></tr>
+			<tr><td>Print</td><td>The delivery note, with the chassis on it.</td></tr>
+			<tr><td>Invoice</td><td>Drafts a sales invoice from the delivery note, carrying the chassis number.</td></tr>
+			<tr><td>Submit (invoice)</td><td>Posts the invoice; it shows due date, outstanding amount and a Receive button.</td></tr>
+			<tr><td>Receive</td><td>Records a full or part customer payment against the invoice.</td></tr>
+			<tr><td>Delete</td><td>Deletes a <b>draft</b> invoice after a double confirmation. Shown only to roles allowed to delete; a submitted invoice must be cancelled first.</td></tr>
+		</table>
+	</div>
+
+	<div class="feature">
+		<h3>After the sale: warranty</h3>
+		<p>Each trailer's record carries Warranty Start and Warranty Expiry dates and the current owner. The Serial Register shows every trailer's warranty position at a glance, years after the sale.</p>
+	</div>
+</section>
+
+<!-- ============ 10 ============ -->
+<section>
+	<h2><span class="num">10</span>Money and accounts</h2>
+	<p>All money screens work on the standard ERPNext ledger and chart of accounts. The portal keeps no books of its own.</p>
+
+	<div class="feature">
+		<h3>Payments &amp; Receipts</h3>
+		<div class="where">Transactions › Payments &amp; Receipts</div>
+		<ul>
+			<li><b>Owed to Us</b> (customer receivables) and <b>Owed by Us</b> (supplier payables) at the top.</li>
+			<li>Every payment in or out, listed against the invoice or bill it settled.</li>
+			<li><b>Submit</b> a drafted receipt once the money is in the bank; the invoice's outstanding falls and it reads <span class="pill ok">Paid</span>.</li>
+		</ul>
+	</div>
+
+	<div class="feature">
+		<h3>Journal Entries</h3>
+		<div class="where">Transactions › Journal Entries · creates <b>ACC-JV-…</b></div>
+		<ul>
+			<li>For anything that is not a bill, invoice or payment: accruals, corrections, opening balances.</li>
+			<li><b>New Journal</b> with account lines (account search built in); saved journals wait under <i>Awaiting Approval</i>.</li>
+			<li><b>Post</b> submits the journal to the ledger.</li>
+			<li>A journal that does not balance, or has no lines, is refused with the difference shown.</li>
+		</ul>
+	</div>
+
+	<div class="feature">
+		<h3>Where the money stands</h3>
+		<table>
+			<tr><th style="width:45mm">Screen</th><th>Money view</th></tr>
+			<tr><td>Home</td><td>Revenue this month, Owed to Us, Owed by Us.</td></tr>
+			<tr><td>Payments &amp; Receipts</td><td>Receivables and payables, every payment in and out.</td></tr>
+			<tr><td>Supplier Payments</td><td>Owed to Suppliers, aged balance per supplier.</td></tr>
+			<tr><td>Purchase Invoices</td><td>Outstanding on approved bills.</td></tr>
+			<tr><td>Live Stock</td><td>Stock value; Payments Missing (received material not yet billed or paid).</td></tr>
+			<tr><td>Customers</td><td>Total spent per customer.</td></tr>
+		</table>
+	</div>
+</section>
+
+<!-- ============ 11 ============ -->
+<section class="page">
+	<h2><span class="num">11</span>Live Stock</h2>
+	<p>The stock position of the whole business, in quantities and in money, with trailers shown as individual chassis numbers.</p>
+
+	<div class="feature">
+		<h3>Summary figures</h3>
+		<p>Stock Value · Items In Stock · Low Stock Alerts · Open Requisitions · Payments Missing.</p>
+	</div>
+	<div class="feature">
+		<h3>Views</h3>
+		<table>
+			<tr><th style="width:45mm">View</th><th>Shows</th></tr>
+			<tr><td>Item totals</td><td>Total quantity per item with the warehouses it is held in (location), valuation and value.</td></tr>
+			<tr><td>Stock by Warehouse</td><td>Position per yard: in stock, reserved, ordered, requisitioned, projected, reorder level, low / out.</td></tr>
+			<tr><td>Trailers</td><td>Finished trailers listed as identified chassis numbers, not as a quantity.</td></tr>
+			<tr><td>Stocked (Stock In) / Stock Out</td><td>Recent stock movements with voucher, type and date.</td></tr>
+			<tr><td>Incoming (Ordered)</td><td>Material on order but not yet received.</td></tr>
+			<tr><td>Low Stock Alerts</td><td>Items at or below reorder level, or out of stock.</td></tr>
+			<tr><td>Material Requests</td><td>Open requisitions and their status.</td></tr>
+			<tr><td>Payments Missing</td><td>Purchase receipts not yet billed, and bills not yet paid, with amounts.</td></tr>
+		</table>
+		<p>Filters by warehouse and status. <b>Request Selected</b> raises a requisition for the ticked low-stock alerts in one step.</p>
+	</div>
+</section>
+
+<!-- ============ 12 ============ -->
+<section>
+	<h2><span class="num">12</span>Customers</h2>
+	<div class="feature">
+		<h3>Customers screen</h3>
+		<div class="where">Menu › Customers</div>
+		<ul>
+			<li>Customer cards with mobile, email, number of orders and total spent.</li>
+			<li><b>Add Customer</b> (name, mobile, email, TRN / VAT number) and edit in place; <b>Open</b> goes to the full record.</li>
+			<li>Search and filters across loaded customers.</li>
+		</ul>
+		<h4>Customer relationship fields</h4>
+		<p>VIP flag, birthday, credit limit amount, credit hold, blacklist with reason, and lifetime value.</p>
+	</div>
+</section>
+
+<!-- ============ 13 ============ -->
+<section>
+	<h2><span class="num">13</span>Background functions</h2>
+	<p>Things the system does on its own, without a button.</p>
+	<table>
+		<tr><th style="width:48mm">Function</th><th>What it does</th></tr>
+		<tr><td>Chassis issue on work orders</td><td>Creates the chassis numbers and trailer records when any work order for a trailer model is created, however it was created.</td></tr>
+		<tr><td>Stage synchronisation</td><td>Keeps each trailer's stage and status in step with its work order.</td></tr>
+		<tr><td>Stock entry on completion</td><td>The final stage posts the Manufacture stock entry; the trailers become <i>In Stock</i> in Finished Goods and, for build-to-order, are reserved to the sales order.</td></tr>
+		<tr><td>Scrap on cancellation</td><td>Cancelling a work order marks its trailers Scrapped and retires their numbers.</td></tr>
+		<tr><td>Delivery hand-over</td><td>Submitting a delivery note marks its trailers Delivered and sets the customer as owner.</td></tr>
+		<tr><td>Supplier compliance check</td><td>Validates every purchase order against the supplier's papers.</td></tr>
+		<tr><td>Item numbering</td><td>New items are numbered from a series (e.g. <code>RIG00001</code>) while Item Code stays typeable: accept the suggested code or type your own. Two people creating items at once never collide.</td></tr>
+		<tr><td>Error capture</td><td>Errors in the browser or in server calls are logged automatically with page, user, browser and stack trace; repeats of the same error are grouped and counted. Each log has a status (Open, Investigating, Resolved, Ignored) and resolution notes.</td></tr>
+		<tr><td>Employee signatures</td><td>A drawn signature can be stored on an employee's record for use on printed documents.</td></tr>
+	</table>
+</section>
+
+<!-- ============ 14 ============ -->
+<section>
+	<h2><span class="num">14</span>Built-in rules and safeguards</h2>
+	<p>These refusals are deliberate. Each protects something that would be expensive to get wrong.</p>
+	<table>
+		<tr><th style="width:52mm">When you see</th><th>It means</th><th style="width:52mm">What to do</th></tr>
+		<tr><td>Chassis Numbering Rule not confirmed</td><td>Nobody has confirmed the chassis format, so no number will be issued.</td><td>Set the format and tick Format Confirmed.</td></tr>
+		<tr><td>Supplier not compliant</td><td>Trade licence, VAT certificate or establishment card has lapsed, or status is not compliant.</td><td>Update the supplier's papers and status.</td></tr>
+		<tr><td>… is on hold. Release the hold before approving it.</td><td>The purchase invoice was parked with a reason.</td><td>Resolve it, Release, then Approve.</td></tr>
+		<tr><td>… has nothing outstanding to pay</td><td>The bill totals zero, usually because the order had no prices.</td><td>Put prices on the order before billing.</td></tr>
+		<tr><td>Trailer … is In Production, so it cannot be reserved</td><td>Only finished trailers in stock can be sold.</td><td>Wait for Deliver &amp; Add to Stock, or Build.</td></tr>
+		<tr><td>No active BOM for …</td><td>The model has no parts list, so it cannot be built.</td><td>Create and activate the BOM.</td></tr>
+		<tr><td>Work order is already at the final stage</td><td>The trailers are already in stock.</td><td>Nothing to do.</td></tr>
+		<tr><td>… is submitted and sits in the ledger. Cancel it first</td><td>A posted invoice cannot simply be deleted.</td><td>Cancel it in the standard form first.</td></tr>
+		<tr><td>Journal does not balance</td><td>Debits and credits differ.</td><td>Correct the lines so both sides are equal.</td></tr>
+	</table>
+	<h3>Other protections</h3>
+	<ul>
+		<li>Chassis numbers cannot be typed or edited, and are never reused.</li>
+		<li>A reserved trailer disappears from free stock at once.</li>
+		<li>Every posting action asks for confirmation first; deleting an invoice asks twice.</li>
+		<li>Nothing affects stock or money until it is approved.</li>
+	</ul>
+</section>
+
+<!-- ============ 15 ============ -->
+<section class="page">
+	<h2><span class="num">15</span>Statuses and document numbers</h2>
+	<div class="cols">
+		<div>
+			<h3 style="margin-top:0">Trailer status</h3>
+			<table>
+				<tr><td>In Production</td><td>Number issued; on the floor at one of the six stages.</td></tr>
+				<tr><td>In Stock</td><td>Finished, in Finished Goods, free to reserve.</td></tr>
+				<tr><td>Sold</td><td>Reserved against a customer's order.</td></tr>
+				<tr><td>Delivered</td><td>Delivery note submitted; the customer owns it.</td></tr>
+				<tr><td>Scrapped</td><td>Its work order was cancelled; number retired.</td></tr>
+			</table>
+			<h3>Document status</h3>
+			<table>
+				<tr><td>Draft</td><td>Saved, changeable, not yet counting.</td></tr>
+				<tr><td>Approved / Submitted</td><td>Posted and final (with sub-statuses such as To Receive and Bill, Unpaid, Paid).</td></tr>
+				<tr><td>On Hold</td><td>Purchase invoice parked before the books.</td></tr>
+				<tr><td>Cancelled</td><td>Undone; an amended copy can be made.</td></tr>
+			</table>
+			<h3>Supplier position</h3>
+			<table>
+				<tr><td>Clear</td><td>Papers in date; orders allowed.</td></tr>
+				<tr><td>Expiring</td><td>A paper lapses within 30 days.</td></tr>
+				<tr><td>Blocked</td><td>Orders refused.</td></tr>
+			</table>
+		</div>
+		<div>
+			<h3 style="margin-top:0">Document numbers</h3>
+			<table>
+				<tr><th>Looks like</th><th>It is a</th></tr>
+				<tr><td><code>MAT-MR-2026-00022</code></td><td>Requisition</td></tr>
+				<tr><td><code>PUR-ORD-2026-00022</code></td><td>Purchase order</td></tr>
+				<tr><td><code>MAT-PRE-2026-00021</code></td><td>Goods receipt</td></tr>
+				<tr><td><code>ACC-PINV-2026-00018</code></td><td>Purchase invoice</td></tr>
+				<tr><td><code>ACC-PAY-2026-00013</code></td><td>Payment in or out</td></tr>
+				<tr><td><code>MFG-WO-2026-00014</code></td><td>Work order</td></tr>
+				<tr><td><code>A3-26-000296</code></td><td>Chassis number</td></tr>
+				<tr><td><code>SAL-ORD-2026-00011</code></td><td>Sales order</td></tr>
+				<tr><td><code>MAT-DN-2026-00008</code></td><td>Delivery note</td></tr>
+				<tr><td><code>ACC-SINV-2026-00006</code></td><td>Sales invoice</td></tr>
+			</table>
+			<p class="muted">Chassis numbers follow whatever format A3 confirms in the Chassis Numbering Rule; the one above is an example.</p>
+		</div>
+	</div>
+</section>
+
+<!-- ============ 16 ============ -->
+<section>
+	<h2><span class="num">16</span>Who does what</h2>
+	<p>Which person may press which button is controlled by their role, assigned by the administrator. The system adds two roles of its own, <b>A3 Trading Admin</b> and <b>Workshop Manager</b>, alongside ERPNext's standard roles. A typical split:</p>
+	<table>
+		<tr><th style="width:40mm">Person</th><th>Screens they use</th><th>What they approve</th></tr>
+		<tr><td>Owner / general manager</td><td>Home, Transactions, Live Stock, Serial Register</td><td>Purchase invoices (release and approve), journal entries, sales invoice deletion</td></tr>
+		<tr><td>Purchase clerk</td><td>Requisitions, Purchase Orders, Suppliers</td><td>Raises orders; keeps supplier papers up to date</td></tr>
+		<tr><td>Stores</td><td>Goods Receipt, Live Stock</td><td>Receives material; raises requisitions when stock is low</td></tr>
+		<tr><td>Accounts</td><td>Purchase Invoices, Supplier Payments, Payments &amp; Receipts, Journal Entries</td><td>Bills, payments in and out, journals</td></tr>
+		<tr><td>Production supervisor</td><td>Manufacturing, Chassis Plates, Serial Register</td><td>Raises work orders, moves trailers through stages, records embossing</td></tr>
+		<tr><td>Sales</td><td>Customers, Sales Orders, Delivery &amp; Invoice</td><td>Customer orders, reservations, dispatch, invoicing</td></tr>
+	</table>
+
+	<h2 style="margin-top:10mm"><span class="num">17</span>Setup before first use</h2>
+	<p>The first three are deliberate locks: the system refuses to guess them.</p>
+	<table>
+		<tr><th style="width:6mm">#</th><th style="width:50mm">Item</th><th>Why</th></tr>
+		<tr><td>1</td><td>Confirm the chassis number format</td><td>No trailer work order is accepted until Format Confirmed is ticked on the Chassis Numbering Rule.</td></tr>
+		<tr><td>2</td><td>Tick "Is a Trailer" on trailer models</td><td>Only these items receive chassis numbers.</td></tr>
+		<tr><td>3</td><td>Load supplier paper expiry dates</td><td>Orders to suppliers with lapsed papers are refused.</td></tr>
+		<tr><td>4</td><td>An active BOM for each trailer model</td><td>A work order needs a parts list.</td></tr>
+		<tr><td>5</td><td>Prices, warehouses and masters</td><td>Buying and selling prices on items (a zero-priced bill cannot be paid); the Stores, Work In Progress and Finished Goods yards; company, fiscal year, price lists, units and item groups reviewed against how A3 works.</td></tr>
+	</table>
+</section>
+
+<!-- ============ 18 ============ -->
+<section>
+	<h2><span class="num">18</span>Scope: what is not included</h2>
+	<ul>
+		<li><b>Workshop service:</b> repairs and servicing of sold trailers, job cards, estimates, appointments, telecalling, complaints and inspections are outside this system. It covers trading and manufacturing only.</li>
+		<li><b>Vehicle and driver records</b> of the earlier workshop product are not part of this system.</li>
+		<li>Loading of historical data.</li>
+		<li>New third-party integrations.</li>
+		<li>A native mobile app (the portal works in a browser).</li>
+		<li>Payroll and HR.</li>
+	</ul>
+</section>
+
+</body>
+</html>
