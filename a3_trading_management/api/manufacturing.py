@@ -323,6 +323,47 @@ def request_shortfall(bom, qty=1, source_warehouse=None):
     return create_material_request(items=items, force=0)
 
 
+@frappe.whitelist()
+def open_sales_orders_for_item(item):
+    """Confirmed customer orders for `item` with trailers still to build -- what
+    the 'For sales order' box offers. `to_build` is the ordered quantity not yet
+    covered by a work order."""
+    if not item:
+        return []
+    rows = frappe.db.sql(
+        """
+        select so.name, so.customer, so.customer_name, so.delivery_date,
+               sum(soi.qty) as qty, sum(soi.delivered_qty) as delivered_qty,
+               (select coalesce(sum(wo.qty), 0) from `tabWork Order` wo
+                 where wo.sales_order = so.name and wo.production_item = %(item)s and wo.docstatus < 2) as ordered_qty,
+               (select count(*) from `tabTrailer Serial` ts
+                 where ts.sales_order = so.name and ts.trailer_type = %(item)s and ts.status = 'Sold') as reserved_qty
+        from `tabSales Order` so
+        join `tabSales Order Item` soi on soi.parent = so.name
+        where so.docstatus = 1 and so.skip_delivery_note = 0
+          and so.status not in ('Closed', 'Completed', 'Cancelled', 'On Hold')
+          and soi.item_code = %(item)s
+        group by so.name
+        order by so.delivery_date asc, so.name asc
+        """,
+        {"item": item}, as_dict=True,
+    )
+    out = []
+    for r in rows:
+        # Still to build = ordered, less delivered, less reserved from stock, less
+        # already on a work order. An order fully covered is not offered.
+        to_build = flt(r.qty) - flt(r.delivered_qty) - flt(r.reserved_qty) - flt(r.ordered_qty)
+        if to_build <= 0:
+            continue
+        out.append({
+            "name": r.name,
+            "customer_name": r.customer_name or r.customer,
+            "delivery_date": formatdate(r.delivery_date, "dd MMM yyyy") if r.delivery_date else "",
+            "qty": flt(r.qty),
+            "to_build": to_build,
+        })
+    return out
+
 
 # ---------------------------------------------------------------------------
 # Create
@@ -340,15 +381,21 @@ def create_work_order(
     planned_start_date=None,
     expected_delivery_date=None,
     description=None,
+    sales_order=None,
 ):
     """Create a Draft Work Order for `item`, seed required_items + operations
     from its BOM, stamp the first production stage, and return its name.
 
     `source_warehouse` is the yard raw material is taken from (`wip_warehouse` is
-    accepted as its older name). `description` is the specification the floor
-    works to; it prints on the traveler."""
+    accepted as its older name). `sales_order` makes this a build-to-order: the
+    order is carried on the work order and, on completion, the finished trailers
+    are reserved to it (serial_control). `description` is the specification the
+    floor works to; it prints on the traveler."""
     if not item:
         frappe.throw(_("Item to be manufactured is required"))
+    if sales_order:
+        if frappe.db.get_value("Sales Order", sales_order, "docstatus") != 1:
+            frappe.throw(_("Sales Order {0} must be confirmed before building for it").format(sales_order))
 
     bom = bom or _default_bom_for_item(item)
     if not bom:
@@ -375,6 +422,8 @@ def create_work_order(
     wo.use_multi_level_bom = 0
     if description:
         wo.description = description
+    if sales_order:
+        wo.sales_order = sales_order
     if planned_start_date:
         wo.planned_start_date = get_datetime(planned_start_date)
     if expected_delivery_date:
@@ -392,13 +441,13 @@ def create_work_order(
             "entered_on": now_datetime(),
             "entered_by": frappe.session.user,
             "duration_hours": 0,
-            "notes": "Work order created",
+            "notes": "Work order created" + (" for {0}".format(sales_order) if sales_order else ""),
         },
     )
 
     wo.flags.ignore_permissions = True
     wo.insert(ignore_permissions=True)
-    return {"name": wo.name, "stage": "Material"}
+    return {"name": wo.name, "stage": "Material", "sales_order": sales_order}
 
 
 # ---------------------------------------------------------------------------
@@ -600,6 +649,8 @@ def get_work_order(name):
 
     return {
         "name": wo.name,
+        "sales_order": wo.sales_order,
+        "customer": (frappe.db.get_value("Sales Order", wo.sales_order, "customer_name") if wo.sales_order else None),
         "description": wo.description,
         "source_warehouse": wo.source_warehouse or wo.wip_warehouse,
         "item": wo.production_item,

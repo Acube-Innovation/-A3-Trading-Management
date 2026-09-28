@@ -50,7 +50,8 @@ def _workorder(context, name):
 		"source": doc.source_warehouse or doc.wip_warehouse or "—",
 		"fg": doc.fg_warehouse or "—",
 		"spec": doc.description or "",
-
+		"sales_order": doc.sales_order or "",
+		"customer": (frappe.db.get_value("Sales Order", doc.sales_order, "customer_name") if doc.sales_order else "") or "",
 		"materials": [
 			{"item": r.item_name or r.item_code, "qty": flt(r.required_qty),
 			 "warehouse": r.source_warehouse or "—"}
