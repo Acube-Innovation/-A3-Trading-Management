@@ -1,0 +1,94 @@
+{% extends "templates/workshop_base.html" %}
+
+{% block page_content %}
+{#- A chooser, not a screen of its own: the buying, selling and accounts pages sit
+    behind one menu entry so the sidebar does not carry ten near-identical items.
+    One card per group, side by side, each listing its screens in the order the
+    work happens. Every row links straight to the page that already exists. -#}
+
+<style>
+	.tx-board {
+		display: grid;
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+		gap: 18px;
+		align-items: start;
+	}
+	.tx-card .card__head { align-items: flex-start; }
+	.tx-card__title { min-width: 0; }
+	.tx-card__sub { color: var(--muted); font-size: 12.5px; margin-top: 3px; line-height: 1.4; }
+	.tx-card__count {
+		flex: 0 0 auto; margin-left: 12px; margin-top: 2px;
+		font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+		color: var(--muted); background: var(--bg); border: 1px solid var(--border);
+		border-radius: 999px; padding: 3px 9px; white-space: nowrap;
+	}
+	.tx-list { padding: 4px 0; }
+	.tx-step {
+		display: flex; align-items: center; gap: 14px;
+		padding: 13px 20px;
+		color: inherit; text-decoration: none;
+		border-top: 1px solid var(--border);
+		transition: background .12s ease;
+	}
+	.tx-list .tx-step:first-child { border-top: 0; }
+	.tx-step:hover, .tx-step:focus-visible { background: var(--bg); text-decoration: none; outline: none; }
+	.tx-step:hover .tx-step__label, .tx-step:focus-visible .tx-step__label { color: var(--red); }
+	.tx-step:hover .tx-step__go, .tx-step:focus-visible .tx-step__go { color: var(--red); transform: translateX(3px); }
+	.tx-step__icon {
+		flex: 0 0 40px; width: 40px; height: 40px; border-radius: 10px;
+		display: grid; place-items: center;
+		background: var(--red-soft); color: var(--red); font-size: 16px;
+	}
+	.tx-step__text { flex: 1 1 auto; min-width: 0; }
+	.tx-step__label { display: block; font-weight: 700; font-size: 14px; color: var(--text); line-height: 1.3; }
+	.tx-step__sub {
+		display: block; color: var(--muted); font-size: 12.5px; margin-top: 2px;
+		white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+	}
+	.tx-step__no {
+		flex: 0 0 auto; font-size: 11px; font-weight: 700; letter-spacing: .04em;
+		color: var(--muted); font-variant-numeric: tabular-nums;
+	}
+	.tx-step__go { flex: 0 0 auto; color: var(--muted); font-size: 12px; transition: transform .12s ease, color .12s ease; }
+	.tx-foot { border-top: 1px dashed var(--border); }
+	.tx-foot .tx-step__icon { background: var(--navy-soft); color: var(--navy); }
+	@media (max-width: 1100px) { .tx-board { grid-template-columns: 1fr; } }
+</style>
+
+<div class="tx-board">
+	{%- for g in groups %}
+	<section class="card tx-card">
+		<div class="card__head">
+			<div class="tx-card__title">
+				<h3>{{ g.title }}</h3>
+				<div class="tx-card__sub">{{ g.subtitle }}</div>
+			</div>
+			<span class="tx-card__count">{{ g.tiles | length }} screen{{ "s" if g.tiles | length != 1 else "" }}</span>
+		</div>
+		<div class="tx-list">
+			{%- for t in g.tiles %}
+			<a class="tx-step" href="{{ t.route }}">
+				<span class="tx-step__icon"><i class="fa-solid {{ t.icon }}"></i></span>
+				<span class="tx-step__text">
+					<span class="tx-step__label">{{ t.label }}</span>
+					<span class="tx-step__sub">{{ t.sub }}</span>
+				</span>
+				{%- if g.flow %}<span class="tx-step__no">{{ loop.index }} / {{ g.tiles | length }}</span>{% endif %}
+				<i class="fa-solid fa-chevron-right tx-step__go"></i>
+			</a>
+			{%- endfor %}
+			{%- if g.footer %}
+			<a class="tx-step tx-foot" href="{{ g.footer.route }}">
+				<span class="tx-step__icon"><i class="fa-solid {{ g.footer.icon }}"></i></span>
+				<span class="tx-step__text">
+					<span class="tx-step__label">{{ g.footer.label }}</span>
+					<span class="tx-step__sub">{{ g.footer.sub }}</span>
+				</span>
+				<i class="fa-solid fa-chevron-right tx-step__go"></i>
+			</a>
+			{%- endif %}
+		</div>
+	</section>
+	{%- endfor %}
+</div>
+{% endblock %}

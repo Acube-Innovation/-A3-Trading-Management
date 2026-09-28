@@ -34,6 +34,7 @@
 	<div><div class="k">Target Delivery</div><div class="v">{{ wo.delivery }}</div></div>
 	<div><div class="k">Raw material from</div><div class="v">{{ wo.source }}</div></div>
 	<div><div class="k">Finished trailers to</div><div class="v">{{ wo.fg }}</div></div>
+	<div><div class="k">For Sales Order</div><div class="v">{% if wo.sales_order %}{{ wo.sales_order }} · {{ wo.customer }}{% else %}Build to stock{% endif %}</div></div>
 </div>
 {% if wo.spec %}
 <h2 class="sec">Specification</h2>

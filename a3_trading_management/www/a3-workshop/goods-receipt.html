@@ -1,0 +1,118 @@
+{% extends "templates/workshop_base.html" %}
+{% from "templates/macros/trading.html" import status_pill, filter_bar, filter_script, call_method_js, stat_row, doc_modals %}
+
+{% block page_content %}
+{#- Receive stock against an order, with quantities accepted and rejected and
+    serial capture where the item is serialised. Rows post to a real Purchase
+    Receipt; the serial box writes Purchase Receipt Item.serial_no, which is what
+    ERPNext's own stock ledger reads. -#}
+
+{{ stat_row([
+	{"label": "Awaiting Receipt", "value": awaiting | length, "sub": "Orders not yet received"},
+	{"label": "Receipts", "value": receipts | length, "sub": "Recorded"},
+	{"label": "Posted", "value": receipts | selectattr("docstatus", "equalto", 1) | list | length, "sub": "Stock taken in"},
+	{"label": "In Draft", "value": receipts | selectattr("docstatus", "equalto", 0) | list | length, "sub": "Not yet posted"},
+]) }}
+
+{%- if material_request or purchase_order %}
+<div class="card" style="margin-bottom:14px;border-left:4px solid var(--navy)"><div class="card__body" style="display:flex;justify-content:space-between;align-items:center;gap:12px">
+	<span>Showing {% if material_request %}requisition <b>{{ material_request }}</b>{% else %}order <b>{{ purchase_order }}</b>{% endif %} only — orders awaiting receipt and receipts against it</span>
+	<a class="btn btn--outline btn--sm" href="/a3-workshop/goods-receipt">Show all</a>
+</div></div>
+{%- endif %}
+<div class="toolbar">
+	<div class="section-title" style="margin:0">Goods Receipt</div>
+	<div class="toolbar__right">
+		<a class="btn btn--outline btn--sm" href="/a3-workshop/purchase-orders">
+			<i class="fa-solid fa-file-contract"></i> Purchase Orders</a>
+	</div>
+</div>
+
+{%- if awaiting %}
+<div class="card" style="margin-bottom:14px">
+	<div class="card__body">
+		<div class="section-title" style="margin-top:0">Awaiting receipt</div>
+		<table class="table">
+			<thead><tr><th>Order</th><th>Supplier</th><th>Requisition</th><th>Expected</th><th class="num">Received</th><th></th></tr></thead>
+			<tbody>
+			{%- for o in awaiting %}
+				<tr>
+					<td><b>{{ o.name }}</b></td>
+					<td>{{ o.supplier_name or o.supplier }}</td>
+					<td>{%- for mr in o.material_requests %}<a href="/a3-workshop/purchase-orders?material_request={{ mr | urlencode }}">{{ mr }}</a>{% if not loop.last %}<br>{% endif %}{% else %}<span class="muted">direct</span>{% endfor %}</td>
+					<td>{{ frappe.utils.formatdate(o.schedule_date, "dd MMM yyyy") if o.schedule_date else "—" }}</td>
+					<td class="num">{{ "%.0f%%" | format(o.per_received or 0) }}</td>
+					<td><button class="btn btn--primary btn--sm" onclick="startReceipt('{{ o.name }}')">Receive</button></td>
+				</tr>
+			{%- endfor %}
+			</tbody>
+		</table>
+	</div>
+</div>
+{%- endif %}
+
+{{ filter_bar("Search receipt or supplier…", [
+	{"key": "status", "label": "All statuses", "options": ["Draft", "To Bill", "Completed", "Cancelled"]}
+]) }}
+
+<div class="card"><div class="card__body" style="overflow-x:auto">
+	{%- if receipts %}
+	<table class="table" id="tf-table">
+		<thead><tr>
+			<th>Receipt</th><th>Supplier</th><th>Order · Requisition</th><th>Date</th><th>Items</th>
+			<th class="num">Accepted</th><th class="num">Rejected</th><th>Status</th><th>Action</th>
+		</tr></thead>
+		<tbody>
+		{%- for r in receipts %}
+			{%- set accepted = r["items"] | sum(attribute="qty") %}
+			{%- set rejected = r["items"] | sum(attribute="rejected_qty") %}
+			<tr data-hay="{{ ((r.name or '') ~ ' ' ~ (r.supplier or '') ~ ' ' ~ (r.supplier_name or '')) | lower }}"
+				data-status="{{ r.status or '' }}">
+				<td><b>{{ r.name }}</b></td>
+				<td>{{ r.supplier_name or r.supplier }}</td>
+				<td>{%- for po in r.purchase_orders %}<div>{{ po }}</div>{% endfor %}{%- for mr in r.material_requests %}<div><a href="/a3-workshop/purchase-orders?material_request={{ mr | urlencode }}" style="font-size:12px">{{ mr }}</a></div>{% endfor %}{% if not r.purchase_orders and not r.material_requests %}<span class="muted">direct</span>{% endif %}</td>
+				<td>{{ frappe.utils.formatdate(r.posting_date, "dd MMM yyyy") }}</td>
+				<td>{%- for i in r["items"][:2] %}{{ i.item_code }}{% if i.serial_no %}
+						<span class="muted" style="font-size:11px">(serialised)</span>{% endif %}{% if not loop.last %}, {% endif %}{%- endfor %}
+					{%- if r["items"] | length > 2 %} <span class="muted">+{{ (r["items"] | length) - 2 }}</span>{% endif %}</td>
+				<td class="num">{{ accepted | round(2) }}</td>
+				<td class="num">{{ rejected | round(2) }}</td>
+				<td>{{ status_pill(r.status, r.docstatus) }}</td>
+				<td style="white-space:nowrap">
+					{%- if r.docstatus == 0 %}
+					<button class="btn btn--primary btn--sm" onclick="submitGR('{{ r.name }}')">Submit</button>
+					<button type="button" class="btn btn--outline btn--sm" onclick="openDoc('Purchase Receipt', '{{ r.name }}', { edit: { fields: ['received_qty', 'rejected_qty'], method: 'a3_trading_management.api.buying.update_receipt_quantities', label: 'Save quantities' } })">Edit</button>
+					{%- elif r.docstatus == 1 %}
+					<button class="btn btn--outline btn--sm" onclick="billGR('{{ r.name }}')">Bill</button>
+					{%- else %}<span class="muted">—</span>{% endif %}
+				</td>
+			</tr>
+		{%- endfor %}
+		</tbody>
+	</table>
+	{%- else %}
+	<div class="empty">No goods receipts yet.</div>
+	{%- endif %}
+</div></div>
+
+{{ call_method_js() }}
+<script>
+function startReceipt(po) {
+	if (!confirm("Create a draft goods receipt against " + po + "?")) return;
+	tradingAction("a3_trading_management.api.buying.receive_against_order",
+		{ purchase_order: po }, "Draft receipt created — set quantities and serials, then submit.");
+}
+function submitGR(name) {
+	if (!confirm("Submit goods receipt " + name + "? This posts the stock.")) return;
+	tradingAction("a3_trading_management.api.buying.submit_goods_receipt", { name: name }, "Goods receipt submitted.");
+}
+function billGR(name) {
+	if (!confirm("Raise a purchase invoice against " + name + "?")) return;
+	tradingCall("a3_trading_management.api.buying.bill_against", { purchase_receipt: name })
+		.then(function () { window.location.href = "/a3-workshop/purchase-invoices"; })
+		.catch(function (e) { alert("Could not bill: " + ((e && e.message) || e)); });
+}
+</script>
+{{ doc_modals() }}
+{{ filter_script() }}
+{% endblock %}

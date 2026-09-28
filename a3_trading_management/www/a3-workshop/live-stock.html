@@ -1,6 +1,7 @@
 {% extends "templates/workshop_base.html" %}
 {% from "templates/macros/workshop.html" import badge %}
 
+{% from "templates/macros/trading.html" import doc_modals, call_method_js %}
 {% block page_content %}
 {#- Whole board arrives from the page controller (www/a3-workshop/live_stock.py ->
     a3_trading_management.api.live_stock.get_stock_board). Read-only review page; the only
@@ -12,6 +13,52 @@
     selections and edited quantities survive each swap. -#}
 {%- set s = board.summary -%}
 
+{#- EXTRA POINT 4: total quantity per item with where it is held, and the trailers
+    in stock listed as identified units. A trailer is not a quantity — it has a
+    chassis number, so stock of trailers is a list of those. -#}
+<div class="card" style="margin-bottom:14px"><div class="card__body" style="overflow-x:auto">
+	<div class="section-title" style="margin-top:0">Total quantity by item, and where it is held</div>
+	{%- if additions.item_totals %}
+	<table class="table">
+		<thead><tr><th>Item</th><th class="num">Total Qty</th><th>UOM</th>
+			<th class="num">Warehouses</th><th>Location</th></tr></thead>
+		<tbody>
+		{%- for r in additions.item_totals[:40] %}
+			<tr>
+				<td><b>{{ r.item_code }}</b>
+					{%- if r.item_name != r.item_code %}<div class="muted" style="font-size:11px">{{ r.item_name }}</div>{% endif %}</td>
+				<td class="num"><b>{{ "%g" | format(r.total_qty) }}</b></td>
+				<td>{{ r.uom }}</td>
+				<td class="num">{{ r.warehouse_count }}</td>
+				<td class="muted" style="font-size:12px">{{ r.where }}</td>
+			</tr>
+		{%- endfor %}
+		</tbody>
+	</table>
+	{%- else %}<div class="empty">No stock on hand.</div>{% endif %}
+</div></div>
+
+<div class="card" style="margin-bottom:14px"><div class="card__body">
+	<div class="section-title" style="margin-top:0">
+		Trailers in stock &middot; {{ additions.trailer_count }} identified unit(s)</div>
+	{%- if additions.trailer_groups %}
+		{%- for g in additions.trailer_groups %}
+		<div style="margin-bottom:10px">
+			<div style="font-weight:700;font-size:12px;margin-bottom:5px">
+				{{ g.warehouse }} <span class="muted">&middot; {{ g.count }}</span></div>
+			<div style="display:flex;gap:8px;flex-wrap:wrap">
+				{%- for u in g.units %}
+				<a class="pill" href="/a3-workshop/serial-register?q={{ u.chassis_number | urlencode }}"
+					style="text-decoration:none">{{ u.chassis_number }}
+					<span class="muted">{{ u.trailer_type or "" }}</span></a>
+				{%- endfor %}
+			</div>
+		</div>
+		{%- endfor %}
+	{%- else %}
+	<div class="empty">No finished trailers in stock. They appear here once a work order reaches Delivery.</div>
+	{%- endif %}
+</div></div>
 <style>
 	.pill { display:inline-block; padding:3px 10px; border-radius:11px; font-size:11px;
 		font-weight:600; background:#eef1f5; color:#33415a; white-space:nowrap; }
@@ -123,7 +170,7 @@
 						<td>{{ a.reserved }}</td>
 						<td>{{ a.reorder_level }}</td>
 						<td><input type="number" class="ls-qty" min="0" step="1" value="{{ a.suggested }}" style="width:76px"></td>
-						<td>{% if a.material_request %}<span>{{ badge("On " ~ a.material_request, "badge--navy") }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+						<td>{% if a.material_request %}<a href="#" onclick="openDoc('Material Request', '{{ a.material_request }}'); return false;">{{ badge("On " ~ a.material_request, "badge--navy") }}</a>{% else %}<span class="muted">—</span>{% endif %}</td>
 					</tr>
 					{%- else %}
 					<tr><td colspan="9" class="empty">No alerts — nothing is below its reorder level or short for reservations.</td></tr>
@@ -155,7 +202,7 @@
 						<td><div class="bar" style="min-width:64px" title="{{ m.per_ordered }}% ordered"><span style="width:{{ m.per_ordered }}%"></span></div></td>
 						<td><div class="bar" style="min-width:64px" title="{{ m.per_received }}% received"><span style="width:{{ m.per_received }}%;background:var(--green)"></span></div></td>
 						<td>{{ badge(m.status, m.variant) }}</td>
-						<td><span class="muted">—</span></td>
+						<td><button type="button" class="btn btn--outline btn--sm" onclick="openDoc('Material Request', '{{ m.name }}')">Open</button></td>
 					</tr>
 					{%- else %}
 					<tr><td colspan="9" class="empty">No requisitions raised yet.</td></tr>
@@ -220,7 +267,7 @@
 				<tbody>
 					{%- for p in board.payments.invoices %}
 					<tr>
-						<td><span style="font-weight:600">{{ p.name }}</span></td>
+						<td><a href="#" onclick="openDoc('Purchase Invoice', '{{ p.name }}'); return false;" style="font-weight:600">{{ p.name }}</a></td>
 						<td>{{ p.supplier }}</td>
 						<td>{{ p.date }}</td>
 						<td>{{ p.due }}</td>
@@ -239,7 +286,7 @@
 				<tbody>
 					{%- for p in board.payments.to_bill %}
 					<tr>
-						<td><span style="font-weight:600">{{ p.name }}</span></td>
+						<td><a href="#" onclick="openDoc('Purchase Receipt', '{{ p.name }}'); return false;" style="font-weight:600">{{ p.name }}</a></td>
 						<td>{{ p.supplier }}</td>
 						<td>{{ p.date }}</td>
 						<td>{{ p.total }}</td>
@@ -422,4 +469,6 @@
 })();
 </script>
 {% endraw %}
+{{ call_method_js() }}
+{{ doc_modals() }}
 {% endblock %}

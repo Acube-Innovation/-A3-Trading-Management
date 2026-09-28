@@ -1,0 +1,445 @@
+<title>A3 Trading Test Script</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@600;700&family=Source+Sans+3:ital,wght@0,400;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+	:root {
+		--ink: #1c2333; --muted: #6b7486; --faint: #98a1b0;
+		--ground: #f4f5f7; --surface: #ffffff; --line: #e3e6ec; --line-strong: #cfd4dd;
+		--red: #ec2e5d; --red-soft: #fde7ee; --red-ink: #b31f47;
+		--navy: #003277; --navy-soft: #e6ecf4;
+		--amber: #b45309; --amber-soft: #fff3df;
+		--green: #15803d; --green-soft: #e4f6ea;
+		--display: "Barlow Semi Condensed", "Arial Narrow", "Helvetica Neue", Arial, sans-serif;
+		--body: "Source Sans 3", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+		--mono: "IBM Plex Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+	}
+	@media (prefers-color-scheme: dark) {
+		:root:not([data-theme="light"]) {
+			--ink: #e9ecf1; --muted: #a3acbb; --faint: #7d8797;
+			--ground: #14171c; --surface: #1c2027; --line: #2b313b; --line-strong: #3a424e;
+			--red: #ff5c85; --red-soft: #3a1f28; --red-ink: #ff8aa8;
+			--navy: #8fb1f0; --navy-soft: #1e2b45;
+			--amber: #f4b25a; --amber-soft: #3a2b12;
+			--green: #5ed08a; --green-soft: #15301f;
+		}
+	}
+	:root[data-theme="dark"] {
+		--ink: #e9ecf1; --muted: #a3acbb; --faint: #7d8797;
+		--ground: #14171c; --surface: #1c2027; --line: #2b313b; --line-strong: #3a424e;
+		--red: #ff5c85; --red-soft: #3a1f28; --red-ink: #ff8aa8;
+		--navy: #8fb1f0; --navy-soft: #1e2b45;
+		--amber: #f4b25a; --amber-soft: #3a2b12;
+		--green: #5ed08a; --green-soft: #15301f;
+	}
+	* { box-sizing: border-box; }
+	body { margin: 0; background: var(--ground); color: var(--ink); font-family: var(--body); font-size: 15.5px; line-height: 1.5; }
+	a { color: var(--red-ink); }
+	.wrap { max-width: 1240px; margin: 0 auto; padding-inline: 20px; padding-block: 28px 64px; }
+	h1, h2, h3 { font-family: var(--display); line-height: 1.1; margin: 0; text-wrap: balance; }
+	h1 { font-size: clamp(32px, 5vw, 48px); font-weight: 700; }
+	h2 { font-size: 26px; font-weight: 700; margin-top: 48px; padding-top: 16px; border-top: 2px solid var(--ink); }
+	h3 { font-size: 20px; font-weight: 700; margin-top: 28px; display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+	h3 .tc { font-family: var(--mono); font-size: 13px; color: var(--red-ink); background: var(--red-soft); padding: 2px 8px; border-radius: 4px; }
+	h3 .where { font-family: var(--body); font-weight: 400; font-size: 14px; color: var(--muted); }
+	p { margin: 8px 0; max-width: 78ch; }
+	ul, ol { max-width: 78ch; padding-left: 22px; margin: 6px 0; }
+	.eyebrow { font-size: 12px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--red-ink); }
+	.lede { font-size: 18px; color: var(--muted); max-width: 70ch; margin-top: 10px; }
+	.mono, code { font-family: var(--mono); font-size: .88em; }
+	code { background: var(--navy-soft); padding: 1px 6px; border-radius: 4px; white-space: nowrap; }
+	kbd { font-weight: 700; font-size: .92em; padding: 1px 7px; border: 1px solid var(--line-strong); border-bottom-width: 2px; border-radius: 6px; background: var(--surface); white-space: nowrap; }
+	.head { padding-bottom: 22px; border-bottom: 1px solid var(--line); display: grid; gap: 12px; }
+	.meta { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin-top: 8px; }
+	.meta div { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; font-size: 14px; }
+	.meta b { display: block; font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin-bottom: 3px; }
+	.meta input { width: 100%; font: inherit; border: 0; border-bottom: 1px dashed var(--line-strong); background: transparent; color: var(--ink); padding: 2px 0; }
+	.meta input:focus { outline: none; border-bottom-color: var(--red); }
+
+	.note { border-left: 4px solid var(--navy); background: var(--navy-soft); padding: 10px 14px; border-radius: 0 8px 8px 0; margin: 14px 0; max-width: 80ch; }
+	.note.warn { border-left-color: var(--amber); background: var(--amber-soft); }
+	.note p { margin: 4px 0; max-width: none; }
+
+	.tbl-wrap { overflow-x: auto; margin: 12px 0 4px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+	table { border-collapse: collapse; width: 100%; font-size: 14.5px; }
+	th, td { text-align: left; vertical-align: top; padding: 9px 12px; border-top: 1px solid var(--line); }
+	thead th { border-top: 0; font-size: 11.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); background: var(--ground); white-space: nowrap; }
+	td.n { font-family: var(--mono); font-size: 13px; color: var(--muted); white-space: nowrap; }
+	td.act { min-width: 240px; }
+	td.data { min-width: 170px; font-family: var(--mono); font-size: 13px; }
+	td.exp { min-width: 240px; }
+	td.res { white-space: nowrap; }
+	.res label { display: inline-flex; align-items: center; gap: 4px; margin-right: 8px; font-size: 13px; cursor: pointer; }
+	.res input[type=radio] { accent-color: var(--red); }
+	.res input[type=text] { display: block; width: 150px; margin-top: 4px; font: inherit; font-size: 13px; border: 1px solid var(--line-strong); border-radius: 5px; padding: 3px 6px; background: var(--surface); color: var(--ink); }
+	tr.fail { background: var(--red-soft); }
+	tr.pass td.res { color: var(--green); }
+	.pre { color: var(--muted); font-size: 14px; margin: 4px 0 8px; }
+	.pre b { color: var(--ink); }
+	.tally { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 2; margin-top: 18px; display: flex; flex-wrap: wrap; gap: 14px; align-items: center; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; font-size: 14px; }
+	.tally b { font-family: var(--display); font-size: 22px; }
+	.tally .ok { color: var(--green); } .tally .bad { color: var(--red-ink); }
+	.tally button { margin-left: auto; font: inherit; font-weight: 600; color: var(--red-ink); background: none; border: 1px solid var(--line-strong); border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+	.tally button:focus-visible, .res input:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }
+	@media print { .tally { position: static; } body { background: #fff; } }
+	@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="wrap">
+	<header class="head">
+		<div class="eyebrow">A3 Trading Management · manual test script</div>
+		<h1>Step-by-step test of the complete cycle</h1>
+		<p class="lede">Twenty-four test cases in the order the office will work. Each row says what to press, what to type, and what must happen. Mark Pass or Fail as you go; write the document number the system gave you in the note so a failure can be traced.</p>
+		<div class="meta">
+			<div><b>Tester</b><input id="m-tester" placeholder="name"></div>
+			<div><b>Date</b><input id="m-date" placeholder="dd mmm yyyy"></div>
+			<div><b>Site</b><input id="m-site" value="http://127.0.0.1:8005"></div>
+			<div><b>Login</b><input id="m-user" value="Administrator"></div>
+		</div>
+	</header>
+
+	<div class="tally" id="tally"><span>Progress</span><b id="t-done">0</b><span>of <span id="t-total">0</span> done</span><span class="ok"><b id="t-pass">0</b> pass</span><span class="bad"><b id="t-fail">0</b> fail</span><button type="button" id="t-reset">Clear results</button></div>
+
+	<h2>Before you start</h2>
+	<p>The test uses the data already on the site. Do not create new items, suppliers or customers for it — the point is to see the real records move.</p>
+	<div class="tbl-wrap"><table>
+		<thead><tr><th>Record</th><th>Value on this site</th><th>Why it matters</th></tr></thead>
+		<tbody>
+			<tr><td>Company</td><td class="mono">A3 Trading (A3T), AED</td><td>Every document is for this company.</td></tr>
+			<tr><td>Yards (warehouses)</td><td class="mono">Stores - A3T · Work In Progress - A3T · Finished Goods - A3T</td><td>Material comes into Stores; finished trailers land in Finished Goods.</td></tr>
+			<tr><td>Trailer model</td><td class="mono">TRL-FLATBED</td><td>Ticked Is a Trailer; parts list BOM-TRL-FLATBED-001; sells at 50,000.</td></tr>
+			<tr><td>Raw material</td><td class="mono">RAW-STEEL</td><td>Buying price 120. Stores currently holds some.</td></tr>
+			<tr><td>Compliant supplier</td><td class="mono">SUP-GOOD</td><td>All three papers valid to 2030 — orders allowed.</td></tr>
+			<tr><td>Non-compliant supplier</td><td class="mono">SUP-LAPSED</td><td>Trade licence expired 2020, status Documents Pending — orders must be refused.</td></tr>
+			<tr><td>Customer</td><td class="mono">A3 E2E Customer</td><td>The buyer in the selling cases.</td></tr>
+			<tr><td>Chassis format</td><td class="mono">A3-YY-NNNNN + check digit</td><td>Confirmed. Next serial record is TRL-00030; its chassis will start <span class="mono">A3-26-00030</span> and end in a check digit.</td></tr>
+		</tbody>
+	</table></div>
+	<div class="note">
+		<p><strong>How the standard forms behave.</strong> When a portal button opens a form in a new tab: fill in the fields, press <kbd>Save</kbd> (or Ctrl+S). To post a document, press <kbd>Submit</kbd> at the top right, then <kbd>Yes</kbd>. Close the tab and refresh the portal list — the document is now there with its number. Document numbers are quoted below as <span class="mono">…-000NN</span>: read the actual number off the screen and write it in the note.</p>
+		<p><strong>Refusals.</strong> Several cases deliberately try something the system must refuse. The pass condition there is the message, not the action.</p>
+	</div>
+
+	<h2>Part A · Sign in and orientation</h2>
+
+	<h3><span class="tc">TC-01</span> Sign in <span class="where">Browser</span></h3>
+	<div class="tbl-wrap"><table>
+		<thead><tr><th>#</th><th>Action</th><th>Enter</th><th>Expected</th><th>Result</th></tr></thead>
+		<tbody>
+			<tr data-id="01-1"><td class="n">1</td><td class="act">Open the site address in a browser.</td><td class="data">http://127.0.0.1:8005</td><td class="exp">The login page appears (or Home if already signed in).</td><td class="res"></td></tr>
+			<tr data-id="01-2"><td class="n">2</td><td class="act">Sign in.</td><td class="data">Administrator + password</td><td class="exp">The portal Home opens: six tiles at the top (Trailers in Stock, In Production, Delivered, Revenue, Owed to Us, Owed by Us), the left-hand menu with eight entries from Home to Live Stock, the red REDLINES logo top left.</td><td class="res"></td></tr>
+			<tr data-id="01-3"><td class="n">3</td><td class="act">Press <kbd>Transactions</kbd> in the menu.</td><td class="data"></td><td class="exp">Three cards side by side: Buying (5 screens, numbered 1/5 … 5/5, with Suppliers at the foot), Selling (2 screens), Accounts (2 screens). Top right says 9 screens.</td><td class="res"></td></tr>
+		</tbody>
+	</table></div>
+
+	<h3><span class="tc">TC-02</span> Preconditions <span class="where">Standard forms · Suppliers screen</span></h3>
+	<div class="tbl-wrap"><table>
+		<thead><tr><th>#</th><th>Action</th><th>Enter</th><th>Expected</th><th>Result</th></tr></thead>
+		<tbody>
+			<tr data-id="02-1"><td class="n">1</td><td class="act">Open the chassis rule form.</td><td class="data">/app/chassis-numbering-rule</td><td class="exp">Prefix A3, Include Year ticked, YY, separator -, sequence length 5, check digit Mod 10 (Luhn), <strong>Confirmed by Redlines ticked</strong>. A sample number is shown.</td><td class="res"></td></tr>
+			<tr data-id="02-2"><td class="n">2</td><td class="act">Open the trailer item.</td><td class="data">/app/item/TRL-FLATBED</td><td class="exp"><strong>Is a Trailer</strong> is ticked.</td><td class="res"></td></tr>
+			<tr data-id="02-3"><td class="n">3</td><td class="act">Open <kbd>Suppliers</kbd> in the menu.</td><td class="data"></td><td class="exp">Stats: Suppliers 2, Clear 1, Blocked 1. SUP-GOOD shows Clear; SUP-LAPSED shows Blocked with "lapsed: trade licence" and a red banner "1 supplier(s) cannot receive a purchase order".</td><td class="res"></td></tr>
+		</tbody>
+	</table></div>
+
+	<h2>Part B · Buying</h2>
+
+	<h3><span class="tc">TC-03</span> Raise and approve a requisition <span class="where">Transactions › Requisitions</span></h3>
+	<p class="pre">Creates <b>MAT-MR-2026-000NN</b>.</p>
+	<div class="tbl-wrap"><table>
+		<thead><tr><th>#</th><th>Action</th><th>Enter</th><th>Expected</th><th>Result</th></tr></thead>
+		<tbody>
+			<tr data-id="03-1"><td class="n">1</td><td class="act">Note the three numbers at the top (Requisitions / Awaiting Approval / Approved).</td><td class="data"></td><td class="exp">Write them down; they change in step 4.</td><td class="res"></td></tr>
+			<tr data-id="03-2"><td class="n">2</td><td class="act">Press <kbd>New Requisition</kbd>.</td><td class="data"></td><td class="exp">The Material Request form opens in a new tab with Purpose = Purchase already set.</td><td class="res"></td></tr>
+			<tr data-id="03-3"><td class="n">3</td><td class="act">Fill in and Save.</td><td class="data">Required By: a date next week<br>Items row: RAW-STEEL, qty 20, Target Warehouse Stores - A3T</td><td class="exp">Saved as Draft; the number MAT-MR-2026-000NN appears at the top. Close the tab.</td><td class="res"></td></tr>
+			<tr data-id="03-4"><td class="n">4</td><td class="act">Refresh the Requisitions screen.</td><td class="data"></td><td class="exp">New row with status Draft, buttons Approve / Reject. Requisitions and Awaiting Approval are each one higher than in step 1.</td><td class="res"></td></tr>
+			<tr data-id="03-5"><td class="n">5</td><td class="act">Press <kbd>Approve</kbd>, confirm "Approve requisition …?".</td><td class="data"></td><td class="exp">Message "Requisition approved". The row now shows an approved status and a <kbd>To Order</kbd> button; Approved is one higher.</td><td class="res"></td></tr>
+		</tbody>
+	</table></div>
+
+	<h3><span class="tc">TC-04</span> Reject a requisition <span class="where">Transactions › Requisitions</span></h3>
+	<div class="tbl-wrap"><table>
+		<thead><tr><th>#</th><th>Action</th><th>Enter</th><th>Expected</th><th>Result</th></tr></thead>
+		<tbody>
+			<tr data-id="04-1"><td class="n">1</td><td class="act">Make a second requisition exactly as TC-03 steps 2–3.</td><td class="data">RAW-STEEL, qty 5</td><td class="exp">A second Draft row.</td><td class="res"></td></tr>
+			<tr data-id="04-2"><td class="n">2</td><td class="act">Press <kbd>Reject</kbd> on it, type a reason.</td><td class="data">Reason: test — not needed</td><td class="exp">The row disappears from the open list (a draft is deleted; an approved one would be cancelled). Awaiting Approval goes back down.</td><td class="res"></td></tr>
+		</tbody>
+	</table></div>
+
+	<h3><span class="tc">TC-05</span> Turn the requisition into an order and approve it <span class="where">Requisitions → Purchase Orders</span></h3>
+	<p class="pre">Creates <b>PUR-ORD-2026-000NN</b>.</p>
+	<div class="tbl-wrap"><table>
+		<thead><tr><th>#</th><th>Action</th><th>Enter</th><th>Expected</th><th>Result</th></tr></thead>
+		<tbody>
+			<tr data-id="05-1"><td class="n">1</td><td class="act">Press <kbd>To Order</kbd> on the approved requisition.</td><td class="data"></td><td class="exp">A box "Convert … to a purchase order. Supplier:" listing the compliant suppliers only — SUP-GOOD is offered, SUP-LAPSED is not.</td><td class="res"></td></tr>
+			<tr data-id="05-2"><td class="n">2</td><td class="act">Type the supplier and OK.</td><td class="data">SUP-GOOD</td><td class="exp">Message that the order was created. Open <kbd>Purchase Orders</kbd>: a new Draft row for SUP-GOOD, PUR-ORD-2026-000NN.</td><td class="res"></td></tr>
+			<tr data-id="05-3"><td class="n">3</td><td class="act">Press <kbd>Open</kbd> and check the item row.</td><td class="data">Rate should read 120</td><td class="exp">RAW-STEEL × 20 at 120 = 2,400. If the rate is 0, type 120 and Save.</td><td class="res"></td></tr>
+			<tr data-id="05-4"><td class="n">4</td><td class="act">Back on Purchase Orders, press <kbd>Approve</kbd>, confirm.</td><td class="data"></td><td class="exp">Status becomes To Receive and Bill. Order Value at the top rises by 2,400. A <kbd>Receive</kbd> button appears.</td><td class="res"></td></tr>
+		</tbody>
+	</table></div>
+
+	<h3><span class="tc">TC-06</span> Supplier compliance gate — must refuse <span class="where">Purchase Orders › New Order</span></h3>
+	<div class="tbl-wrap"><table>
+		<thead><tr><th>#</th><th>Action</th><th>Enter</th><th>Expected</th><th>Result</th></tr></thead>
+		<tbody>
+			<tr data-id="06-1"><td class="n">1</td><td class="act">Press <kbd>New Order</kbd>. Fill the form and Save.</td><td class="data">Supplier: SUP-LAPSED<br>Item: RAW-STEEL, qty 1, rate 120</td><td class="exp"><strong>Save is refused</strong> with "Supplier not compliant — Purchase Order cannot be raised for SUP-LAPSED: lapsed: trade licence …". Nothing is created.</td><td class="res"></td></tr>
+			<tr data-id="06-2"><td class="n">2</td><td class="act">Close the form without saving.</td><td class="data"></td><td class="exp">Purchase Orders list unchanged.</td><td class="res"></td></tr>
+		</tbody>
+	</table></div>
+
+	<h3><span class="tc">TC-07</span> Receive the material <span class="where">Purchase Orders → Goods Receipt · Live Stock</span></h3>
+	<p class="pre">Creates <b>MAT-PRE-2026-000NN</b>.</p>
+	<div class="tbl-wrap"><table>
+		<thead><tr><th>#</th><th>Action</th><th>Enter</th><th>Expected</th><th>Result</th></tr></thead>
+		<tbody>
+			<tr data-id="07-1"><td class="n">1</td><td class="act">On <kbd>Live Stock</kbd>, note RAW-STEEL's quantity in Stores - A3T (Stock by Warehouse).</td><td class="data"></td><td class="exp">Write the number down.</td><td class="res"></td></tr>
+			<tr data-id="07-2"><td class="n">2</td><td class="act">Purchase Orders: press <kbd>Receive</kbd> on the approved order; confirm "Create a goods receipt against …?".</td><td class="data"></td><td class="exp">Message that a draft receipt was created. Open <kbd>Goods Receipt</kbd>: the order is gone from Awaiting Receipt; a Draft receipt row MAT-PRE-2026-000NN shows with <kbd>Edit</kbd> and <kbd>Submit</kbd>.</td><td class="res"></td></tr>
+			<tr data-id="07-3"><td class="n">3</td><td class="act">Press <kbd>Submit</kbd>; confirm "… This posts the stock."</td><td class="data"></td><td class="exp">Status becomes To Bill; Posted count +1; a <kbd>Bill</kbd> button appears.</td><td class="res"></td></tr>
+			<tr data-id="07-4"><td class="n">4</td><td class="act">Back on Live Stock, press <kbd>Refresh</kbd>.</td><td class="data"></td><td class="exp">RAW-STEEL in Stores - A3T is 20 higher than step 1. Stock Value rose by 2,400.</td><td class="res"></td></tr>
+		</tbody>
+	</table></div>
+
+	<h3><span class="tc">TC-08</span> Bill it, hold it, release it, approve it <span class="where">Goods Receipt → Purchase Invoices</span></h3>
+	<p class="pre">Creates <b>ACC-PINV-2026-000NN</b>.</p>
+	<div class="tbl-wrap"><table>
+		<thead><tr><th>#</th><th>Action</th><th>Enter</th><th>Expected</th><th>Result</th></tr></thead>
+		<tbody>
+			<tr data-id="08-1"><td class="n">1</td><td class="act">Goods Receipt: press <kbd>Bill</kbd>; confirm "Raise a purchase invoice against …?".</td><td class="data"></td><td class="exp">Open <kbd>Purchase Invoices</kbd>: Draft bill ACC-PINV-2026-000NN for SUP-GOOD, total 2,400, buttons Hold / Approve.</td><td class="res"></td></tr>
+			<tr data-id="08-2"><td class="n">2</td><td class="act">Press <kbd>Hold</kbd>, type a reason.</td><td class="data">Reason: checking the price</td><td class="exp">"Invoice put on hold." The row shows an On Hold pill; On Hold count at the top is 1; the button is now <kbd>Release</kbd>.</td><td class="res"></td></tr>
+			<tr data-id="08-3"><td class="n">3</td><td class="act">Press <kbd>Approve</kbd> anyway; confirm.</td><td class="data"></td><td class="exp"><strong>Refused</strong>: "… is on hold. Release the hold before approving it." Status still Draft.</td><td class="res"></td></tr>
+			<tr data-id="08-4"><td class="n">4</td><td class="act">Press <kbd>Release</kbd>, then <kbd>Approve</kbd>; confirm "… This posts it to the ledger."</td><td class="data"></td><td class="exp">"Hold released." then approval. Status Unpaid; Outstanding at the top +2,400; a <kbd>Pay</kbd> button appears.</td><td class="res"></td></tr>
+			<tr data-id="08-5"><td class="n">5</td><td class="act">Open <kbd>Payments &amp; Receipts</kbd>.</td><td class="data"></td><td class="exp">Owed by Us includes the 2,400; SUP-GOOD is listed under payables.</td><td class="res"></td></tr>
+		</tbody>
+	</table></div>
+
+	<h3><span class="tc">TC-09</span> Pay the supplier <span class="where">Purchase Invoices → Supplier Payments</span></h3>
+	<p class="pre">Creates <b>ACC-PAY-2026-000NN</b>.</p>
+	<div class="tbl-wrap"><table>
+		<thead><tr><th>#</th><th>Action</th><th>Enter</th><th>Expected</th><th>Result</th></tr></thead>
+		<tbody>
+			<tr data-id="09-1"><td class="n">1</td><td class="act">Press <kbd>Pay</kbd> on the approved bill.</td><td class="data">Amount box shows 2,400 — accept it</td><td class="exp">Message that a draft payment was made. Open <kbd>Supplier Payments</kbd>: Owed to Suppliers still includes 2,400 (draft does not count); a Draft payment row with <kbd>Submit</kbd>.</td><td class="res"></td></tr>
+			<tr data-id="09-2"><td class="n">2</td><td class="act">Press <kbd>Submit</kbd>; confirm "Submit payment …?".</td><td class="data"></td><td class="exp">Owed to Suppliers drops by 2,400; the aged-balance table no longer shows this bill. On Purchase Invoices the bill reads Paid with Outstanding 0.</td><td class="res"></td></tr>
+			<tr data-id="09-3"><td class="n">3</td><td class="act">Part payment (optional): repeat TC-08 steps 1–4 on the second receipt if you made one, then Pay with a smaller amount.</td><td class="data">e.g. 100</td><td class="exp">After Submit the bill reads Partly Paid with the remainder outstanding.</td><td class="res"></td></tr>
+		</tbody>
+	</table></div>
+
+	<h2>Part C · Building</h2>
+
+	<h3><span class="tc">TC-10</span> Raise a work order — chassis numbers are issued <span class="where">Manufacturing · Serial Register</span></h3>
+	<p class="pre">Creates <b>MFG-WO-2026-000NN</b>, serials <b>TRL-00030</b> and <b>TRL-00031</b>, and two chassis numbers.</p>
+	<div class="tbl-wrap"><table>
+		<thead><tr><th>#</th><th>Action</th><th>Enter</th><th>Expected</th><th>Result</th></tr></thead>
+		<tbody>
+			<tr data-id="10-1"><td class="n">1</td><td class="act">Open <kbd>Serial Register</kbd>; note Chassis Issued and Awaiting Embossing at the top.</td><td class="data"></td><td class="exp">Write both numbers down.</td><td class="res"></td></tr>
+			<tr data-id="10-2"><td class="n">2</td><td class="act">Open <kbd>Manufacturing</kbd>, press <kbd>New</kbd>.</td><td class="data"></td><td class="exp">A form: Item to be Manufactured, Quantity, BOM, Planned Start, Target Delivery, Take raw material from, Finished trailers go to, For sales order (showing "Build to stock"), Specification / notes.</td><td class="res"></td></tr>
+			<tr data-id="10-3"><td class="n">3</td><td class="act">Pick the item and set the quantity; watch the material check.</td><td class="data">Item: TRL-FLATBED<br>Quantity: 2</td><td class="exp">BOM-TRL-FLATBED-001 is selected by itself. A green line "Material available in Stores - A3T" with one row: RAW-STEEL, Needed 8, In yard (current stock), Short —.</td><td class="res"></td></tr>
+			<tr data-id="10-3b"><td class="n">3b</td><td class="act">Change the quantity to 100, then back to 2.</td><td class="data">100 → 2</td><td class="exp">At 100 the check turns to a warning: RAW-STEEL Needed 400, Short (400 − stock), and a <kbd>Request the shortfall</kbd> button appears (do not press it). Back at 2 it is green again.</td><td class="res"></td></tr>
+			<tr data-id="10-3c"><td class="n">3c</td><td class="act">Fill in the rest and press <kbd>Create Work Order</kbd>.</td><td class="data">Take raw material from: Stores - A3T<br>Finished trailers go to: Finished Goods - A3T<br>For sales order: Build to stock<br>Specification: Red, twin axle, LED lights</td><td class="exp">The order appears in the Work Orders list as MFG-WO-2026-000NN at stage Material, 0%. Its detail panel shows "For Sales Order: Build to stock", the specification, and "Raw material from: Stores - A3T". <kbd>Print</kbd> shows the specification on the traveler.</td><td class="res"></td></tr>
+			<tr data-id="10-4"><td class="n">4</td><td class="act">Back on Serial Register, refresh.</td><td class="data"></td><td class="exp">Chassis Issued and Awaiting Embossing are each 2 higher. Two new rows TRL-00030 / TRL-00031 with chassis numbers beginning A3-26-00030 and A3-26-00031, Trailer Type TRL-FLATBED, Stage Material, Status In Production, Plate Pending, Work Order = the new order.</td><td class="res"></td></tr>
+			<tr data-id="10-5"><td class="n">5</td><td class="act">Open one trailer's record and try to change the chassis number.</td><td class="data">/app/trailer-serial/TRL-00030</td><td class="exp">The Chassis Number field is read-only; it cannot be edited.</td><td class="res"></td></tr>
+		</tbody>
+	</table></div>
+
+	<h3><span class="tc">TC-11</span> Chassis rule gate — must refuse <span class="where">Standard form · Manufacturing</span></h3>
+	<div class="note warn"><p>This case switches the confirmation off and on again. Do it on a test site only, and be sure to re-tick the box in step 3.</p></div>
+	<div class="tbl-wrap"><table>
+		<thead><tr><th>#</th><th>Action</th><th>Enter</th><th>Expected</th><th>Result</th></tr></thead>
+		<tbody>
+			<tr data-id="11-1"><td class="n">1</td><td class="act">Open /app/chassis-numbering-rule, untick Confirmed by Redlines, Save.</td><td class="data"></td><td class="exp">Saved.</td><td class="res"></td></tr>
+			<tr data-id="11-2"><td class="n">2</td><td class="act">Manufacturing: create a work order for TRL-FLATBED, qty 1.</td><td class="data"></td><td class="exp"><strong>Refused</strong>: "Chassis Numbering Rule not confirmed — Chassis numbering has not been confirmed yet, so no chassis number can be issued …". No order, no serials.</td><td class="res"></td></tr>
+			<tr data-id="11-3"><td class="n">3</td><td class="act">Re-tick Confirmed by Redlines and Save.</td><td class="data"></td><td class="exp">Saved. (Check: Serial Register unchanged since TC-10.)</td><td class="res"></td></tr>
+		</tbody>
+	</table></div>
+
+	<h3><span class="tc">TC-12</span> Print and record the plates <span class="where">Chassis Plates</span></h3>
+	<div class="tbl-wrap"><table>
+		<thead><tr><th>#</th><th>Action</th><th>Enter</th><th>Expected</th><th>Result</th></tr></thead>
+		<tbody>
+			<tr data-id="12-1"><td class="n">1</td><td class="act">Open <kbd>Chassis Plates</kbd>.</td><td class="data"></td><td class="exp">Every trailer still Pending is listed, including TRL-00030 and TRL-00031 with their chassis numbers.</td><td class="res"></td></tr>
+			<tr data-id="12-2"><td class="n">2</td><td class="act">Press <kbd>Print sheet</kbd>.</td><td class="data"></td><td class="exp">The browser's print dialog opens with the embossing sheet — one line per trailer, chassis number in large type.</td><td class="res"></td></tr>
+			<tr data-id="12-3"><td class="n">3</td><td class="act">Tick the two new trailers and press <kbd>Mark embossed</kbd>; confirm "Record the embossing step against 2 trailer(s)?".</td><td class="data"></td><td class="exp">Both rows read Embossed. On Serial Register, Awaiting Embossing is 2 lower, Embossed 2 higher; the Plate column shows Embossed.</td><td class="res"></td></tr>
+		</tbody>
+	</table></div>
+
+	<h3><span class="tc">TC-13</span> Six stages into stock <span class="where">Manufacturing · Serial Register · Live Stock</span></h3>
+	<div class="tbl-wrap"><table>
+		<thead><tr><th>#</th><th>Action</th><th>Enter</th><th>Expected</th><th>Result</th></tr></thead>
+		<tbody>
+			<tr data-id="13-1"><td class="n">1</td><td class="act">Manufacturing: select the new work order.</td><td class="data"></td><td class="exp">Production Detail shows Item TRL-FLATBED, Quantity 2, stage Material, a note box and a button <kbd>Move to Fabrication</kbd>.</td><td class="res"></td></tr>
+			<tr data-id="13-2"><td class="n">2</td><td class="act">Type a note and press <kbd>Move to Fabrication</kbd>.</td><td class="data">Note: steel cut</td><td class="exp">Stage reads Fabrication · 17%; Stage History gains a line with the time, your name and the note. Button now <kbd>Move to Assembly</kbd>.</td><td class="res"></td></tr>
+			<tr data-id="13-3"><td class="n">3</td><td class="act">Press <kbd>Move to Assembly</kbd>, <kbd>Move to Paint</kbd>, <kbd>Move to QC</kbd> in turn.</td><td class="data"></td><td class="exp">Stage and percentage advance each time; four history lines. Serial Register shows both trailers at stage QC, still In Production.</td><td class="res"></td></tr>
+			<tr data-id="13-4"><td class="n">4</td><td class="act">Sales Orders (in another tab): press <kbd>Reserve</kbd> on any order and type TRL-00030.</td><td class="data">TRL-00030</td><td class="exp"><strong>Refused</strong>: "Trailer TRL-00030 is In Production, so it cannot be reserved." (It is not in the offered list either.)</td><td class="res"></td></tr>
+			<tr data-id="13-5"><td class="n">5</td><td class="act">Back on Manufacturing press <kbd>Deliver &amp; Add to Stock</kbd>.</td><td class="data"></td><td class="exp">The card reads "Delivered — added to stock", 100%, the button is disabled; ERP Status Completed. Five history lines in all.</td><td class="res"></td></tr>
+			<tr data-id="13-6"><td class="n">6</td><td class="act">Serial Register, refresh.</td><td class="data"></td><td class="exp">TRL-00030 and TRL-00031: Stage Delivery, Status <strong>In Stock</strong>, Warehouse Finished Goods - A3T. In Stock count at the top is 2 higher.</td><td class="res"></td></tr>
+			<tr data-id="13-7"><td class="n">7</td><td class="act">Live Stock, Refresh.</td><td class="data"></td><td class="exp">TRL-FLATBED in Finished Goods - A3T is 2 higher and the two chassis numbers are listed by name; RAW-STEEL in Stores fell by the BOM quantity × 2.</td><td class="res"></td></tr>
+		</tbody>
+	</table></div>
+
+	<h2>Part D · Selling</h2>
+
+	<h3><span class="tc">TC-14</span> Take the order and reserve a trailer <span class="where">Transactions › Sales Orders</span></h3>
+	<p class="pre">Creates <b>SAL-ORD-2026-000NN</b>.</p>
+	<div class="tbl-wrap"><table>
+		<thead><tr><th>#</th><th>Action</th><th>Enter</th><th>Expected</th><th>Result</th></tr></thead>
+		<tbody>
+			<tr data-id="14-1"><td class="n">1</td><td class="act">Note Trailers in Stock at the top.</td><td class="data"></td><td class="exp">Write it down (it should include the two new units).</td><td class="res"></td></tr>
+			<tr data-id="14-2"><td class="n">2</td><td class="act">Press <kbd>New Order</kbd>; fill in and Save.</td><td class="data">Customer: A3 E2E Customer<br>Delivery Date: a week ahead<br>Item: TRL-FLATBED, qty 1, rate 50,000, warehouse Finished Goods - A3T</td><td class="exp">Draft SAL-ORD-2026-000NN, total 50,000. Close the tab.</td><td class="res"></td></tr>
+			<tr data-id="14-3"><td class="n">3</td><td class="act">Refresh Sales Orders; press <kbd>Confirm</kbd>; confirm the box.</td><td class="data"></td><td class="exp">"Sales order confirmed." Status To Deliver and Bill; Confirmed count +1; buttons <kbd>Reserve</kbd> and <kbd>Build</kbd>.</td><td class="res"></td></tr>
+			<tr data-id="14-4"><td class="n">4</td><td class="act">Press <kbd>Reserve</kbd>.</td><td class="data"></td><td class="exp">A box "Reserve a trailer against SAL-ORD-… Enter the serial id:" listing every In Stock chassis with its serial id in brackets.</td><td class="res"></td></tr>
+			<tr data-id="14-5"><td class="n">5</td><td class="act">Type the serial id and OK.</td><td class="data">TRL-00030</td><td class="exp">"Trailer reserved against …". The order row lists the chassis number; Trailers in Stock is 1 lower. Serial Register: TRL-00030 status <strong>Sold</strong>, Reserved For = this order.</td><td class="res"></td></tr>
+			<tr data-id="14-6"><td class="n">6</td><td class="act">Press <kbd>Reserve</kbd> again on the same order and try TRL-00030 a second time.</td><td class="data">TRL-00030</td><td class="exp"><strong>Refused</strong>: "Trailer TRL-00030 is Sold, so it cannot be reserved." It is no longer in the offered list.</td><td class="res"></td></tr>
+		</tbody>
+	</table></div>
+
+	<h3><span class="tc">TC-15</span> Build for an order when nothing is in stock <span class="where">Sales Orders</span></h3>
+	<div class="tbl-wrap"><table>
+		<thead><tr><th>#</th><th>Action</th><th>Enter</th><th>Expected</th><th>Result</th></tr></thead>
+		<tbody>
+			<tr data-id="15-1"><td class="n">1</td><td class="act">Make and confirm a second sales order as TC-14 steps 2–3.</td><td class="data">TRL-FLATBED × 1</td><td class="exp">Confirmed order.</td><td class="res"></td></tr>
+			<tr data-id="15-2"><td class="n">2</td><td class="act">Press <kbd>Build</kbd>; answer the two boxes.</td><td class="data">Trailer item code: TRL-FLATBED<br>How many: 1</td><td class="exp">"Work order raised — serials issued; they will be reserved to this order when built." Manufacturing lists the order at Material with "For Sales Order: SAL-ORD-… · A3 E2E Customer"; Serial Register gains TRL-00032 with a new chassis, In Production.</td><td class="res"></td></tr>
+			<tr data-id="15-3"><td class="n">3</td><td class="act">On Manufacturing, walk that order through the stages to <kbd>Deliver &amp; Add to Stock</kbd>.</td><td class="data"></td><td class="exp">Serial Register: TRL-00032 reads <strong>Sold</strong> with Reserved For = the second sales order — nobody pressed Reserve. Sales Orders: the order row shows its chassis; Delivery &amp; Invoice lists it under Awaiting dispatch.</td><td class="res"></td></tr>
+			<tr data-id="15-4"><td class="n">4</td><td class="act">Manufacturing › <kbd>New</kbd>: pick TRL-FLATBED and open the "For sales order" box.</td><td class="data"></td><td class="exp">The second sales order is no longer offered (it is fully covered); only orders with trailers still to build appear. Close without creating.</td><td class="res"></td></tr>
+		</tbody>
+	</table></div>
+
+	<h3><span class="tc">TC-16</span> Dispatch — the delivery note carries the chassis <span class="where">Transactions › Delivery &amp; Invoice</span></h3>
+	<p class="pre">Creates <b>MAT-DN-2026-000NN</b>.</p>
+	<div class="tbl-wrap"><table>
+		<thead><tr><th>#</th><th>Action</th><th>Enter</th><th>Expected</th><th>Result</th></tr></thead>
+		<tbody>
+			<tr data-id="16-1"><td class="n">1</td><td class="act">Open <kbd>Delivery &amp; Invoice</kbd>.</td><td class="data"></td><td class="exp">Under Awaiting dispatch: the TC-14 order, customer A3 E2E Customer, Trailer reserved = TRL-00030's chassis, Delivered 0%.</td><td class="res"></td></tr>
+			<tr data-id="16-2"><td class="n">2</td><td class="act">Press <kbd>Dispatch</kbd>; confirm "Dispatch … with 1 trailer(s)?".</td><td class="data"></td><td class="exp">Under Delivery notes: a Draft MAT-DN-2026-000NN with an <kbd>Open</kbd> button. Deliveries count +1.</td><td class="res"></td></tr>
+			<tr data-id="16-3"><td class="n">3</td><td class="act">Press <kbd>Open</kbd>. Check the fields Trailer Serial and Chassis Number, then <kbd>Submit</kbd> → Yes.</td><td class="data"></td><td class="exp">Trailer Serial = TRL-00030 and the chassis number is filled in. After submit the note is To Bill.</td><td class="res"></td></tr>
+			<tr data-id="16-4"><td class="n">4</td><td class="act">Refresh Delivery &amp; Invoice.</td><td class="data"></td><td class="exp">The order has left Awaiting dispatch; the note row now has <kbd>Invoice</kbd> and <kbd>Print</kbd>. To Dispatch count −1.</td><td class="res"></td></tr>
+			<tr data-id="16-5"><td class="n">5</td><td class="act">Press <kbd>Print</kbd>.</td><td class="data"></td><td class="exp">The delivery note print shows the chassis number.</td><td class="res"></td></tr>
+			<tr data-id="16-6"><td class="n">6</td><td class="act">Serial Register: find TRL-00030.</td><td class="data"></td><td class="exp">Status <strong>Delivered</strong>; Owner A3 E2E Customer. Delivered count +1. Live Stock no longer lists this chassis.</td><td class="res"></td></tr>
+		</tbody>
+	</table></div>
+
+	<h3><span class="tc">TC-17</span> Invoice — the chassis is on the bill <span class="where">Delivery &amp; Invoice</span></h3>
+	<p class="pre">Creates <b>ACC-SINV-2026-000NN</b>.</p>
+	<div class="tbl-wrap"><table>
+		<thead><tr><th>#</th><th>Action</th><th>Enter</th><th>Expected</th><th>Result</th></tr></thead>
+		<tbody>
+			<tr data-id="17-1"><td class="n">1</td><td class="act">Press <kbd>Invoice</kbd> on the submitted note; confirm "Invoice delivery …?".</td><td class="data"></td><td class="exp">Under Sales invoices: Draft ACC-SINV-2026-000NN, total 50,000, buttons <kbd>Open</kbd> (and <kbd>Delete</kbd> if your role allows).</td><td class="res"></td></tr>
+			<tr data-id="17-2"><td class="n">2</td><td class="act">Press <kbd>Open</kbd>; check Trailer Serial and Chassis Number; <kbd>Submit</kbd> → Yes.</td><td class="data"></td><td class="exp">Both fields carry TRL-00030 and its chassis. After submit: status Unpaid, due date shown.</td><td class="res"></td></tr>
+			<tr data-id="17-3"><td class="n">3</td><td class="act">Refresh Delivery &amp; Invoice.</td><td class="data"></td><td class="exp">Invoice row: Outstanding 50,000, a <kbd>Receive</kbd> button. Outstanding at the top +50,000. Sales Invoices count +1.</td><td class="res"></td></tr>
+			<tr data-id="17-4"><td class="n">4</td><td class="act">Press <kbd>Print</kbd> on the invoice (Open → Print).</td><td class="data"></td><td class="exp">The printed invoice shows the chassis number.</td><td class="res"></td></tr>
+		</tbody>
+	</table></div>
+
+	<h3><span class="tc">TC-18</span> Invoice deletion rule <span class="where">Delivery &amp; Invoice</span></h3>
+	<div class="tbl-wrap"><table>
+		<thead><tr><th>#</th><th>Action</th><th>Enter</th><th>Expected</th><th>Result</th></tr></thead>
+		<tbody>
+			<tr data-id="18-1"><td class="n">1</td><td class="act">Press <kbd>Delete</kbd> on the submitted invoice; confirm both boxes.</td><td class="data"></td><td class="exp"><strong>Refused</strong>: "Invoice is posted — … is submitted and sits in the ledger. Cancel it first …". The invoice remains.</td><td class="res"></td></tr>
+			<tr data-id="18-2"><td class="n">2</td><td class="act">Make a throw-away draft: on the standard form /app/sales-invoice/new, customer A3 E2E Customer, item RAW-STEEL qty 1 rate 1, Save (do not submit). Back on the screen press <kbd>Delete</kbd> on it; confirm twice.</td><td class="data"></td><td class="exp">The draft is deleted and disappears from the list.</td><td class="res"></td></tr>
+		</tbody>
+	</table></div>
+
+	<h2>Part E · Money and the books</h2>
+
+	<h3><span class="tc">TC-19</span> Receive the customer's money <span class="where">Delivery &amp; Invoice → Payments &amp; Receipts</span></h3>
+	<div class="tbl-wrap"><table>
+		<thead><tr><th>#</th><th>Action</th><th>Enter</th><th>Expected</th><th>Result</th></tr></thead>
+		<tbody>
+			<tr data-id="19-1"><td class="n">1</td><td class="act">Payments &amp; Receipts: note Owed to Us.</td><td class="data"></td><td class="exp">Includes the 50,000.</td><td class="res"></td></tr>
+			<tr data-id="19-2"><td class="n">2</td><td class="act">Delivery &amp; Invoice: press <kbd>Receive</kbd> on the invoice.</td><td class="data">Amount box shows 50,000 — accept</td><td class="exp">A draft receipt is made. Payments &amp; Receipts lists it as Draft with <kbd>Submit</kbd>.</td><td class="res"></td></tr>
+			<tr data-id="19-3"><td class="n">3</td><td class="act">Press <kbd>Submit</kbd>; confirm.</td><td class="data"></td><td class="exp">Owed to Us falls by 50,000. On Delivery &amp; Invoice the invoice reads Paid, Outstanding 0, no Receive button.</td><td class="res"></td></tr>
+		</tbody>
+	</table></div>
+
+	<h3><span class="tc">TC-20</span> Journal entry <span class="where">Transactions › Journal Entries</span></h3>
+	<div class="tbl-wrap"><table>
+		<thead><tr><th>#</th><th>Action</th><th>Enter</th><th>Expected</th><th>Result</th></tr></thead>
+		<tbody>
+			<tr data-id="20-1"><td class="n">1</td><td class="act">Press <kbd>New Journal</kbd>; enter an unbalanced journal and Save.</td><td class="data">Line 1: Cash - A3T, Debit 100<br>Line 2: Stock Adjustment - A3T, Credit 50</td><td class="exp"><strong>Refused</strong> by the form: total debit must equal total credit.</td><td class="res"></td></tr>
+			<tr data-id="20-2"><td class="n">2</td><td class="act">Correct line 2 to Credit 100 and Save.</td><td class="data">Credit 100</td><td class="exp">Saved as Draft. Journal Entries screen: Awaiting Approval +1, a <kbd>Post</kbd> button.</td><td class="res"></td></tr>
+			<tr data-id="20-3"><td class="n">3</td><td class="act">Press <kbd>Post</kbd>; confirm "Post journal … to the ledger?".</td><td class="data"></td><td class="exp">Status Posted; Posted count +1; the lines show 100 / 100.</td><td class="res"></td></tr>
+		</tbody>
+	</table></div>
+
+	<h3><span class="tc">TC-21</span> The figures agree <span class="where">Several screens</span></h3>
+	<div class="tbl-wrap"><table>
+		<thead><tr><th>#</th><th>Action</th><th>Enter</th><th>Expected</th><th>Result</th></tr></thead>
+		<tbody>
+			<tr data-id="21-1"><td class="n">1</td><td class="act">Compare Owed by Us (Payments &amp; Receipts) with Owed to Suppliers (Supplier Payments).</td><td class="data"></td><td class="exp">Same figure.</td><td class="res"></td></tr>
+			<tr data-id="21-2"><td class="n">2</td><td class="act">Compare Payments Missing (Live Stock) with the unpaid bills on Purchase Invoices.</td><td class="data"></td><td class="exp">Same figure.</td><td class="res"></td></tr>
+			<tr data-id="21-3"><td class="n">3</td><td class="act">Compare In Stock (Serial Register) with Trailers in Stock (Sales Orders).</td><td class="data"></td><td class="exp">Same count.</td><td class="res"></td></tr>
+			<tr data-id="21-4"><td class="n">4</td><td class="act">Open Home.</td><td class="data"></td><td class="exp">Revenue for this month includes the 50,000.</td><td class="res"></td></tr>
+		</tbody>
+	</table></div>
+
+	<h2>Part F · After the sale</h2>
+
+	<h3><span class="tc">TC-22</span> Warranty on the trailer <span class="where">Serial Register · trailer record</span></h3>
+	<div class="tbl-wrap"><table>
+		<thead><tr><th>#</th><th>Action</th><th>Enter</th><th>Expected</th><th>Result</th></tr></thead>
+		<tbody>
+			<tr data-id="22-1"><td class="n">1</td><td class="act">Open the delivered trailer's record.</td><td class="data">/app/trailer-serial/TRL-00030</td><td class="exp">Status Delivered, Current Owner A3 E2E Customer, Warranty Start / Expiry empty.</td><td class="res"></td></tr>
+			<tr data-id="22-2"><td class="n">2</td><td class="act">Set the dates and Save.</td><td class="data">Warranty Start: today<br>Warranty Expiry: two years from today</td><td class="exp">Saved. Serial Register's Warranty column shows the expiry for TRL-00030.</td><td class="res"></td></tr>
+		</tbody>
+	</table></div>
+
+	<h3><span class="tc">TC-23</span> Old vehicle links <span class="where">Browser</span></h3>
+	<div class="tbl-wrap"><table>
+		<thead><tr><th>#</th><th>Action</th><th>Enter</th><th>Expected</th><th>Result</th></tr></thead>
+		<tbody>
+			<tr data-id="23-1"><td class="n">1</td><td class="act">Type an old vehicle address.</td><td class="data">/a3-workshop/vehicles</td><td class="exp">You land on the portal Home. Same for /a3-workshop/vehicle-history.</td><td class="res"></td></tr>
+		</tbody>
+	</table></div>
+
+	<h3><span class="tc">TC-24</span> Cancel a work order — numbers are never reused <span class="where">Manufacturing · standard form</span></h3>
+	<div class="tbl-wrap"><table>
+		<thead><tr><th>#</th><th>Action</th><th>Enter</th><th>Expected</th><th>Result</th></tr></thead>
+		<tbody>
+			<tr data-id="24-1"><td class="n">1</td><td class="act">Create a throw-away work order (Manufacturing › New, TRL-FLATBED × 1, Build to stock), then open it in the standard form, Submit it and Cancel it.</td><td class="data">/app/work-order/MFG-WO-2026-000NN</td><td class="exp">Cancelled. Serial Register: its serial reads Scrapped; the chassis number is still shown.</td><td class="res"></td></tr>
+			<tr data-id="24-2"><td class="n">2</td><td class="act">Create one more work order for TRL-FLATBED, qty 1.</td><td class="data"></td><td class="exp">The new serial gets the <em>next</em> chassis number — the scrapped one is not reissued.</td><td class="res"></td></tr>
+		</tbody>
+	</table></div>
+
+	<h2>Sign-off</h2>
+	<p>All 24 cases pass → the cycle is accepted. Any Fail: write the document number and what you saw in the note; the number alone is enough to find the record.</p>
+</div>
+
+<script>
+	(function () {
+		var KEY = "a3-test-script-results";
+		var rows = Array.prototype.slice.call(document.querySelectorAll("tr[data-id]"));
+		var state = {};
+		try { state = JSON.parse(localStorage.getItem(KEY) || "{}"); } catch (e) { state = {}; }
+		function save() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} }
+		function tally() {
+			var pass = 0, fail = 0;
+			rows.forEach(function (r) {
+				var s = state[r.getAttribute("data-id")] || {};
+				r.classList.toggle("pass", s.v === "pass"); r.classList.toggle("fail", s.v === "fail");
+				if (s.v === "pass") pass++; if (s.v === "fail") fail++;
+			});
+			document.getElementById("t-total").textContent = rows.length;
+			document.getElementById("t-done").textContent = pass + fail;
+			document.getElementById("t-pass").textContent = pass;
+			document.getElementById("t-fail").textContent = fail;
+		}
+		rows.forEach(function (r) {
+			var id = r.getAttribute("data-id"); var cell = r.querySelector("td.res"); var s = state[id] || {};
+			cell.innerHTML =
+				'<label><input type="radio" name="r-' + id + '" id="p-' + id + '" value="pass"> Pass</label>' +
+				'<label><input type="radio" name="r-' + id + '" id="f-' + id + '" value="fail"> Fail</label>' +
+				'<input type="text" id="n-' + id + '" placeholder="doc no. / note">';
+			var p = cell.querySelector("#p-" + CSS.escape(id)), f = cell.querySelector("#f-" + CSS.escape(id)), n = cell.querySelector("#n-" + CSS.escape(id));
+			if (s.v === "pass") p.checked = true; if (s.v === "fail") f.checked = true; if (s.n) n.value = s.n;
+			function upd() { state[id] = { v: p.checked ? "pass" : (f.checked ? "fail" : ""), n: n.value }; save(); tally(); }
+			p.addEventListener("change", upd); f.addEventListener("change", upd); n.addEventListener("input", upd);
+		});
+		["m-tester", "m-date", "m-site", "m-user"].forEach(function (id) {
+			var el = document.getElementById(id);
+			if (state["_" + id] !== undefined) el.value = state["_" + id];
+			el.addEventListener("input", function () { state["_" + id] = el.value; save(); });
+		});
+		document.getElementById("t-reset").addEventListener("click", function () {
+			rows.forEach(function (r) { delete state[r.getAttribute("data-id")]; });
+			rows.forEach(function (r) { r.querySelectorAll("input").forEach(function (i) { if (i.type === "radio") i.checked = false; else i.value = ""; }); });
+			save(); tally();
+		});
+		tally();
+	})();
+</script>

@@ -1,0 +1,84 @@
+{% extends "templates/workshop_base.html" %}
+{% from "templates/macros/trading.html" import status_pill, filter_bar, filter_script, call_method_js, stat_row, doc_modals %}
+
+{% block page_content %}
+{#- Manual journals, accruals and adjustments with the accounts, cost centre and
+    narration, and an approval step before posting. This presents the standard
+    ledger — there are no parallel books, so posting here is submitting the real
+    Journal Entry. -#}
+
+{{ stat_row([
+	{"label": "Journal Entries", "value": entries | length, "sub": "Recorded"},
+	{"label": "Awaiting Approval", "value": drafts | length, "sub": "Not yet posted"},
+	{"label": "Posted", "value": entries | selectattr("docstatus", "equalto", 1) | list | length, "sub": "In the ledger"},
+]) }}
+
+<div class="toolbar">
+	<div class="section-title" style="margin:0">Journal Entries</div>
+	<div class="toolbar__right">
+		<button type="button" class="btn btn--primary btn--sm" onclick="newJournal()">
+			<i class="fa-solid fa-plus"></i> New Journal</a>
+	</div>
+</div>
+
+{{ filter_bar("Search journal or narration…", [
+	{"key": "vtype", "label": "All types",
+	 "options": ["Journal Entry", "Bank Entry", "Cash Entry", "Credit Note", "Debit Note",
+	             "Contra Entry", "Excise Entry", "Write Off Entry", "Opening Entry", "Depreciation Entry"]}
+]) }}
+
+<div class="card"><div class="card__body" style="overflow-x:auto">
+	{%- if entries %}
+	<table class="table" id="tf-table">
+		<thead><tr>
+			<th>Journal</th><th>Date</th><th>Type</th><th>Accounts</th>
+			<th class="num">Debit</th><th class="num">Credit</th><th>Status</th><th>Action</th>
+		</tr></thead>
+		<tbody>
+		{%- for e in entries %}
+			<tr data-hay="{{ ((e.name or '') ~ ' ' ~ (e.user_remark or '')) | lower }}"
+				data-vtype="{{ e.voucher_type or '' }}">
+				<td><b>{{ e.name }}</b>
+					{%- if e.user_remark %}<div class="muted" style="font-size:11px">{{ e.user_remark | truncate(48) }}</div>{% endif %}</td>
+				<td>{{ frappe.utils.formatdate(e.posting_date, "dd MMM yyyy") }}</td>
+				<td>{{ e.voucher_type }}</td>
+				<td>{%- for a in e.accounts[:2] %}{{ a.account | truncate(26) }}{% if not loop.last %}<br>{% endif %}{%- endfor %}
+					{%- if e.accounts | length > 2 %}<div class="muted" style="font-size:11px">+{{ (e.accounts | length) - 2 }} more</div>{% endif %}</td>
+				<td class="num">{{ frappe.utils.fmt_money(e.total_debit) }}</td>
+				<td class="num">{{ frappe.utils.fmt_money(e.total_credit) }}</td>
+				<td>{{ status_pill("Posted" if e.docstatus == 1 else None, e.docstatus) }}</td>
+				<td>{%- if e.docstatus == 0 %}
+					<button class="btn btn--primary btn--sm" onclick="postJE('{{ e.name }}')">Post</button>
+					{%- else %}<button type="button" class="btn btn--outline btn--sm" onclick="openDoc('Journal Entry', '{{ e.name }}')">Open</button>{% endif %}</td>
+			</tr>
+		{%- endfor %}
+		</tbody>
+	</table>
+	{%- else %}
+	<div class="empty">No journal entries yet.</div>
+	{%- endif %}
+</div></div>
+
+{{ call_method_js() }}
+<script>
+function postJE(name) {
+	if (!confirm("Post journal " + name + " to the ledger?")) return;
+	tradingAction("a3_trading_management.api.selling.post_journal_entry", { name: name }, "Journal posted.");
+}
+</script>
+{{ doc_modals() }}
+{{ filter_script() }}
+<script>
+function newJournal() {
+	openNewDoc({
+		title: "New Journal", subtitle: "Debits must equal credits. Post it on the list once saved.",
+		head: [{ key: "posting_date", label: "Date", type: "date", value: new Date().toISOString().slice(0, 10) }, { key: "user_remark", label: "Remark", full: true, placeholder: "Why this journal exists" }],
+		columns: [{ key: "account", label: "Account", pick: "account", placeholder: "Search account…" }, { key: "debit", label: "Debit", num: true, width: "140px" }, { key: "credit", label: "Credit", num: true, width: "140px" }, { key: "remark", label: "Line remark" }],
+		total: function (l) { var d = l.reduce(function (s, r) { return s + (Number(r.debit) || 0); }, 0), c = l.reduce(function (s, r) { return s + (Number(r.credit) || 0); }, 0); return [["Debit", d.toLocaleString(undefined, { minimumFractionDigits: 2 })], ["Credit", c.toLocaleString(undefined, { minimumFractionDigits: 2 })], ["Difference", (d - c).toLocaleString(undefined, { minimumFractionDigits: 2 })]]; },
+		validate: function (h, l) { if (!l.length) return "Add at least one line."; var d = l.reduce(function (s, r) { return s + (Number(r.debit) || 0); }, 0), c = l.reduce(function (s, r) { return s + (Number(r.credit) || 0); }, 0); if (Math.abs(d - c) > 0.005) return "Journal does not balance: debit " + d + " against credit " + c + "."; return null; },
+		build: function (h, l) { return { posting_date: h.posting_date || null, user_remark: h.user_remark || null, accounts: JSON.stringify(l.map(function (r) { return { account: r.account, debit: r.debit, credit: r.credit, remark: r.remark }; })) }; },
+		method: "a3_trading_management.api.selling.create_journal_entry"
+	});
+}
+</script>
+{% endblock %}
