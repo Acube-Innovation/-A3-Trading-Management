@@ -12,7 +12,7 @@ from frappe import _
 from frappe.utils import flt, nowdate, getdate, date_diff
 
 from a3_trading_management.api._common import (
-	rows, status_counts, submit_document, cancel_document, default_company, ageing_bucket,
+	rows, status_counts, submit_document, cancel_document, default_company, ageing_bucket, apply_taxes,
 )
 
 
@@ -252,6 +252,7 @@ def dispatch_serial(sales_order, serials=None):
 	serials = serials or []
 	if serials:
 		_stamp_serial_fields(dn, serials)
+	apply_taxes(dn)
 	dn.flags.ignore_permissions = True
 	dn.insert(ignore_permissions=True)
 	frappe.db.commit()
@@ -272,6 +273,7 @@ def invoice_delivery(delivery_note):
 	if carried.get("custom_trailer_serial") and _has_field("Sales Invoice", "custom_trailer_serial"):
 		si.custom_trailer_serial = carried["custom_trailer_serial"]
 		si.custom_chassis_number = carried.get("custom_chassis_number")
+	apply_taxes(si)
 	si.flags.ignore_permissions = True
 	si.insert(ignore_permissions=True)
 	frappe.db.commit()
@@ -397,6 +399,7 @@ def create_sales_order(customer, items, delivery_date=None, company=None):
 			"warehouse": (fg if is_trailer else None) or row.get("warehouse") or None,
 		})
 	so.set_missing_values()
+	apply_taxes(so)
 	so.insert()
 	frappe.db.commit()
 	return {"name": so.name, "grand_total": so.grand_total}

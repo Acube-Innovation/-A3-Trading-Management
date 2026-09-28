@@ -64,6 +64,48 @@ def cancel_document(doctype, name):
 	return {"name": doc.name, "docstatus": doc.docstatus, "status": doc.get("status")}
 
 
+def apply_taxes(doc):
+	"""VAT on a buying or selling document the portal creates.
+
+	ERPNext only fills the taxes table from `taxes_and_charges` in the Desk form;
+	a document built in code gets none, so every portal order and invoice went
+	out without VAT. Choose the template the way the Desk form would — a Tax
+	Rule matching the party, else the company's default template — and add its
+	rows. A document that already carries taxes (mapped from an order that had
+	them) is left alone."""
+	field = doc.meta.get_field("taxes_and_charges")
+	if not field or doc.get("taxes"):
+		return
+	master = field.options
+	template = doc.get("taxes_and_charges")
+	if not template:
+		party_type = "Supplier" if master.startswith("Purchase") else "Customer"
+		party = doc.get(party_type.lower())
+		if party:
+			from erpnext.accounts.party import set_taxes
+
+			try:
+				template = set_taxes(
+					party, party_type, doc.get("posting_date") or doc.get("transaction_date"), doc.company,
+					customer_group=frappe.db.get_value("Customer", party, "customer_group") if party_type == "Customer" else None,
+					supplier_group=frappe.db.get_value("Supplier", party, "supplier_group") if party_type == "Supplier" else None,
+					tax_category=doc.get("tax_category"),
+				)
+			except Exception:
+				template = None  # no rule applies; fall through to the default
+	if not template:
+		template = frappe.db.get_value(master, {"company": doc.company, "is_default": 1, "disabled": 0})
+	if not template:
+		return
+	from erpnext.controllers.accounts_controller import get_taxes_and_charges
+
+	doc.taxes_and_charges = template
+	doc.set("taxes", [])
+	for row in get_taxes_and_charges(master, template) or []:
+		doc.append("taxes", row)
+	doc.calculate_taxes_and_totals()
+
+
 def default_company():
 	return (
 		frappe.defaults.get_user_default("Company")
@@ -107,22 +149,22 @@ VIEWABLE = {
 		"head": ["transaction_date", "schedule_date", "material_request_type"]},
 	"Purchase Order": {"party": "supplier", "party_name": "supplier_name", "lines": "items",
 		"line_fields": ["item_code", "item_name", "qty", "uom", "rate", "amount", "warehouse", "received_qty", "billed_amt", "schedule_date"],
-		"head": ["transaction_date", "schedule_date", "grand_total", "per_received", "per_billed"]},
+		"head": ["transaction_date", "schedule_date", "net_total", "taxes_and_charges", "total_taxes_and_charges", "grand_total", "per_received", "per_billed"]},
 	"Purchase Receipt": {"party": "supplier", "party_name": "supplier_name", "lines": "items",
 		"line_fields": ["item_code", "item_name", "received_qty", "rejected_qty", "qty", "uom", "rate", "amount", "warehouse", "purchase_order"],
-		"head": ["posting_date", "grand_total", "per_billed"]},
+		"head": ["posting_date", "net_total", "taxes_and_charges", "total_taxes_and_charges", "grand_total", "per_billed"]},
 	"Purchase Invoice": {"party": "supplier", "party_name": "supplier_name", "lines": "items",
 		"line_fields": ["item_code", "item_name", "qty", "uom", "rate", "amount", "purchase_receipt"],
-		"head": ["posting_date", "due_date", "grand_total", "outstanding_amount", "custom_approval_hold", "custom_hold_reason"]},
+		"head": ["posting_date", "due_date", "net_total", "taxes_and_charges", "total_taxes_and_charges", "grand_total", "outstanding_amount", "custom_approval_hold", "custom_hold_reason"]},
 	"Sales Order": {"party": "customer", "party_name": "customer_name", "lines": "items",
 		"line_fields": ["item_code", "item_name", "qty", "uom", "rate", "amount", "warehouse", "delivered_qty", "billed_amt", "delivery_date"],
-		"head": ["transaction_date", "delivery_date", "grand_total", "per_delivered", "per_billed"]},
+		"head": ["transaction_date", "delivery_date", "net_total", "taxes_and_charges", "total_taxes_and_charges", "grand_total", "per_delivered", "per_billed"]},
 	"Delivery Note": {"party": "customer", "party_name": "customer_name", "lines": "items",
 		"line_fields": ["item_code", "item_name", "qty", "uom", "rate", "amount", "warehouse", "against_sales_order"],
-		"head": ["posting_date", "grand_total", "custom_trailer_serial", "custom_chassis_number", "remarks", "per_billed"]},
+		"head": ["posting_date", "net_total", "taxes_and_charges", "total_taxes_and_charges", "grand_total", "custom_trailer_serial", "custom_chassis_number", "remarks", "per_billed"]},
 	"Sales Invoice": {"party": "customer", "party_name": "customer_name", "lines": "items",
 		"line_fields": ["item_code", "item_name", "qty", "uom", "rate", "amount", "delivery_note"],
-		"head": ["posting_date", "due_date", "grand_total", "outstanding_amount", "custom_trailer_serial", "custom_chassis_number"]},
+		"head": ["posting_date", "due_date", "net_total", "taxes_and_charges", "total_taxes_and_charges", "grand_total", "outstanding_amount", "custom_trailer_serial", "custom_chassis_number"]},
 	"Payment Entry": {"party": "party", "party_name": "party_name", "lines": "references",
 		"line_fields": ["reference_doctype", "reference_name", "total_amount", "outstanding_amount", "allocated_amount"],
 		"head": ["posting_date", "payment_type", "party_type", "mode_of_payment", "paid_from", "paid_to", "paid_amount", "received_amount", "reference_no"]},

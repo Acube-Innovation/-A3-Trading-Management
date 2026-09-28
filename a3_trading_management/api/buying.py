@@ -12,7 +12,7 @@ from frappe import _
 from frappe.utils import flt, getdate, nowdate, date_diff
 
 from a3_trading_management.api._common import (
-	rows, status_counts, submit_document, cancel_document, default_company, ageing_bucket,
+	rows, status_counts, submit_document, cancel_document, default_company, ageing_bucket, apply_taxes,
 )
 
 # The three papers a supplier must keep current, and the field holding each expiry.
@@ -222,6 +222,7 @@ def requisition_to_order(name, supplier):
 
 	po = make_purchase_order(name)
 	po.supplier = supplier
+	apply_taxes(po)
 	po.flags.ignore_permissions = True
 	po.insert(ignore_permissions=True)   # compliance block runs here
 	frappe.db.commit()
@@ -316,6 +317,7 @@ def receive_against_order(purchase_order, rows_json=None):
 				item.rejected_qty = flt(given["rejected_qty"])
 			if given.get("serial_no"):
 				item.serial_no = given["serial_no"]
+	apply_taxes(pr)
 	pr.flags.ignore_permissions = True
 	pr.insert(ignore_permissions=True)
 	frappe.db.commit()
@@ -357,6 +359,7 @@ def bill_against(purchase_receipt=None, purchase_order=None):
 		pi = make_purchase_invoice(purchase_order)
 	else:
 		frappe.throw(_("Pass a purchase receipt or a purchase order to bill against"))
+	apply_taxes(pi)
 	pi.flags.ignore_permissions = True
 	pi.insert(ignore_permissions=True)
 	frappe.db.commit()
@@ -574,6 +577,7 @@ def create_purchase_order(supplier, items, schedule_date=None, company=None):
 			"schedule_date": po.schedule_date,
 		})
 	po.set_missing_values()
+	apply_taxes(po)
 	po.insert()
 	frappe.db.commit()
 	return {"name": po.name, "grand_total": po.grand_total}
