@@ -91,21 +91,27 @@
 <div class="modal-overlay" id="wo-modal" role="dialog" aria-modal="true">
 	<div class="modal">
 		<div class="modal__head">
-			<div><h3>New Work Order</h3><div class="sub">Build trailers to stock</div></div>
+			<div><h3>New Work Order</h3><div class="sub">Build trailers to stock, or for a customer order</div></div>
 			<button type="button" class="modal__close" data-close><i class="fa-solid fa-xmark"></i></button>
 		</div>
 		<div class="modal__body">
 			<form class="form-grid" id="wo-form" autocomplete="off">
 				<div class="field field--full" style="position:relative">
 					<label>Item to be Manufactured <span class="req">*</span></label>
-					<input id="wo-item-input" placeholder="Search an item that has a BOM…">
+					<input id="wo-item-input" placeholder="Search an item, or type a new name to create it…">
 					<input type="hidden" name="wo_item_code">
 					<div class="mfg-mini-label" id="wo-item-desc"></div>
 				</div>
 				{{ field("Quantity","wo_qty",type="number",value="1") }}
 				<div class="field">
-					<label>BOM <span class="req">*</span></label>
+					<label style="display:flex;justify-content:space-between;align-items:center">
+						<span>BOM <span class="req">*</span></span>
+						<a href="#" id="wo-bom-new" style="display:none;font-weight:600;font-size:12px"><i class="fa-solid fa-plus"></i> New BOM</a>
+					</label>
 					<select name="wo_bom" id="wo-bom"><option value="">Select an item first</option></select>
+					<div class="mfg-mini-label" id="wo-bom-none" style="display:none;color:#8a6100">
+						<i class="fa-solid fa-triangle-exclamation"></i> No BOM yet — <a href="#" data-new-bom>create one</a> to build this item.
+					</div>
 				</div>
 				{{ field("Planned Start","wo_start",type="date") }}
 				{{ field("Target Delivery","wo_target",type="date") }}
@@ -116,6 +122,10 @@
 				<div class="field">
 					<label>Finished trailers go to</label>
 					<select name="wo_fg" id="wo-fg"></select>
+				</div>
+				<div class="field field--full">
+					<label>For sales order <span class="muted" style="font-weight:400">(leave as “Build to stock” unless a customer has ordered)</span></label>
+					<select name="wo_so" id="wo-so"><option value="">Build to stock</option></select>
 				</div>
 				<div class="field field--full">
 					<label>Specification / notes for the floor</label>
@@ -130,6 +140,122 @@
 		<div class="modal__foot">
 			<button type="button" class="btn btn--outline" data-close>Cancel</button>
 			<button type="button" class="btn btn--primary" id="wo-create"><i class="fa-solid fa-check"></i> Create Work Order</button>
+		</div>
+	</div>
+</div>
+
+<!-- New BOM pop-up (opens over the New Work Order modal) -->
+<div class="modal-overlay" id="bom-modal" role="dialog" aria-modal="true">
+	<div class="modal" style="max-width:900px">
+		<div class="modal__head">
+			<div><h3>New BOM</h3><div class="sub" id="bom-sub">The parts list and operations for one build</div></div>
+			<button type="button" class="modal__close" data-close><i class="fa-solid fa-xmark"></i></button>
+		</div>
+		<div class="modal__body">
+			<div class="form-grid">
+				<div class="field">
+					<label>Item this BOM builds</label>
+					<input id="bom-item-label" disabled>
+				</div>
+				<div class="field">
+					<label>Quantity built by this BOM</label>
+					<input type="number" id="bom-qty" value="1" min="1" step="any">
+				</div>
+			</div>
+			<div class="fieldset-title" style="margin-top:14px">Raw materials <span class="req">*</span></div>
+			<table class="mfg-table mfg-etable">
+				<thead><tr><th class="sl">#</th><th>Material</th><th style="width:90px">Qty</th><th style="width:70px">Unit</th><th style="width:100px">Rate</th><th style="width:120px">Amount</th><th style="width:40px"></th></tr></thead>
+				<tbody id="bom-rm"></tbody>
+			</table>
+			<button type="button" class="btn btn--sm mfg-btn-red mfg-addrow" id="bom-rm-add"><i class="fa-solid fa-plus"></i> Add material</button>
+
+			<div class="fieldset-title" style="margin-top:18px">Operations <span class="muted" style="font-weight:400;text-transform:none;letter-spacing:0">(optional — gives the labour cost)</span></div>
+			<table class="mfg-table mfg-etable">
+				<thead><tr><th class="sl">#</th><th>Operation</th><th>Workstation</th><th style="width:90px">Mins</th><th style="width:100px">Rate / hr</th><th style="width:120px">Cost</th><th style="width:40px"></th></tr></thead>
+				<tbody id="bom-ops"></tbody>
+			</table>
+			<button type="button" class="btn btn--sm mfg-btn-red mfg-addrow" id="bom-op-add"><i class="fa-solid fa-plus"></i> Add operation</button>
+
+			<div class="totals" id="bom-totals" style="margin-top:14px"></div>
+		</div>
+		<div class="modal__foot">
+			<button type="button" class="btn btn--outline" data-close>Cancel</button>
+			<button type="button" class="btn btn--primary" id="bom-create"><i class="fa-solid fa-check"></i> Create BOM</button>
+		</div>
+	</div>
+</div>
+
+<!-- New Item pop-up (opens over either modal above) -->
+<div class="modal-overlay" id="item-modal" role="dialog" aria-modal="true">
+	<div class="modal modal--sm">
+		<div class="modal__head">
+			<div><h3>New Item</h3><div class="sub" id="item-sub">A trailer model, part or raw material</div></div>
+			<button type="button" class="modal__close" data-close><i class="fa-solid fa-xmark"></i></button>
+		</div>
+		<div class="modal__body">
+			<form class="form-grid" id="item-form" autocomplete="off">
+				<div class="field field--full">
+					<label>Item name <span class="req">*</span></label>
+					<input name="item_name" id="item-name">
+				</div>
+				<div class="field">
+					<label>Item code</label>
+					<input name="item_code" id="item-code">
+				</div>
+				<div class="field">
+					<label>Unit</label>
+					<select name="stock_uom" id="item-uom"></select>
+				</div>
+				<div class="field field--full">
+					<label>Item group</label>
+					<select name="item_group" id="item-group"></select>
+				</div>
+				<div class="field field--full">
+					<label class="check"><input type="checkbox" id="item-trailer"> Is a Trailer <span class="muted" style="font-weight:400">— gets a chassis number when built</span></label>
+				</div>
+				<div class="field field--full">
+					<label id="item-rate-label">Selling price</label>
+					<input type="number" name="rate" id="item-rate" min="0" step="any" placeholder="0.00">
+				</div>
+				<div class="field field--full">
+					<label>Description</label>
+					<textarea name="description" id="item-desc" rows="2"></textarea>
+				</div>
+			</form>
+		</div>
+		<div class="modal__foot">
+			<button type="button" class="btn btn--outline" data-close>Cancel</button>
+			<button type="button" class="btn btn--primary" id="item-create"><i class="fa-solid fa-check"></i> Create Item</button>
+		</div>
+	</div>
+</div>
+
+<!-- New Operation / New Workstation pop-up (opens over any table that picks one) -->
+<div class="modal-overlay" id="master-modal" role="dialog" aria-modal="true">
+	<div class="modal modal--sm">
+		<div class="modal__head">
+			<div><h3 id="master-title">New Operation</h3><div class="sub" id="master-sub"></div></div>
+			<button type="button" class="modal__close" data-close><i class="fa-solid fa-xmark"></i></button>
+		</div>
+		<div class="modal__body">
+			<form class="form-grid" id="master-form" autocomplete="off" onsubmit="return false">
+				<div class="field field--full">
+					<label id="master-name-label">Operation name <span class="req">*</span></label>
+					<input id="master-name">
+				</div>
+				<div class="field field--full" id="master-ws-field">
+					<label>Default workstation <span class="muted" style="font-weight:400">— where it normally runs; sets its rate</span></label>
+					<input id="master-ws" placeholder="Search a workstation…">
+				</div>
+				<div class="field field--full" id="master-rate-field">
+					<label>Rate per hour</label>
+					<input type="number" id="master-rate" min="0" step="any" placeholder="0.00">
+				</div>
+			</form>
+		</div>
+		<div class="modal__foot">
+			<button type="button" class="btn btn--outline" data-close>Cancel</button>
+			<button type="button" class="btn btn--primary" id="master-create"><i class="fa-solid fa-check"></i> Create</button>
 		</div>
 	</div>
 </div>
@@ -282,7 +408,7 @@
 			'<span class="badge ' + o.badge + '">' + esc(o.status) + '</span></div></div>' +
 			stepperHtml(o) +
 			'<div class="fieldset-title">Work Order</div>' +
-			kv([["Item", o.item_name], ["Specification", o.description || "—"], ["Quantity", o.qty], ["BOM", o.bom], ["Production Stage", o.stage], ["ERP Status", o.erp_status], ["Started", o.planned_start], ["Target Delivery", o.target], ["Raw material from", o.source_warehouse || "—"], ["FG Warehouse", o.fg_warehouse]]) +
+			kv([["Item", o.item_name], ["For Sales Order", o.sales_order ? o.sales_order + (o.customer ? " · " + o.customer : "") : "Build to stock"], ["Specification", o.description || "—"], ["Quantity", o.qty], ["BOM", o.bom], ["Production Stage", o.stage], ["ERP Status", o.erp_status], ["Started", o.planned_start], ["Target Delivery", o.target], ["Raw material from", o.source_warehouse || "—"], ["FG Warehouse", o.fg_warehouse]]) +
 			'<div class="fieldset-title">BOM — Raw Materials' + (o.editable ? ' <span class="muted" style="font-weight:400">(editable)</span>' : '') + '</div>' + rmSection +
 			'<div class="fieldset-title">BOM — Operations' + (o.editable ? ' <span class="muted" style="font-weight:400">(editable)</span>' : '') + '</div>' + opSection +
 			saveBtn +
@@ -343,6 +469,27 @@
 			inp.addEventListener("input", function () {
 				var i = +inp.dataset.i; var k = inp.dataset.op;
 				editOps[i][k] = (k === "time_in_mins" || k === "hour_rate") ? (parseFloat(inp.value) || 0) : inp.value;
+			});
+		});
+		// operation / workstation pickers: an operation fills an empty workstation and
+		// its rate; a workstation always sets the rate, as the Desk form does.
+		detailEl.querySelectorAll('[data-op="operation"]').forEach(function (inp) {
+			var i = +inp.dataset.i;
+			attachOpAC(inp, function (it) {
+				editOps[i].operation = it.value;
+				if (it.workstation && !editOps[i].workstation) {
+					editOps[i].workstation = it.workstation;
+					editOps[i].hour_rate = Number(it.hour_rate) || 0;
+				}
+				rerenderTables();
+			});
+		});
+		detailEl.querySelectorAll('[data-op="workstation"]').forEach(function (inp) {
+			var i = +inp.dataset.i;
+			attachWsAC(inp, function (it) {
+				editOps[i].workstation = it.value;
+				editOps[i].hour_rate = Number(it.hour_rate) || 0;
+				rerenderTables();
 			});
 		});
 		// operation delete + add row
@@ -439,24 +586,68 @@
 		document.getElementById("wo-bom").innerHTML = '<option value="">Select an item first</option>';
 		document.getElementById("wo-bom-preview").style.display = "none";
 		document.getElementById("wo-material").style.display = "none";
+		document.getElementById("wo-so").innerHTML = '<option value="">Build to stock</option>';
+		document.getElementById("wo-bom-new").style.display = "none";
+		document.getElementById("wo-bom-none").style.display = "none";
 		modal.classList.add("is-open"); document.body.style.overflow = "hidden";
 	}
 	function closeModal() { modal.classList.remove("is-open"); document.body.style.overflow = ""; }
 	document.getElementById("new-wo").addEventListener("click", openModal);
 	modal.querySelectorAll("[data-close]").forEach(function (b) { b.addEventListener("click", closeModal); });
 	modal.addEventListener("click", function (e) { if (e.target === modal) closeModal(); });
-	document.addEventListener("keydown", function (e) { if (e.key === "Escape") closeModal(); });
+	// Escape closes only the top pop-up: New Item sits over New BOM, which sits over the work order.
+	document.addEventListener("keydown", function (e) {
+		if (e.key !== "Escape") return;
+		if (masterModal.classList.contains("is-open")) closeMasterModal();
+		else if (itemModal.classList.contains("is-open")) closeItemModal();
+		else if (bomModal.classList.contains("is-open")) closeBomModal();
+		else closeModal();
+	});
 
-	// item picker → load its BOMs, default-select the default BOM
-	attachAC(document.getElementById("wo-item-input"), function (q) {
+	// The "create" row an item autocomplete ends with once something is typed.
+	function withCreate(rows, q, label) {
+		var exact = rows.some(function (r) { return (r.label || "").toLowerCase() === q.toLowerCase() || (r.value || "").toLowerCase() === q.toLowerCase(); });
+		if (q && !exact) rows.push({ create: true, label: "+ " + label + " “" + q + "”", sub: "Opens a form to create it", value: q });
+		return rows;
+	}
+
+	// item picker → load its BOMs, default-select the default BOM. An item with
+	// no BOM opens the New BOM pop-up; a name that matches nothing can be created.
+	var woItemInput = document.getElementById("wo-item-input");
+	attachAC(woItemInput, function (q) {
 		return callMethod(API + "search_items", { search: q, limit: 12 }).then(function (rows) {
-			return (rows || []).map(function (it) { return { label: it.item_name || it.name, sub: it.name + (it.default_bom ? " · " + it.default_bom : ""), value: it.name, uom: it.stock_uom }; });
+			return withCreate((rows || []).map(function (it) {
+				return { label: it.item_name || it.name, value: it.name, uom: it.stock_uom,
+					sub: it.name + (it.default_bom ? " · " + it.default_bom : " · no BOM yet") };
+			}), q, "Create new item");
 		});
 	}, function (it) {
+		if (it.create) {
+			woItemInput.value = "";
+			openItemModal({ name: it.value, trailer: true }, function (created) {
+				woItemInput.value = created.item_name;
+				pickWoItem({ value: created.name, label: created.item_name, uom: created.stock_uom });
+			});
+			return;
+		}
+		pickWoItem(it);
+	});
+	function pickWoItem(it) {
 		document.querySelector('[name=wo_item_code]').value = it.value;
 		document.getElementById("wo-item-desc").textContent = it.value + (it.uom ? " · " + it.uom : "");
-		loadBoms(it.value);
-	});
+		loadBoms(it.value, true);
+		loadSalesOrders(it.value);
+	}
+
+	// Confirmed customer orders for this trailer that still have units to build.
+	function loadSalesOrders(item) {
+		var sel = document.getElementById("wo-so");
+		callMethod(API + "open_sales_orders_for_item", { item: item }).then(function (rows) {
+			sel.innerHTML = '<option value="">Build to stock</option>' + (rows || []).map(function (o) {
+				return '<option value="' + esc(o.name) + '">' + esc(o.name) + ' · ' + esc(o.customer_name) + ' · ' + o.to_build + ' to build' + (o.delivery_date ? ' · due ' + esc(o.delivery_date) : '') + '</option>';
+			}).join("");
+		});
+	}
 
 	// Is the material there? Runs whenever the BOM, quantity or yard changes.
 	function checkMaterial() {
@@ -488,17 +679,28 @@
 	}
 	document.getElementById("wo-source").addEventListener("change", checkMaterial);
 
-	function loadBoms(item) {
+	function loadBoms(item, offerNew, select) {
 		var sel = document.getElementById("wo-bom");
 		sel.innerHTML = '<option value="">Loading…</option>';
-		callMethod(API + "get_item_boms", { item: item }).then(function (r) {
+		return callMethod(API + "get_item_boms", { item: item }).then(function (r) {
 			var boms = r.boms || [];
+			var want = select || r.default_bom;
 			sel.innerHTML = boms.map(function (b) {
-				return '<option value="' + esc(b.name) + '"' + (b.name === r.default_bom ? " selected" : "") + '>' + esc(b.name) + (b.is_default ? " (default)" : "") + '</option>';
+				return '<option value="' + esc(b.name) + '"' + (b.name === want ? " selected" : "") + '>' + esc(b.name) + (b.is_default ? " (default)" : "") + '</option>';
 			}).join("") || '<option value="">No active BOM</option>';
+			document.getElementById("wo-bom-new").style.display = "";
+			document.getElementById("wo-bom-none").style.display = boms.length ? "none" : "block";
 			previewBom(); checkMaterial();
+			if (!boms.length && offerNew) openBomModal(item);
 		});
 	}
+	function newBomForCurrentItem(e) {
+		e.preventDefault();
+		var item = document.querySelector('[name=wo_item_code]').value;
+		if (item) openBomModal(item);
+	}
+	document.getElementById("wo-bom-new").addEventListener("click", newBomForCurrentItem);
+	document.querySelector("#wo-bom-none [data-new-bom]").addEventListener("click", newBomForCurrentItem);
 	function previewBom() {
 		var bom = document.getElementById("wo-bom").value;
 		var qty = document.querySelector('[name=wo_qty]').value || 1;
@@ -521,7 +723,7 @@
 		var item = document.querySelector('[name=wo_item_code]').value;
 		var bom = document.getElementById("wo-bom").value;
 		if (!item) { alert("Pick an item to manufacture."); return; }
-		if (!bom) { alert("This item has no active BOM."); return; }
+		if (!bom) { openBomModal(item); return; }
 		var btn = this; btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Creating…';
 		callMethod(API + "create_work_order", {
 			item: item, bom: bom,
@@ -530,12 +732,279 @@
 			fg_warehouse: document.getElementById("wo-fg").value,
 			planned_start_date: document.querySelector('[name=wo_start]').value || null,
 			expected_delivery_date: document.querySelector('[name=wo_target]').value || null,
+			sales_order: document.getElementById("wo-so").value || null,
 			description: document.getElementById("wo-spec").value.trim() || null
 		}).then(function (r) {
 			closeModal(); current = r.name;
 			return refresh(true).then(function () { return select(r.name); });
 		}).catch(function (e) { alert("Create failed: " + e.message); })
 			.then(function () { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-check"></i> Create Work Order'; });
+	});
+
+	// ---- master options for the two pop-ups (loaded once, on first use) ----
+	var masters = null;
+	function loadMasters() {
+		if (masters) return Promise.resolve(masters);
+		return callMethod(API + "get_master_options", {}).then(function (m) { masters = m || {}; return masters; });
+	}
+
+	// ---- New Item pop-up -----------------------------------------------
+	var itemModal = document.getElementById("item-modal"), itemDone = null;
+	function openItemModal(preset, onCreated) {
+		itemDone = onCreated;
+		loadMasters().then(function (m) {
+			document.getElementById("item-form").reset();
+			var trailer = !!preset.trailer;
+			document.getElementById("item-name").value = preset.name || "";
+			document.getElementById("item-code").placeholder = m.next_item_code ? "Leave blank for " + m.next_item_code : "Leave blank to number it";
+			document.getElementById("item-uom").innerHTML = (m.uoms || []).map(function (u) { return '<option' + (u === "Nos" ? " selected" : "") + '>' + esc(u) + '</option>'; }).join("");
+			var groups = m.item_groups || [];
+			var wantGroup = trailer ? "Trailers" : "Raw Material";
+			document.getElementById("item-group").innerHTML = groups.map(function (g) { return '<option' + (g === wantGroup ? " selected" : "") + '>' + esc(g) + '</option>'; }).join("");
+			document.getElementById("item-trailer").checked = trailer;
+			syncItemKind();
+			itemModal.classList.add("is-open");
+			document.getElementById("item-name").focus();
+		}).catch(function (e) { alert(e.message); });
+	}
+	function closeItemModal() { itemModal.classList.remove("is-open"); itemDone = null; }
+	function syncItemKind() {
+		var trailer = document.getElementById("item-trailer").checked;
+		document.getElementById("item-rate-label").textContent = trailer ? "Selling price" : "Buying price (per unit)";
+		document.getElementById("item-sub").textContent = trailer ? "A trailer model — build it with a BOM" : "A part or raw material that goes into a BOM";
+	}
+	document.getElementById("item-trailer").addEventListener("change", syncItemKind);
+	itemModal.querySelectorAll("[data-close]").forEach(function (b) { b.addEventListener("click", closeItemModal); });
+	itemModal.addEventListener("click", function (e) { if (e.target === itemModal) closeItemModal(); });
+	document.getElementById("item-create").addEventListener("click", function () {
+		var name = document.getElementById("item-name").value.trim();
+		if (!name) { alert("Give the item a name."); return; }
+		var btn = this; btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Creating…';
+		callMethod(API + "create_item", {
+			item_name: name,
+			item_code: document.getElementById("item-code").value.trim() || null,
+			item_group: document.getElementById("item-group").value,
+			stock_uom: document.getElementById("item-uom").value,
+			is_trailer: document.getElementById("item-trailer").checked ? 1 : 0,
+			rate: document.getElementById("item-rate").value || null,
+			description: document.getElementById("item-desc").value.trim() || null
+		}).then(function (created) {
+			var done = itemDone;
+			closeItemModal();
+			if (done) done(created);
+		}).catch(function (e) { alert("Could not create the item: " + e.message); })
+			.then(function () { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-check"></i> Create Item'; });
+	});
+
+	// ---- Operation / workstation pickers (search, or create on the spot) ----
+	// `onPick` gets { value, workstation, hour_rate }: an operation brings its
+	// usual workstation and rate, a workstation brings its rate.
+	function attachOpAC(input, onPick) {
+		attachAC(input, function (q) {
+			return callMethod(API + "search_operations", { search: q, limit: 10 }).then(function (rows) {
+				return withCreate((rows || []).map(function (o) {
+					return { label: o.name, value: o.name, workstation: o.workstation, hour_rate: o.hour_rate,
+						sub: o.workstation ? o.workstation + " · " + money(o.hour_rate) + " / hr" : "no default workstation" };
+				}), q, "Create operation");
+			});
+		}, function (it) {
+			if (it.create) { input.value = ""; openMasterModal("operation", it.value, onPick); return; }
+			onPick(it);
+		});
+	}
+	function attachWsAC(input, onPick, allowCreate) {
+		attachAC(input, function (q) {
+			return callMethod(API + "search_workstations", { search: q, limit: 10 }).then(function (rows) {
+				var list = (rows || []).map(function (w) { return { label: w.name, value: w.name, hour_rate: w.hour_rate, sub: money(w.hour_rate) + " / hr" }; });
+				return allowCreate === false ? list : withCreate(list, q, "Create workstation");
+			});
+		}, function (it) {
+			if (it.create) { input.value = ""; openMasterModal("workstation", it.value, onPick); return; }
+			onPick(it);
+		});
+	}
+
+	var masterModal = document.getElementById("master-modal"), masterKind = null, masterDone = null, masterWs = null;
+	function openMasterModal(kind, name, onCreated) {
+		masterKind = kind; masterDone = onCreated; masterWs = null;
+		var op = kind === "operation";
+		document.getElementById("master-title").textContent = op ? "New Operation" : "New Workstation";
+		document.getElementById("master-sub").textContent = op ? "A step of the build, e.g. Welding or Painting" : "A bay or machine where operations run";
+		document.getElementById("master-name-label").innerHTML = (op ? "Operation" : "Workstation") + ' name <span class="req">*</span>';
+		document.getElementById("master-name").value = name || "";
+		document.getElementById("master-ws").value = "";
+		document.getElementById("master-rate").value = "";
+		document.getElementById("master-ws-field").style.display = op ? "" : "none";
+		document.getElementById("master-rate-field").style.display = op ? "none" : "";
+		masterModal.classList.add("is-open");
+		document.getElementById(op ? "master-ws" : "master-rate").focus();
+	}
+	function closeMasterModal() { masterModal.classList.remove("is-open"); masterDone = null; }
+	masterModal.querySelectorAll("[data-close]").forEach(function (b) { b.addEventListener("click", closeMasterModal); });
+	masterModal.addEventListener("click", function (e) { if (e.target === masterModal) closeMasterModal(); });
+	// The default workstation must already exist; one pop-up at a time is enough.
+	attachWsAC(document.getElementById("master-ws"), function (it) { masterWs = it; }, false);
+	document.getElementById("master-create").addEventListener("click", function () {
+		var name = document.getElementById("master-name").value.trim();
+		if (!name) { alert("Give it a name."); return; }
+		var op = masterKind === "operation";
+		var wsTyped = document.getElementById("master-ws").value.trim();
+		if (op && wsTyped && (!masterWs || masterWs.value !== wsTyped)) { alert("Pick the workstation from the list."); return; }
+		var btn = this; btn.disabled = true;
+		(op
+			? callMethod(API + "create_operation", { name: name, workstation: wsTyped || null })
+			: callMethod(API + "create_workstation", { name: name, hour_rate: document.getElementById("master-rate").value || 0 })
+		).then(function (r) {
+			var done = masterDone;
+			closeMasterModal();
+			masters = null;   // the BOM pop-up's lists now include it
+			if (done) done({ value: r.name, label: r.name, workstation: r.workstation, hour_rate: r.hour_rate });
+		}).catch(function (e) { alert("Could not create it: " + e.message); })
+			.then(function () { btn.disabled = false; });
+	});
+
+	// ---- New BOM pop-up ------------------------------------------------
+	var bomModal = document.getElementById("bom-modal");
+	var bomItem = null, bomRM = [], bomOps = [];
+	function openBomModal(item) {
+		loadMasters().then(function (m) {
+			bomItem = item;
+			bomRM = [{}]; bomOps = [{}];
+			document.getElementById("bom-qty").value = 1;
+			document.getElementById("bom-item-label").value = (document.getElementById("wo-item-input").value || item) + " (" + item + ")";
+			document.getElementById("bom-sub").textContent = "Parts list and operations for " + item;
+			renderBom();
+			bomModal.classList.add("is-open");
+		}).catch(function (e) { alert(e.message); });
+	}
+	function closeBomModal() { bomModal.classList.remove("is-open"); }
+	bomModal.querySelectorAll("[data-close]").forEach(function (b) { b.addEventListener("click", closeBomModal); });
+	bomModal.addEventListener("click", function (e) { if (e.target === bomModal) closeBomModal(); });
+
+	// A row picked from the list carries its rate; a typed-in workstation is looked up.
+	function rateOf(o) { return o.hour_rate != null ? Number(o.hour_rate) || 0 : hourRate(o.workstation); }
+	function hourRate(ws) {
+		var w = ((masters && masters.workstations) || []).filter(function (x) { return x.name === ws; })[0];
+		return w ? Number(w.hour_rate) || 0 : 0;
+	}
+	function renderBom() {
+		document.getElementById("bom-rm").innerHTML = bomRM.map(function (r, i) {
+			return '<tr><td class="sl">' + (i + 1) + '</td>' +
+				'<td><input class="cell-inp bom-rm-ac" data-i="' + i + '" value="' + esc(r.item_name || "") + '" placeholder="Search a material, or type a new one…"></td>' +
+				'<td><input class="cell-inp" type="number" min="0" step="any" data-rm-qty="' + i + '" value="' + esc(r.qty || "") + '"></td>' +
+				'<td class="muted">' + esc(r.uom || "") + '</td>' +
+				'<td class="num">' + (r.item_code ? (Number(r.rate) || 0).toFixed(2) : "") + '</td>' +
+				'<td class="num" data-rm-amt="' + i + '">' + (r.item_code ? money((Number(r.rate) || 0) * (Number(r.qty) || 0)) : "") + '</td>' +
+				'<td><button type="button" class="mfg-row-x" data-rm-del="' + i + '"><i class="fa-solid fa-trash"></i></button></td></tr>';
+		}).join("");
+		document.getElementById("bom-ops").innerHTML = bomOps.map(function (o, i) {
+			return '<tr><td class="sl">' + (i + 1) + '</td>' +
+				'<td><input class="cell-inp" data-op-name="' + i + '" value="' + esc(o.operation || "") + '" placeholder="e.g. Welding & Fabrication"></td>' +
+				'<td><input class="cell-inp" data-op-ws="' + i + '" value="' + esc(o.workstation || "") + '" placeholder="Workstation"></td>' +
+				'<td><input class="cell-inp" type="number" min="0" step="any" data-op-min="' + i + '" value="' + esc(o.time_in_mins || "") + '"></td>' +
+				'<td class="num">' + (o.workstation ? rateOf(o).toFixed(2) : "") + '</td>' +
+				'<td class="num" data-op-cost="' + i + '">' + (o.workstation ? money(rateOf(o) * (Number(o.time_in_mins) || 0) / 60) : "") + '</td>' +
+				'<td><button type="button" class="mfg-row-x" data-op-del="' + i + '"><i class="fa-solid fa-trash"></i></button></td></tr>';
+		}).join("");
+		wireBom();
+		bomTotals();
+	}
+	function bomTotals() {
+		var rm = bomRM.reduce(function (s, r) { return s + (Number(r.rate) || 0) * (Number(r.qty) || 0); }, 0);
+		var op = bomOps.reduce(function (s, o) { return s + rateOf(o) * (Number(o.time_in_mins) || 0) / 60; }, 0);
+		var qty = Number(document.getElementById("bom-qty").value) || 1;
+		document.getElementById("bom-totals").innerHTML =
+			'<div class="row-between"><span class="muted">Raw material</span><span>' + money(rm) + '</span></div>' +
+			'<div class="row-between"><span class="muted">Operating</span><span>' + money(op) + '</span></div>' +
+			'<div class="row-between grand"><span>Est. cost' + (qty !== 1 ? ' for ' + qty : ' per unit') + '</span><span>' + money(rm + op) + '</span></div>';
+	}
+	function wireBom() {
+		var body = document.getElementById("bom-rm");
+		body.querySelectorAll(".bom-rm-ac").forEach(function (inp) {
+			var i = +inp.dataset.i;
+			attachAC(inp, function (q) {
+				return callMethod(API + "search_raw_items", { search: q, limit: 10 }).then(function (rows) {
+					return withCreate((rows || []).filter(function (it) { return it.name !== bomItem; }).map(function (it) {
+						return { label: it.item_name || it.name, sub: it.name + " · " + (it.stock_uom || ""), value: it.name, uom: it.stock_uom, rate: it.valuation_rate };
+					}), q, "Create new material");
+				});
+			}, function (it) {
+				if (it.create) {
+					openItemModal({ name: it.value, trailer: false }, function (created) {
+						bomRM[i] = { item_code: created.name, item_name: created.item_name, uom: created.stock_uom, rate: created.valuation_rate, qty: bomRM[i].qty || 1 };
+						renderBom();
+					});
+					return;
+				}
+				bomRM[i] = { item_code: it.value, item_name: it.label, uom: it.uom, rate: it.rate, qty: bomRM[i].qty || 1 };
+				renderBom();
+			});
+		});
+		body.querySelectorAll("[data-rm-qty]").forEach(function (inp) {
+			inp.addEventListener("input", function () {
+				var i = +inp.dataset.rmQty, r = bomRM[i]; r.qty = inp.value;
+				var cell = body.querySelector('[data-rm-amt="' + i + '"]');
+				if (cell && r.item_code) cell.textContent = money((Number(r.rate) || 0) * (Number(r.qty) || 0));
+				bomTotals();
+			});
+		});
+		body.querySelectorAll("[data-rm-del]").forEach(function (b) {
+			b.addEventListener("click", function () { bomRM.splice(+b.dataset.rmDel, 1); if (!bomRM.length) bomRM.push({}); renderBom(); });
+		});
+		var ops = document.getElementById("bom-ops");
+		ops.querySelectorAll("[data-op-name]").forEach(function (inp) {
+			var o = bomOps[+inp.dataset.opName];
+			attachOpAC(inp, function (it) {
+				o.operation = it.value;
+				if (it.workstation && !o.workstation) { o.workstation = it.workstation; o.hour_rate = it.hour_rate; }
+				renderBom();
+			});
+			// Typed rather than picked: kept as typed, and created on save.
+			inp.addEventListener("change", function () { o.operation = inp.value.trim(); });
+		});
+		ops.querySelectorAll("[data-op-ws]").forEach(function (inp) {
+			var o = bomOps[+inp.dataset.opWs];
+			attachWsAC(inp, function (it) { o.workstation = it.value; o.hour_rate = it.hour_rate; renderBom(); });
+			inp.addEventListener("change", function () {
+				var v = inp.value.trim();
+				if (v !== o.workstation) { o.workstation = v; o.hour_rate = null; }
+			});
+		});
+		ops.querySelectorAll("[data-op-min]").forEach(function (inp) {
+			inp.addEventListener("input", function () {
+				var i = +inp.dataset.opMin, o = bomOps[i]; o.time_in_mins = inp.value;
+				var cell = ops.querySelector('[data-op-cost="' + i + '"]');
+				if (cell && o.workstation) cell.textContent = money(rateOf(o) * (Number(o.time_in_mins) || 0) / 60);
+				bomTotals();
+			});
+		});
+		ops.querySelectorAll("[data-op-del]").forEach(function (b) {
+			b.addEventListener("click", function () { bomOps.splice(+b.dataset.opDel, 1); if (!bomOps.length) bomOps.push({}); renderBom(); });
+		});
+	}
+	document.getElementById("bom-rm-add").addEventListener("click", function () { bomRM.push({}); renderBom(); });
+	document.getElementById("bom-op-add").addEventListener("click", function () { bomOps.push({}); renderBom(); });
+	document.getElementById("bom-qty").addEventListener("input", bomTotals);
+
+	document.getElementById("bom-create").addEventListener("click", function () {
+		var items = bomRM.filter(function (r) { return r.item_code && Number(r.qty) > 0; })
+			.map(function (r) { return { item_code: r.item_code, qty: Number(r.qty) }; });
+		if (!items.length) { alert("Add at least one raw material with a quantity."); return; }
+		var operations = bomOps.filter(function (o) { return o.operation; })
+			.map(function (o) { return { operation: o.operation, workstation: o.workstation || null, time_in_mins: Number(o.time_in_mins) || 0 }; });
+		if (operations.some(function (o) { return !o.time_in_mins; })) { alert("Give every operation its time in minutes."); return; }
+		var noWs = operations.filter(function (o) { return !o.workstation; })[0];
+		if (noWs) { alert("Choose a workstation for " + noWs.operation + "."); return; }
+		var btn = this; btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Creating…';
+		callMethod(API + "create_bom", {
+			item: bomItem, items: items, operations: operations,
+			quantity: Number(document.getElementById("bom-qty").value) || 1
+		}).then(function (r) {
+			closeBomModal();
+			masters = null;   // a typed operation or workstation may now exist
+			if (document.querySelector('[name=wo_item_code]').value === bomItem) loadBoms(bomItem, false, r.name);
+		}).catch(function (e) { alert("Could not create the BOM: " + e.message); })
+			.then(function () { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-check"></i> Create BOM'; });
 	});
 
 	// ---- list selection ------------------------------------------------
