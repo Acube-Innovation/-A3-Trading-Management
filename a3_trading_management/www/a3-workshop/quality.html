@@ -1,0 +1,720 @@
+{% extends "templates/workshop_base.html" %}
+{% from "templates/macros/trading.html" import stat_row %}
+
+{% block page_content %}
+{#- One screen for quality control over ERPNext's own Quality Inspection:
+    what is waiting (a work order at its QC stage, a goods receipt or delivery
+    line whose item needs inspecting), every inspection recorded, and the
+    checklists they are recorded against. A work order moved past QC on the
+    Manufacturing screen records its inspection itself, so it lands in the
+    Inspections list without anyone coming here. See api/quality.py. -#}
+{%- set s = board.stats %}
+{{ stat_row([
+	{"label": "To Inspect", "value": s.waiting, "sub": "Waiting for QC"},
+	{"label": "Re-inspect", "value": s.reinspect, "sub": "Failed, back at QC"},
+	{"label": "Inspected", "value": s.month, "sub": "This month"},
+	{"label": "Pass Rate", "value": ((s.pass_rate | string) ~ "%") if s.pass_rate is not none else "—", "sub": (s.accepted ~ " passed · " ~ s.rejected ~ " failed this month")},
+]) }}
+
+<style>
+	.qc-pill { display:inline-block; padding:2px 9px; border-radius:11px; font-size:11px; font-weight:600; background:#eef1f5; color:#33415a; white-space:nowrap; }
+	.qc-pill--ok { background:#e6f6ec; color:#1b7f3b; }
+	.qc-pill--bad { background:#fdeaea; color:#b3261e; }
+	.qc-pill--warn { background:#fff4e0; color:#8a5a00; }
+	.qc-pane { display:none; }
+	.qc-pane.is-active { display:block; }
+	.qc-sub { font-size:11px; color:var(--muted); }
+	.qc-lines { width:100%; border-collapse:collapse; font-size:13.5px; }
+	.qc-lines th { text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); padding:6px 8px; border-bottom:1px solid var(--border); }
+	.qc-lines td { padding:6px 8px; border-bottom:1px solid var(--border); vertical-align:middle; }
+	.qc-lines input, .qc-lines select { width:100%; min-width:60px; font:inherit; padding:5px 7px; border:1px solid var(--border); border-radius:6px; background:var(--surface); color:var(--text); }
+	.qc-kv { display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:8px 16px; margin-bottom:14px; font-size:13.5px; }
+	.qc-kv span { display:block; font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); }
+	.qc-kv b { font-weight:600; }
+	.qc-err { color:#b3261e; font-size:13px; margin-top:8px; display:none; }
+	.qc-rm { background:none; border:0; color:var(--muted); cursor:pointer; }
+	.qc-rm:hover { color:#b3261e; }
+	.qc-tags { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+	.qc-tag { display:inline-flex; align-items:center; gap:6px; padding:3px 10px; border-radius:999px; background:var(--bg); border:1px solid var(--border); font-size:12px; }
+	.qc-ac { position:relative; }
+	.qc-ac__list { position:absolute; left:0; right:0; top:100%; z-index:20; background:var(--surface); border:1px solid var(--border); border-radius:8px; box-shadow:var(--shadow-md); max-height:220px; overflow:auto; display:none; }
+	.qc-ac__item { padding:7px 10px; cursor:pointer; font-size:13px; }
+	.qc-ac__item:hover { background:var(--bg); }
+	.qc-ac__item small { display:block; color:var(--muted); }
+	.qc-check { display:flex; align-items:center; gap:8px; font-size:13.5px; }
+	.qc-check input { width:auto; }
+	/* inspect pop-up */
+	/* A long checklist scrolls inside the pop-up; the result and Record button stay in view. */
+	#qc-modal { padding:24px 16px; }
+	#qc-modal .modal { display:flex; flex-direction:column; max-height:calc(100vh - 48px); }
+	#qc-modal .modal__body { overflow-y:auto; flex:1; min-height:0; }
+	.qi-hero { display:flex; justify-content:space-between; gap:18px; flex-wrap:wrap; padding:14px 16px; border:1px solid var(--border); border-radius:12px; background:var(--bg); margin-bottom:14px; }
+	.qi-hero h4 { font-size:17px; margin:0 0 8px; }
+	.qi-chips { display:flex; flex-wrap:wrap; gap:6px; }
+	.qi-chip { font-family:ui-monospace, SFMono-Regular, Menlo, monospace; font-size:12px; padding:3px 9px; border-radius:6px; background:var(--surface); border:1px solid var(--border); }
+	.qi-meta { display:grid; grid-template-columns:repeat(auto-fit, minmax(120px, 1fr)); gap:6px 18px; font-size:13px; flex:1; max-width:520px; }
+	.qi-meta span { display:block; font-size:10.5px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); }
+	.qi-alert { border-left:4px solid #b3261e; background:#fdeaea; color:#5f1410; padding:10px 14px; border-radius:8px; margin-bottom:14px; font-size:13px; }
+	.qi-alert--ok { border-left-color:#1b7f3b; background:#e6f6ec; color:#0f4a23; }
+	.qi-bar { display:flex; align-items:flex-end; gap:12px; flex-wrap:wrap; margin-bottom:10px; }
+	.qi-progress { flex:1; min-width:200px; }
+	.qi-progress__text { font-size:13px; margin-bottom:6px; }
+	.qi-track { display:flex; height:6px; background:var(--border); border-radius:3px; overflow:hidden; }
+	.qi-fill { height:100%; width:0; background:#1b7f3b; }
+	.qi-fill--bad { background:#b3261e; }
+	.qi-inline { display:flex; align-items:center; gap:6px; font-size:12px; color:var(--muted); }
+	.qi-inline select, .qi-inline input { font:inherit; font-size:13px; padding:5px 8px; border:1px solid var(--border); border-radius:6px; background:var(--surface); color:var(--text); }
+	.qi-row { display:grid; grid-template-columns:26px minmax(0,1fr) 170px auto 22px; gap:12px; align-items:center; padding:10px 12px; border:1px solid var(--border); border-left:4px solid var(--border); border-radius:10px; margin-bottom:8px; transition:background .15s; }
+	.qi-row.is-pass { border-left-color:#1b7f3b; background:rgba(27,127,59,.05); }
+	.qi-row.is-fail { border-left-color:#b3261e; background:rgba(179,38,30,.06); }
+	.qi-num { width:24px; height:24px; border-radius:50%; background:var(--bg); display:grid; place-items:center; font-size:12px; font-weight:700; }
+	.qi-row.is-pass .qi-num { background:#1b7f3b; color:#fff; }
+	.qi-row.is-fail .qi-num { background:#b3261e; color:#fff; }
+	.qi-name b { font-weight:600; }
+	.qi-in { font:inherit; padding:7px 9px; border:1px solid var(--border); border-radius:7px; background:var(--surface); color:var(--text); width:100%; }
+	.qi-prev { font-size:11px; color:var(--muted); margin-top:2px; }
+	.qi-prev--bad { color:#b3261e; font-weight:600; }
+	.qi-seg { display:inline-flex; border:1px solid var(--border); border-radius:8px; overflow:hidden; }
+	.qi-seg button { border:0; background:var(--surface); padding:7px 12px; font-size:13px; cursor:pointer; color:var(--text); white-space:nowrap; }
+	.qi-seg button + button { border-left:1px solid var(--border); }
+	.qi-seg button.on-pass { background:#1b7f3b; color:#fff; }
+	.qi-seg button.on-fail { background:#b3261e; color:#fff; }
+	.qi-big { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+	.qi-big button { display:flex; flex-direction:column; align-items:center; gap:4px; padding:18px; border:2px solid var(--border); border-radius:12px; background:var(--surface); color:var(--text); font-size:16px; font-weight:700; cursor:pointer; }
+	.qi-big button small { font-size:12px; font-weight:400; color:var(--muted); }
+	.qi-big button.on-pass { border-color:#1b7f3b; background:rgba(27,127,59,.08); color:#1b7f3b; }
+	.qi-big button.on-fail { border-color:#b3261e; background:rgba(179,38,30,.08); color:#b3261e; }
+	.qi-result { font-size:13px; font-weight:600; color:var(--muted); }
+	.qi-result--pass { color:#1b7f3b; }
+	.qi-result--fail { color:#b3261e; }
+	.qi-btn-pass { background:#1b7f3b !important; border-color:#1b7f3b !important; }
+	.qi-btn-pass:disabled, .btn:disabled { opacity:.55; cursor:not-allowed; }
+	.qi-del { font-size:13px; padding:4px; }
+	.qi-new { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:#1d4ed8; background:#e8efff; border-radius:4px; padding:1px 5px; margin-left:4px; }
+	.qi-add { display:flex; gap:8px; flex-wrap:wrap; align-items:center; padding:10px 12px; border:1px dashed var(--border); border-radius:10px; }
+	.qi-add__name { flex:1; min-width:220px; }
+	.qi-add input, .qi-add select { font:inherit; font-size:13px; padding:6px 8px; border:1px solid var(--border); border-radius:6px; background:var(--surface); color:var(--text); }
+	.qi-add__name input { width:100%; }
+	.qi-add #qi-add-min, .qi-add #qi-add-max { width:80px; }
+	.qi-add #qi-add-exp { width:170px; }
+	.qi-create { color:#1d4ed8; font-weight:600; }
+	@media (max-width: 680px) {
+		.qi-row { grid-template-columns:26px minmax(0,1fr); }
+		.qi-row .qi-in, .qi-row .qi-seg { grid-column:2; }
+		.qi-row .qi-del { grid-column:2; justify-self:start; }
+	}
+</style>
+
+<div class="toolbar">
+	<div class="chip-group" id="qc-tabs">
+		<button type="button" class="chip" data-tab="pending">To Inspect ({{ board.pending | length }})</button>
+		<button type="button" class="chip" data-tab="done">Inspections ({{ board.inspections | length }})</button>
+		<button type="button" class="chip" data-tab="lists">Checklists ({{ board.templates | length }})</button>
+	</div>
+	<div class="toolbar__right">
+		<button type="button" class="btn btn--primary btn--sm" id="ck-add"><i class="fa-solid fa-plus"></i> New Checklist</button>
+	</div>
+</div>
+
+{#- ------------------------------------------------------------ waiting -#}
+<div class="qc-pane" data-pane="pending">
+	<div class="card" style="margin-bottom:14px"><div class="card__body" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+		<input data-q placeholder="Search work order, item, chassis, supplier or customer…" style="flex:1;min-width:260px">
+		<select data-f="source"><option value="">All sources</option><option>Manufacturing</option><option>Goods receipt</option><option>Delivery</option></select>
+		<span class="muted" data-count style="font-size:12px"></span>
+	</div></div>
+	<div class="card"><div class="card__body" style="overflow-x:auto">
+		{%- if board.pending %}
+		<table class="table" data-table>
+			<thead><tr><th>Source</th><th>Document</th><th>Item</th><th class="num">Qty</th><th>For / From</th><th>Waiting since</th><th>State</th><th></th></tr></thead>
+			<tbody>
+			{%- for r in board.pending %}
+				<tr data-hay="{{ (r.reference_name ~ ' ' ~ r.item_code ~ ' ' ~ r.item_name ~ ' ' ~ r.detail ~ ' ' ~ r.party) | lower }}" data-source="{{ r.source }}">
+					<td>{{ r.source }}</td>
+					<td><b>{{ r.reference_name }}</b>{% if r.detail %}<div class="qc-sub">{{ r.detail }}</div>{% endif %}</td>
+					<td>{{ r.item_name }}<div class="qc-sub">{{ r.item_code }}</div></td>
+					<td class="num">{{ "%g" | format(r.qty) }}</td>
+					<td>{{ r.party or "—" }}</td>
+					<td>{{ r.since or "—" }}{% if r.due %}<div class="qc-sub">due {{ r.due }}</div>{% endif %}</td>
+					<td><span class="qc-pill {{ 'qc-pill--bad' if r.state == 'Re-inspect' else 'qc-pill--warn' }}">{{ r.state }}</span>
+						{%- if r.last_inspection %}<div class="qc-sub">failed {{ r.last_inspection }}</div>{% endif %}</td>
+					<td><button type="button" class="btn btn--primary btn--sm" data-inspect
+						data-type="{{ r.reference_type }}" data-name="{{ r.reference_name }}"
+						data-item="{{ r.item_code }}" data-row="{{ r.child_row }}"><i class="fa-solid fa-clipboard-check"></i> Inspect</button></td>
+				</tr>
+			{%- endfor %}
+			</tbody>
+		</table>
+		{%- else %}
+		<div class="empty">Nothing is waiting for inspection. A work order shows up here when it reaches the QC stage.</div>
+		{%- endif %}
+	</div></div>
+</div>
+
+{#- ------------------------------------------------------------ recorded -#}
+<div class="qc-pane" data-pane="done">
+	<div class="card" style="margin-bottom:14px"><div class="card__body" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+		<input data-q placeholder="Search inspection, work order, item or chassis…" style="flex:1;min-width:260px">
+		<select data-f="source"><option value="">All sources</option><option>Manufacturing</option><option>Goods receipt</option><option>Delivery</option></select>
+		<select data-f="state"><option value="">All results</option><option>Accepted</option><option>Rejected</option></select>
+		<span class="muted" data-count style="font-size:12px"></span>
+	</div></div>
+	<div class="card"><div class="card__body" style="overflow-x:auto">
+		{%- if board.inspections %}
+		<table class="table" data-table>
+			<thead><tr><th>Inspection</th><th>Date</th><th>Source</th><th>Document</th><th>Item</th><th>Checklist</th><th>Inspected by</th><th>Result</th></tr></thead>
+			<tbody>
+			{%- for r in board.inspections %}
+				<tr data-hay="{{ (r.name ~ ' ' ~ r.reference_name ~ ' ' ~ r.item_code ~ ' ' ~ (r.item_name or '') ~ ' ' ~ r.detail ~ ' ' ~ r.inspector) | lower }}"
+					data-source="{{ r.source }}" data-state="{{ r.state }}" style="cursor:pointer" data-view="{{ r.name }}">
+					<td><b>{{ r.name }}</b>{% if r.custom_auto_recorded %}<div class="qc-sub">from Manufacturing</div>{% endif %}</td>
+					<td>{{ r.date }}</td>
+					<td>{{ r.source }}</td>
+					<td>{{ r.reference_name }}{% if r.detail %}<div class="qc-sub">{{ r.detail }}</div>{% endif %}</td>
+					<td>{{ r.item_name or r.item_code }}</td>
+					<td>{{ r.quality_inspection_template or "—" }}</td>
+					<td>{{ r.inspector }}</td>
+					<td><span class="qc-pill {{ 'qc-pill--ok' if r.state == 'Accepted' else ('qc-pill--bad' if r.state == 'Rejected' else '') }}">{{ r.state }}</span></td>
+				</tr>
+			{%- endfor %}
+			</tbody>
+		</table>
+		{%- else %}
+		<div class="empty">No inspections recorded yet.</div>
+		{%- endif %}
+	</div></div>
+</div>
+
+{#- ------------------------------------------------------------ checklists -#}
+<div class="qc-pane" data-pane="lists">
+	<div class="card"><div class="card__body" style="overflow-x:auto">
+		{%- if board.templates %}
+		<table class="table">
+			<thead><tr><th>Checklist</th><th>Checks</th><th>Used for</th><th></th></tr></thead>
+			<tbody>
+			{%- for t in board.templates %}
+				<tr>
+					<td><b>{{ t.name }}</b></td>
+					<td>{%- for p in t.parameters %}{{ p.specification }}{% if p.numeric %} <span class="qc-sub">({{ "%g" | format(p.min_value) }}–{{ "%g" | format(p.max_value) }})</span>{% elif p.value %} <span class="qc-sub">({{ p.value }})</span>{% endif %}{% if not loop.last %}<br>{% endif %}{%- endfor %}</td>
+					<td>{%- for i in t.used_by %}{{ i.item_name or i.name }}{% if not loop.last %}, {% endif %}{%- else %}<span class="muted">No items yet</span>{%- endfor %}</td>
+					<td><button type="button" class="btn btn--outline btn--sm" data-edit-list="{{ t.name }}">Edit</button></td>
+				</tr>
+			{%- endfor %}
+			</tbody>
+		</table>
+		{%- else %}
+		<div class="empty">No checklists yet. Without one an inspection is a single pass or fail; with one, each check is recorded.</div>
+		{%- endif %}
+	</div></div>
+</div>
+
+{#- ------------------------------------------------------------ inspect pop-up -#}
+<div class="modal-overlay" id="qc-modal" role="dialog" aria-modal="true" aria-labelledby="qc-title">
+	<div class="modal" style="width:min(920px,96vw);max-width:none">
+		<div class="modal__head">
+			<div><h3 id="qc-title">Inspect</h3><div class="sub" id="qc-sub"></div></div>
+			<button type="button" class="modal__close" data-close><i class="fa-solid fa-xmark"></i></button>
+		</div>
+		<div class="modal__body">
+			<div class="qi-hero">
+				<div style="min-width:0">
+					<h4 id="qi-item">—</h4>
+					<div class="qi-chips" id="qi-chassis"></div>
+				</div>
+				<div class="qi-meta" id="qi-meta"></div>
+			</div>
+			<div class="qi-alert" id="qi-last" style="display:none"></div>
+
+			<div class="qi-bar">
+				<div class="qi-progress">
+					<div class="qi-progress__text" id="qi-progress-text"></div>
+					<div class="qi-track"><div class="qi-fill" id="qi-fill"></div><div class="qi-fill qi-fill--bad" id="qi-fill-bad"></div></div>
+				</div>
+				<label class="qi-inline">Checklist <select id="qc-template"></select></label>
+				<label class="qi-inline">Sample <input id="qc-sample" type="number" step="any" min="0" style="width:74px"></label>
+				<button type="button" class="btn btn--outline btn--sm" id="qi-pass-rest"><i class="fa-solid fa-check-double"></i> Pass the rest</button>
+			</div>
+
+			<div id="qc-readings"></div>
+			<div class="qi-add">
+				<div class="qc-ac qi-add__name"><input id="qi-add-name" placeholder="Add a check — search, or type a new one…" autocomplete="off"><div class="qc-ac__list" id="qi-add-list"></div></div>
+				<select id="qi-add-type"><option value="0">Pass / text</option><option value="1">Measurement</option></select>
+				<input id="qi-add-min" type="number" step="any" placeholder="Min">
+				<input id="qi-add-max" type="number" step="any" placeholder="Max">
+				<input id="qi-add-exp" placeholder="Expected (optional)">
+				<button type="button" class="btn btn--outline btn--sm" id="qi-add-btn"><i class="fa-solid fa-plus"></i> Add check</button>
+			</div>
+			<div class="qc-err" id="qi-add-err"></div>
+			<div class="qi-big" id="qc-verdict">
+				<button type="button" data-val="Accepted"><i class="fa-solid fa-circle-check"></i> Pass<small>Meets the standard</small></button>
+				<button type="button" data-val="Rejected"><i class="fa-solid fa-circle-xmark"></i> Fail<small>Needs rework before it goes on</small></button>
+			</div>
+
+			<div class="field" style="margin-top:16px">
+				<label id="qc-remarks-label">Remarks</label>
+				<textarea id="qc-remarks" rows="2" placeholder="What was checked, what was found…"></textarea>
+			</div>
+			<div class="qc-err" id="qc-err"></div>
+		</div>
+		<div class="modal__foot" style="justify-content:space-between;gap:12px;flex-wrap:wrap">
+			<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+				<span class="qi-result" id="qi-result">Not finished</span>
+				<label class="qc-check" id="qc-deliver-wrap"><input type="checkbox" id="qc-deliver" checked>
+					Move to Delivery and add the trailers to stock</label>
+			</div>
+			<div style="display:flex;gap:10px">
+				<button type="button" class="btn btn--outline" data-close>Cancel</button>
+				<button type="button" class="btn btn--primary" id="qc-save" disabled><i class="fa-solid fa-check"></i> Record inspection</button>
+			</div>
+		</div>
+	</div>
+</div>
+
+{#- ------------------------------------------------------------ view pop-up -#}
+<div class="modal-overlay" id="qv-modal" role="dialog" aria-modal="true" aria-labelledby="qv-title">
+	<div class="modal" style="width:min(820px,96vw);max-width:none">
+		<div class="modal__head">
+			<div><h3 id="qv-title">Inspection</h3><div class="sub" id="qv-sub"></div></div>
+			<button type="button" class="modal__close" data-close><i class="fa-solid fa-xmark"></i></button>
+		</div>
+		<div class="modal__body" id="qv-body"><div class="empty">Loading…</div></div>
+		<div class="modal__foot" id="qv-foot">
+			<button type="button" class="btn btn--outline" data-close>Close</button>
+		</div>
+	</div>
+</div>
+
+{#- ------------------------------------------------------------ checklist pop-up -#}
+<div class="modal-overlay" id="ck-modal" role="dialog" aria-modal="true" aria-labelledby="ck-title">
+	<div class="modal" style="width:min(860px,96vw);max-width:none">
+		<div class="modal__head">
+			<div><h3 id="ck-title">New Checklist</h3><div class="sub">The checks an inspector records, and the items inspected against them.</div></div>
+			<button type="button" class="modal__close" data-close><i class="fa-solid fa-xmark"></i></button>
+		</div>
+		<div class="modal__body">
+			<div class="form-grid">
+				<div class="field field--full"><label>Checklist name <span class="req">*</span></label><input id="ck-name" placeholder="e.g. Flatbed trailer final QC"></div>
+			</div>
+			<div style="overflow-x:auto;margin-top:14px">
+				<table class="qc-lines" id="ck-table">
+					<thead><tr><th>Check</th><th style="width:150px">Type</th><th style="width:90px">Min</th><th style="width:90px">Max</th><th>Expected</th><th style="width:30px"></th></tr></thead>
+					<tbody></tbody>
+				</table>
+			</div>
+			<button type="button" class="btn btn--outline btn--sm" id="ck-addrow" style="margin-top:8px"><i class="fa-solid fa-plus"></i> Add check</button>
+			<div class="field" style="margin-top:16px"><label>Used for these items</label>
+				<div class="qc-ac"><input id="ck-item" placeholder="Search items…" autocomplete="off"><div class="qc-ac__list" id="ck-item-list"></div></div>
+				<div class="qc-tags" id="ck-items"></div>
+			</div>
+			<label class="qc-check" style="margin-top:12px"><input type="checkbox" id="ck-receipt"> Inspect these items on goods receipt</label>
+			<label class="qc-check" style="margin-top:6px"><input type="checkbox" id="ck-delivery"> Inspect these items before delivery</label>
+			<div class="qc-sub" style="margin-top:4px">Trailers are always inspected at their QC production stage.</div>
+			<div class="qc-err" id="ck-err"></div>
+		</div>
+		<div class="modal__foot">
+			<button type="button" class="btn btn--outline" data-close>Cancel</button>
+			<button type="button" class="btn btn--primary" id="ck-save"><i class="fa-solid fa-check"></i> Save checklist</button>
+		</div>
+	</div>
+</div>
+
+<script type="application/json" id="qc-templates">{{ board.templates | tojson }}</script>
+<script>
+(function () {
+	var API = "a3_trading_management.api.quality.";
+	var TEMPLATES = JSON.parse(document.getElementById("qc-templates").textContent || "[]");
+	function $(id) { return document.getElementById(id); }
+	function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
+	function post(method, args) {
+		return fetch("/api/method/" + API + method, {
+			method: "POST", credentials: "same-origin",
+			headers: { "Content-Type": "application/json", "Accept": "application/json", "X-Frappe-CSRF-Token": (window.frappe && frappe.csrf_token) || "{{ csrf_token or '' }}" },
+			body: JSON.stringify(args || {})
+		}).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, body: j }; }); }).then(function (x) {
+			if (x.ok) return x.body.message;
+			var msg = x.body.exception || x.body.message || "Request failed";
+			try { var sm = JSON.parse(x.body._server_messages || "[]"); if (sm.length) msg = JSON.parse(sm[sm.length - 1]).message || msg; } catch (e) {}
+			throw new Error(String(msg).replace(/<[^>]+>/g, "").replace(/^[\w.]+Error: /, ""));
+		});
+	}
+	function showErr(id, e) { var el = $(id); el.textContent = (e && e.message) || String(e); el.style.display = "block"; }
+	function busy(btn, on, label) { btn.disabled = on; btn.innerHTML = on ? '<i class="fa-solid fa-spinner fa-spin"></i> Saving…' : label; }
+
+	// ---- modals ----
+	function openModal(id) { $(id).classList.add("is-open"); document.body.style.overflow = "hidden"; }
+	function closeModal(id) { $(id).classList.remove("is-open"); document.body.style.overflow = ""; }
+	["qc-modal", "qv-modal", "ck-modal"].forEach(function (id) {
+		var m = $(id);
+		m.addEventListener("click", function (e) { if (e.target === m || e.target.closest("[data-close]")) closeModal(id); });
+	});
+	document.addEventListener("keydown", function (e) { if (e.key === "Escape") ["qc-modal", "qv-modal", "ck-modal"].forEach(closeModal); });
+
+	// ---- tabs, remembered in the URL so a reload lands back on the same list ----
+	function setTab(tab) {
+		document.querySelectorAll("#qc-tabs [data-tab]").forEach(function (b) { b.classList.toggle("is-active", b.dataset.tab === tab); });
+		document.querySelectorAll(".qc-pane").forEach(function (p) { p.classList.toggle("is-active", p.dataset.pane === tab); });
+		try { var u = new URL(location.href); u.searchParams.set("tab", tab); history.replaceState(null, "", u); } catch (e) {}
+	}
+	document.querySelectorAll("#qc-tabs [data-tab]").forEach(function (b) { b.addEventListener("click", function () { setTab(b.dataset.tab); }); });
+	setTab({{ tab | tojson }});
+	function reloadOn(tab) { var u = new URL(location.href); u.searchParams.set("tab", tab); location.href = u.toString(); }
+
+	// ---- per-pane search and filters ----
+	document.querySelectorAll(".qc-pane").forEach(function (pane) {
+		var table = pane.querySelector("[data-table]"); if (!table) return;
+		var q = pane.querySelector("[data-q]"), count = pane.querySelector("[data-count]");
+		var sels = Array.prototype.slice.call(pane.querySelectorAll("[data-f]"));
+		var rows = Array.prototype.slice.call(table.tBodies[0].rows);
+		function apply() {
+			var needle = (q.value || "").trim().toLowerCase(), shown = 0;
+			rows.forEach(function (tr) {
+				var ok = !needle || (tr.dataset.hay || "").indexOf(needle) >= 0;
+				sels.forEach(function (s) { if (ok && s.value && tr.dataset[s.dataset.f] !== s.value) ok = false; });
+				tr.style.display = ok ? "" : "none"; if (ok) shown++;
+			});
+			count.textContent = shown + " of " + rows.length + " shown";
+		}
+		q.addEventListener("input", apply); sels.forEach(function (s) { s.addEventListener("change", apply); }); apply();
+	});
+
+	// ================================================================ inspect
+	// Every check starts undecided: nothing is recorded as passed unless someone
+	// passed it. A reading inside the limits passes itself; one outside fails.
+	var FORM = null, RESULTS = [], VALUES = [], VERDICT = null;
+	var PASS_LABEL = '<i class="fa-solid fa-circle-check"></i> Record pass', FAIL_LABEL = '<i class="fa-solid fa-circle-xmark"></i> Record fail';
+	function crit(p) { return p.numeric ? (fmtNum(p.min_value) + " – " + fmtNum(p.max_value)) : (p.value ? "Expected: " + p.value : "Visual check"); }
+	function fmtNum(v) { v = Number(v || 0); return String(Math.round(v * 100) / 100); }
+	function judge(p, reading) {
+		reading = String(reading || "").trim();
+		if (!reading) return "";
+		if (p.numeric) { var n = parseFloat(reading); if (isNaN(n)) return ""; return (n >= p.min_value && n <= p.max_value) ? "Accepted" : "Rejected"; }
+		if (p.value) return reading.toLowerCase() === String(p.value).toLowerCase() ? "Accepted" : "Rejected";
+		return "";
+	}
+	function overall() {
+		if (!FORM.parameters.length) return VERDICT;
+		if (RESULTS.indexOf("Rejected") >= 0 && RESULTS.every(Boolean)) return "Rejected";
+		return RESULTS.every(Boolean) ? "Accepted" : null;
+	}
+	function update() {
+		var n = FORM.parameters.length, done = RESULTS.filter(Boolean).length, bad = RESULTS.filter(function (r) { return r === "Rejected"; }).length;
+		document.querySelectorAll("#qc-readings .qi-row").forEach(function (row, i) {
+			row.classList.toggle("is-pass", RESULTS[i] === "Accepted"); row.classList.toggle("is-fail", RESULTS[i] === "Rejected");
+			row.querySelector('[data-set="Accepted"]').classList.toggle("on-pass", RESULTS[i] === "Accepted");
+			row.querySelector('[data-set="Rejected"]').classList.toggle("on-fail", RESULTS[i] === "Rejected");
+		});
+		document.querySelectorAll("#qc-verdict [data-val]").forEach(function (b) {
+			b.classList.toggle("on-pass", VERDICT === "Accepted" && b.dataset.val === "Accepted");
+			b.classList.toggle("on-fail", VERDICT === "Rejected" && b.dataset.val === "Rejected");
+		});
+		$("qi-progress-text").innerHTML = n
+			? "<b>" + done + " of " + n + "</b> checks recorded" + (bad ? ' · <span style="color:#b3261e;font-weight:600">' + bad + " failing</span>" : "")
+			: "No checklist — record one pass or fail";
+		$("qi-fill").style.width = n ? ((done - bad) / n * 100) + "%" : "0";
+		$("qi-fill-bad").style.width = n ? (bad / n * 100) + "%" : "0";
+		$("qi-pass-rest").style.display = n && done < n ? "" : "none";
+		var res = overall(), btn = $("qc-save"), el = $("qi-result");
+		el.className = "qi-result" + (res === "Accepted" ? " qi-result--pass" : res === "Rejected" ? " qi-result--fail" : "");
+		el.innerHTML = res === "Accepted" ? '<i class="fa-solid fa-circle-check"></i> Passes'
+			: res === "Rejected" ? '<i class="fa-solid fa-circle-xmark"></i> Fails'
+			: (n ? (n - done) + " check" + (n - done === 1 ? "" : "s") + " to go" : "Choose pass or fail");
+		btn.disabled = !res;
+		btn.innerHTML = res === "Rejected" ? FAIL_LABEL : PASS_LABEL;
+		btn.className = "btn " + (res === "Rejected" ? "btn--danger" : "btn--primary qi-btn-pass");
+		$("qc-deliver-wrap").style.display = FORM.can_deliver && res === "Accepted" ? "" : "none";
+		$("qc-remarks-label").innerHTML = res === "Rejected" ? 'What failed and what has to be fixed <span class="req">*</span>' : "Remarks";
+		$("qc-remarks").placeholder = res === "Rejected" ? "e.g. Rear axle out of alignment — back to assembly" : "What was checked, what was found…";
+	}
+	function renderReadings(params) {
+		FORM.parameters = (params || []).slice();
+		RESULTS = FORM.parameters.map(function () { return ""; });
+		VALUES = FORM.parameters.map(function () { return ""; });
+		drawRows();
+	}
+	// Rows are redrawn from FORM.parameters / VALUES / RESULTS, so removing or
+	// adding a check keeps what was already typed against the others.
+	function drawRows() {
+		var box = $("qc-readings"), prev = FORM.previous || {};
+		$("qc-verdict").style.display = FORM.parameters.length ? "none" : "";
+		box.innerHTML = FORM.parameters.map(function (p, i) {
+			var last = prev[p.specification], lastHtml = "";
+			if (last) lastHtml = '<div class="qi-prev' + (last.status === "Rejected" ? " qi-prev--bad" : "") + '">Last time: ' + esc(last.reading || "—") + (last.status === "Rejected" ? " · failed" : " · passed") + "</div>";
+			return '<div class="qi-row"><span class="qi-num">' + (i + 1) + "</span>" +
+				'<div class="qi-name"><b>' + esc(p.specification) + "</b>" + (p.added ? ' <span class="qi-new">added</span>' : "") +
+				'<div class="qc-sub">' + esc(crit(p)) + "</div>" + lastHtml + "</div>" +
+				'<input class="qi-in" data-reading="' + i + '" ' + (p.numeric ? 'type="number" step="any" inputmode="decimal"' : "") +
+				' placeholder="' + (p.numeric ? "Measured value" : (p.value ? esc(p.value) + "?" : "Observation")) + '" value="' + esc(VALUES[i]) + '" autocomplete="off">' +
+				'<div class="qi-seg"><button type="button" data-set="Accepted" data-i="' + i + '"><i class="fa-solid fa-check"></i> Pass</button>' +
+				'<button type="button" data-set="Rejected" data-i="' + i + '"><i class="fa-solid fa-xmark"></i> Fail</button></div>' +
+				'<button type="button" class="qc-rm qi-del" data-del="' + i + '" title="Remove this check from the inspection"><i class="fa-solid fa-trash"></i></button></div>';
+		}).join("");
+		box.querySelectorAll("[data-reading]").forEach(function (inp) {
+			inp.addEventListener("input", function () {
+				var i = +inp.dataset.reading, v = judge(FORM.parameters[i], inp.value);
+				VALUES[i] = inp.value;
+				if (v) { RESULTS[i] = v; update(); }
+			});
+			inp.addEventListener("keydown", function (e) {
+				if (e.key !== "Enter") return; e.preventDefault();
+				var next = box.querySelector('[data-reading="' + (+inp.dataset.reading + 1) + '"]');
+				(next || $("qc-remarks")).focus();
+			});
+		});
+		box.querySelectorAll("[data-set]").forEach(function (b) {
+			b.addEventListener("click", function () { var i = +b.dataset.i; RESULTS[i] = RESULTS[i] === b.dataset.set ? "" : b.dataset.set; update(); });
+		});
+		box.querySelectorAll("[data-del]").forEach(function (b) {
+			b.addEventListener("click", function () {
+				var i = +b.dataset.del;
+				FORM.parameters.splice(i, 1); RESULTS.splice(i, 1); VALUES.splice(i, 1);
+				drawRows();
+			});
+		});
+		update();
+	}
+
+	// ---- add a check: search the defined checks, or create a new one ----
+	var ADD_FOUND = [];
+	function addSync() {
+		var num = $("qi-add-type").value === "1";
+		$("qi-add-min").style.display = $("qi-add-max").style.display = num ? "" : "none";
+		$("qi-add-exp").style.display = num ? "none" : "";
+	}
+	function addReset() {
+		$("qi-add-name").value = ""; $("qi-add-type").value = "0";
+		$("qi-add-min").value = ""; $("qi-add-max").value = ""; $("qi-add-exp").value = "";
+		$("qi-add-list").style.display = "none"; $("qi-add-err").style.display = "none"; addSync();
+	}
+	function addPick(p) {
+		$("qi-add-name").value = p.specification;
+		if (p.specification && p.known) {
+			$("qi-add-type").value = p.numeric ? "1" : "0";
+			$("qi-add-min").value = p.numeric ? p.min_value : ""; $("qi-add-max").value = p.numeric ? p.max_value : "";
+			$("qi-add-exp").value = p.numeric ? "" : (p.value || "");
+		}
+		$("qi-add-list").style.display = "none"; addSync();
+		($("qi-add-type").value === "1" ? $("qi-add-min") : $("qi-add-exp")).focus();
+	}
+	$("qi-add-type").addEventListener("change", addSync);
+	(function () {
+		var inp = $("qi-add-name"), list = $("qi-add-list"), timer = null;
+		function draw() {
+			var typed = inp.value.trim(), exact = ADD_FOUND.some(function (p) { return p.specification.toLowerCase() === typed.toLowerCase(); });
+			var html = ADD_FOUND.map(function (p, i) {
+				var used = FORM && FORM.parameters.some(function (x) { return x.specification === p.specification; });
+				return '<div class="qc-ac__item" data-i="' + i + '">' + esc(p.specification) +
+					"<small>" + esc(used ? "already on this inspection" : (p.numeric ? "Measurement " + crit(p) : (p.value ? "Expected: " + p.value : "Pass / fail"))) + "</small></div>";
+			}).join("");
+			if (typed && !exact) html += '<div class="qc-ac__item qi-create" data-new="1"><i class="fa-solid fa-plus"></i> Create check “' + esc(typed) + '”<small>New — set its limits next</small></div>';
+			list.innerHTML = html; list.style.display = html ? "block" : "none";
+		}
+		function search() {
+			post("search_parameters", { search: inp.value }).then(function (rows) {
+				ADD_FOUND = (rows || []).map(function (p) { p.known = true; return p; }); draw();
+			}).catch(function () {});
+		}
+		inp.addEventListener("input", function () { clearTimeout(timer); timer = setTimeout(search, 150); });
+		inp.addEventListener("focus", search);
+		inp.addEventListener("blur", function () { setTimeout(function () { list.style.display = "none"; }, 150); });
+		inp.addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); $("qi-add-btn").click(); } });
+		list.addEventListener("mousedown", function (e) {
+			var el = e.target.closest(".qc-ac__item"); if (!el) return; e.preventDefault();
+			if (el.dataset.new) addPick({ specification: inp.value.trim() });
+			else addPick(ADD_FOUND[+el.dataset.i]);
+		});
+	})();
+	$("qi-add-btn").addEventListener("click", function () {
+		if (!FORM) return;
+		var name = $("qi-add-name").value.trim(), num = $("qi-add-type").value === "1", err = $("qi-add-err");
+		var lo = parseFloat($("qi-add-min").value), hi = parseFloat($("qi-add-max").value);
+		function fail(m) { err.textContent = m; err.style.display = "block"; }
+		if (!name) return fail("Type the check, or pick one from the list.");
+		if (FORM.parameters.some(function (p) { return p.specification.toLowerCase() === name.toLowerCase(); })) return fail("“" + name + "” is already on this inspection.");
+		if (num && (isNaN(lo) || isNaN(hi))) return fail("A measurement needs a minimum and a maximum.");
+		if (num && lo > hi) return fail("The minimum is above the maximum.");
+		var btn = this; btn.disabled = true;
+		post("add_parameter", { name: name }).then(function (saved) {
+			FORM.parameters.push({ specification: saved, numeric: num ? 1 : 0, min_value: num ? lo : 0, max_value: num ? hi : 0,
+			                       value: num ? "" : $("qi-add-exp").value.trim(), added: true });
+			RESULTS.push(""); VALUES.push("");
+			drawRows(); addReset(); btn.disabled = false;
+			var last = $("qc-readings").querySelector('[data-reading="' + (FORM.parameters.length - 1) + '"]'); if (last) last.focus();
+		}).catch(function (e) { fail(e.message); btn.disabled = false; });
+	});
+	document.querySelectorAll("#qc-verdict [data-val]").forEach(function (b) {
+		b.addEventListener("click", function () { if (!FORM) return; VERDICT = b.dataset.val; update(); });
+	});
+	$("qi-pass-rest").addEventListener("click", function () {
+		if (!FORM) return;
+		RESULTS = RESULTS.map(function (r) { return r || "Accepted"; }); update();
+	});
+	function openInspect(d) {
+		FORM = null; VERDICT = null; RESULTS = []; VALUES = []; addReset();
+		$("qc-err").style.display = "none"; $("qc-remarks").value = "";
+		$("qc-title").textContent = "Inspect " + d.name; $("qc-sub").textContent = "Loading…";
+		$("qi-item").textContent = "—"; $("qi-chassis").innerHTML = ""; $("qi-meta").innerHTML = "";
+		$("qi-last").style.display = "none"; $("qc-readings").innerHTML = '<div class="empty">Loading…</div>';
+		$("qc-verdict").style.display = "none"; $("qc-save").disabled = true; $("qc-deliver-wrap").style.display = "none";
+		openModal("qc-modal");
+		post("get_inspection_form", { reference_type: d.type, reference_name: d.name, item_code: d.item || null, child_row: d.row || null }).then(function (f) {
+			FORM = f;
+			$("qc-sub").textContent = f.kind + (f.reference_type === "Work Order" ? " before the trailer goes to stock" : "");
+			$("qi-item").textContent = f.item_name;
+			$("qi-chassis").innerHTML = (f.chassis.length ? f.chassis.map(function (c) { return '<span class="qi-chip"><i class="fa-solid fa-barcode"></i> ' + esc(c) + "</span>"; }).join("") : "") +
+				'<span class="qc-sub" style="align-self:center">' + esc(f.item_code) + "</span>";
+			$("qi-meta").innerHTML = f.meta.map(function (kv) { return "<div><span>" + esc(kv[0]) + "</span><b>" + esc(kv[1]) + "</b></div>"; }).join("");
+			if (f.last) {
+				var failed = (f.last.failed || []).map(function (x) { return "<li>" + esc(x.specification) + (x.reading ? " — read " + esc(x.reading) : "") + "</li>"; }).join("");
+				var el = $("qi-last");
+				el.className = "qi-alert" + (f.last.status === "Accepted" ? " qi-alert--ok" : "");
+				el.innerHTML = '<b><i class="fa-solid ' + (f.last.status === "Accepted" ? "fa-circle-check" : "fa-triangle-exclamation") + '"></i> ' +
+					(f.last.status === "Accepted" ? "Passed" : "Failed") + " on " + esc(f.last.date) + "</b> · " + esc(f.last.name) + " by " + esc(f.last.inspector) +
+					(f.last.remarks ? '<div style="margin-top:4px">' + esc(f.last.remarks) + "</div>" : "") +
+					(failed ? '<ul style="margin:6px 0 0 18px;padding:0">' + failed + "</ul>" : "");
+				el.style.display = "";
+			}
+			$("qc-sample").value = f.sample_size;
+			$("qc-template").innerHTML = '<option value="">None — one pass / fail</option>' + f.templates.map(function (t) { return '<option' + (t === f.template ? " selected" : "") + ">" + esc(t) + "</option>"; }).join("");
+			renderReadings(f.parameters);
+			var first = $("qc-readings").querySelector("input"); if (first) setTimeout(function () { first.focus(); }, 50);
+		}).catch(function (e) { $("qc-sub").textContent = ""; $("qc-readings").innerHTML = ""; showErr("qc-err", e); });
+	}
+	$("qc-template").addEventListener("change", function () {
+		var t = this.value;
+		if (!t) { renderReadings([]); return; }
+		post("get_template_parameters", { template: t }).then(renderReadings).catch(function (e) { showErr("qc-err", e); });
+	});
+	document.querySelectorAll("[data-inspect]").forEach(function (b) { b.addEventListener("click", function () { openInspect(b.dataset); }); });
+	$("qc-save").addEventListener("click", function () {
+		if (!FORM) return;
+		var res = overall(); if (!res) return;
+		if (res === "Rejected" && !$("qc-remarks").value.trim()) { showErr("qc-err", "Say what failed and what has to be fixed."); $("qc-remarks").focus(); return; }
+		var btn = this, label = btn.innerHTML;
+		var readings = FORM.parameters.map(function (p, i) {
+			return { specification: p.specification, reading: VALUES[i], result: RESULTS[i],
+			         numeric: p.numeric, min_value: p.min_value, max_value: p.max_value, value: p.value };
+		});
+		$("qc-err").style.display = "none"; busy(btn, true);
+		post("record_inspection", {
+			reference_type: FORM.reference_type, reference_name: FORM.reference_name, item_code: FORM.item_code,
+			child_row: FORM.child_row || null, template: $("qc-template").value || null, sample_size: $("qc-sample").value,
+			readings: JSON.stringify(readings), status: VERDICT, remarks: $("qc-remarks").value,
+			deliver: FORM.can_deliver && res === "Accepted" && $("qc-deliver").checked ? 1 : 0
+		}).then(function (r) {
+			if (r.stock_warning) alert(r.name + " recorded, and the work order moved to Delivery, but stock was not posted: " + String(r.stock_warning).replace(/<[^>]+>/g, ""));
+			reloadOn("done");
+		}).catch(function (e) { showErr("qc-err", e); busy(btn, false, label); });
+	});
+
+	// ================================================================ view
+	function openView(name) {
+		$("qv-title").textContent = name; $("qv-sub").textContent = "";
+		$("qv-body").innerHTML = '<div class="empty">Loading…</div>';
+		$("qv-foot").innerHTML = '<button type="button" class="btn btn--outline" data-close>Close</button>';
+		openModal("qv-modal");
+		post("get_inspection", { name: name }).then(function (d) {
+			$("qv-sub").textContent = d.inspection_type + " · " + d.source + (d.auto ? " · recorded from the Manufacturing screen" : "");
+			var kv = [["Result", d.status], ["Date", d.date], [d.reference_type, d.reference_name], ["Item", d.item], ["Sample size", d.sample_size],
+			          ["Inspected by", d.inspector], ["Checklist", d.template || "—"]];
+			if (d.chassis) kv.push(["Chassis", d.chassis]);
+			var rows = d.readings.map(function (r) {
+				return "<tr><td><b>" + esc(r.specification) + "</b></td><td>" + esc(r.criteria || "—") + "</td><td>" + esc(r.reading || "—") + '</td><td><span class="qc-pill ' + (r.status === "Accepted" ? "qc-pill--ok" : "qc-pill--bad") + '">' + esc(r.status === "Accepted" ? "Pass" : "Fail") + "</span></td></tr>";
+			}).join("");
+			$("qv-body").innerHTML = '<div class="qc-kv">' + kv.map(function (x) { return "<div><span>" + esc(x[0]) + "</span><b>" + esc(x[1]) + "</b></div>"; }).join("") + "</div>" +
+				(rows ? '<table class="qc-lines"><thead><tr><th>Check</th><th>Acceptance</th><th>Reading</th><th>Result</th></tr></thead><tbody>' + rows + "</tbody></table>" : "") +
+				(d.remarks ? '<div style="margin-top:12px"><div class="qc-sub" style="text-transform:uppercase;letter-spacing:.06em">Remarks</div>' + esc(d.remarks) + "</div>" : "") +
+				'<div class="qc-err" id="qv-err"></div>';
+			if (d.docstatus === 1) {
+				$("qv-foot").insertAdjacentHTML("afterbegin", '<button type="button" class="btn btn--outline" id="qv-cancel" style="margin-right:auto"><i class="fa-solid fa-ban"></i> Cancel inspection</button>');
+				$("qv-cancel").addEventListener("click", function () {
+					if (!confirm("Cancel " + d.name + "? " + d.reference_name + " goes back to waiting for inspection.")) return;
+					this.disabled = true;
+					post("cancel_inspection", { name: d.name }).then(function () { reloadOn("done"); })
+						.catch(function (e) { showErr("qv-err", e); $("qv-cancel").disabled = false; });
+				});
+			}
+		}).catch(function (e) { $("qv-body").innerHTML = '<div class="qc-err" style="display:block">' + esc(e.message) + "</div>"; });
+	}
+	document.querySelectorAll("[data-view]").forEach(function (tr) { tr.addEventListener("click", function () { openView(tr.dataset.view); }); });
+
+	// ================================================================ checklists
+	var EDITING = null, ITEMS = [];
+	function addCheck(p) {
+		p = p || { specification: "", numeric: 0, min_value: "", max_value: "", value: "" };
+		var tr = document.createElement("tr");
+		tr.innerHTML = '<td><input data-k="specification" placeholder="e.g. Brake lights working" value="' + esc(p.specification) + '"></td>' +
+			'<td><select data-k="numeric"><option value="0">Pass / text</option><option value="1"' + (p.numeric ? " selected" : "") + '>Measurement</option></select></td>' +
+			'<td><input data-k="min_value" type="number" step="any" value="' + esc(p.numeric ? p.min_value : "") + '"></td>' +
+			'<td><input data-k="max_value" type="number" step="any" value="' + esc(p.numeric ? p.max_value : "") + '"></td>' +
+			'<td><input data-k="value" placeholder="Expected result (optional)" value="' + esc(p.numeric ? "" : (p.value || "")) + '"></td>' +
+			'<td><button type="button" class="qc-rm" title="Remove"><i class="fa-solid fa-trash"></i></button></td>';
+		function sync() {
+			var num = tr.querySelector('[data-k="numeric"]').value === "1";
+			tr.querySelector('[data-k="min_value"]').disabled = !num; tr.querySelector('[data-k="max_value"]').disabled = !num;
+			tr.querySelector('[data-k="value"]').disabled = num;
+		}
+		tr.querySelector('[data-k="numeric"]').addEventListener("change", sync); sync();
+		tr.querySelector(".qc-rm").addEventListener("click", function () { tr.remove(); });
+		$("ck-table").tBodies[0].appendChild(tr);
+	}
+	function renderItems() {
+		$("ck-items").innerHTML = ITEMS.map(function (it, i) { return '<span class="qc-tag">' + esc(it.label) + ' <button type="button" class="qc-rm" data-i="' + i + '"><i class="fa-solid fa-xmark"></i></button></span>'; }).join("");
+		$("ck-items").querySelectorAll("[data-i]").forEach(function (b) { b.addEventListener("click", function () { ITEMS.splice(+b.dataset.i, 1); renderItems(); }); });
+	}
+	function openChecklist(t) {
+		EDITING = t ? t.name : null; $("ck-err").style.display = "none";
+		$("ck-title").textContent = t ? "Edit checklist" : "New Checklist";
+		$("ck-name").value = t ? t.name : ""; $("ck-name").disabled = !!t;
+		$("ck-table").tBodies[0].innerHTML = "";
+		(t && t.parameters.length ? t.parameters : [null, null, null]).forEach(addCheck);
+		ITEMS = t ? t.used_by.map(function (i) { return { value: i.name, label: i.item_name || i.name }; }) : [];
+		$("ck-receipt").checked = !!(t && t.used_by.some(function (i) { return i.inspection_required_before_purchase; }));
+		$("ck-delivery").checked = !!(t && t.used_by.some(function (i) { return i.inspection_required_before_delivery; }));
+		renderItems(); openModal("ck-modal");
+		setTimeout(function () { (t ? $("ck-table").querySelector("input") : $("ck-name")).focus(); }, 50);
+	}
+	$("ck-add").addEventListener("click", function () { openChecklist(null); });
+	$("ck-addrow").addEventListener("click", function () { addCheck(null); });
+	document.querySelectorAll("[data-edit-list]").forEach(function (b) {
+		b.addEventListener("click", function () { openChecklist(TEMPLATES.filter(function (t) { return t.name === b.dataset.editList; })[0]); });
+	});
+	(function () {
+		var inp = $("ck-item"), list = $("ck-item-list"), timer = null, found = [];
+		function close() { list.style.display = "none"; }
+		inp.addEventListener("input", function () {
+			clearTimeout(timer);
+			timer = setTimeout(function () {
+				post("search_items", { search: inp.value }).then(function (rows) {
+					found = rows || [];
+					list.innerHTML = found.map(function (r, i) { return '<div class="qc-ac__item" data-i="' + i + '">' + esc(r.item_name || r.name) + "<small>" + esc(r.name) + (r.quality_inspection_template ? " · uses " + esc(r.quality_inspection_template) : "") + "</small></div>"; }).join("");
+					list.style.display = found.length ? "block" : "none";
+				});
+			}, 150);
+		});
+		list.addEventListener("mousedown", function (e) {
+			var el = e.target.closest("[data-i]"); if (!el) return; e.preventDefault();
+			var r = found[+el.dataset.i];
+			if (!ITEMS.some(function (x) { return x.value === r.name; })) ITEMS.push({ value: r.name, label: r.item_name || r.name });
+			renderItems(); inp.value = ""; close();
+		});
+		inp.addEventListener("blur", function () { setTimeout(close, 150); });
+	})();
+	$("ck-save").addEventListener("click", function () {
+		var btn = this, label = btn.innerHTML;
+		var params = Array.prototype.map.call($("ck-table").tBodies[0].rows, function (tr) {
+			var o = {}; tr.querySelectorAll("[data-k]").forEach(function (el) { o[el.dataset.k] = el.value; });
+			o.numeric = o.numeric === "1" ? 1 : 0; return o;
+		}).filter(function (o) { return o.specification.trim(); });
+		if (!$("ck-name").value.trim()) { showErr("ck-err", "Name the checklist."); return; }
+		if (!params.length) { showErr("ck-err", "Add at least one check."); return; }
+		$("ck-err").style.display = "none"; busy(btn, true);
+		post("save_template", {
+			name: EDITING, template_name: $("ck-name").value, parameters: JSON.stringify(params),
+			items: JSON.stringify(ITEMS.map(function (i) { return i.value; })),
+			on_receipt: $("ck-receipt").checked ? 1 : 0, before_delivery: $("ck-delivery").checked ? 1 : 0
+		}).then(function () { reloadOn("lists"); })
+		.catch(function (e) { showErr("ck-err", e); busy(btn, false, label); });
+	});
+})();
+</script>
+{% endblock %}

@@ -63,6 +63,11 @@ fixtures = [
 	{"dt": "Module Def", "filters": [["app_name", "=", "a3_trading_management"]]},
 ]
 
+# A Quality Inspection may reference a Work Order (the Quality screen's in-process QC).
+override_doctype_class = {
+	"Quality Inspection": "a3_trading_management.integrations.quality_inspection.A3QualityInspection",
+}
+
 # Document Events (ERPNext / core doctypes only; this app's own doctypes have controllers)
 # ---------------
 doc_events = {

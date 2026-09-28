@@ -855,8 +855,11 @@ def get_work_order(name):
         "name",
     )
 
+    from a3_trading_management.api.quality import latest_inspection
+
     return {
         "name": wo.name,
+        "quality": latest_inspection("Work Order", wo.name),
         "sales_order": wo.sales_order,
         "customer": (frappe.db.get_value("Sales Order", wo.sales_order, "customer_name") if wo.sales_order else None),
         "description": wo.description,
@@ -999,6 +1002,12 @@ def advance_stage(name, notes=None):
         frappe.throw(_("Work order is already at the final stage"))
 
     nxt = STAGES[idx + 1]
+    if cur == "QC":
+        # Leaving QC is the QC sign-off: it lands on the Quality screen's list,
+        # and a failed inspection holds the trailer back.
+        from a3_trading_management.api.quality import ensure_passed_before_delivery
+
+        ensure_passed_before_delivery(wo, notes)
     _append_stage_log(wo, nxt, notes)
     wo.custom_production_stage = nxt
     wo.flags.ignore_permissions = True

@@ -1,5 +1,6 @@
 # Implements: the Item gate for serialised trailers, and the links that attach a
-# job card, warranty or claim to a trailer serial (tasks 8 and 12).
+# job card, warranty or claim to a trailer serial (tasks 8 and 12); the Quality
+# Inspection reference to a Work Order.
 """Custom fields A3 Trading adds to doctypes it does not own.
 
 Created from code rather than a fixture because `create_custom_fields` is
@@ -98,13 +99,47 @@ CUSTOM_FIELDS["Trailer Serial"] = [
 	}
 ]
 
+# The Quality screen: an inspection passed by moving a work order past QC on the
+# Manufacturing screen is recorded automatically, and says so.
+CUSTOM_FIELDS["Quality Inspection"] = [
+	{
+		"fieldname": "custom_auto_recorded",
+		"fieldtype": "Check",
+		"label": "Recorded from Manufacturing",
+		"insert_after": "manual_inspection",
+		"read_only": 1,
+		"description": "Created when the work order was moved past QC on the "
+		               "Manufacturing screen without an inspection of its own.",
+	}
+]
+
 
 def after_install():
 	setup_custom_fields()
+	setup_quality_inspection_reference()
 
 
 def after_migrate():
 	setup_custom_fields()
+	setup_quality_inspection_reference()
+
+
+def setup_quality_inspection_reference():
+	"""Let a Quality Inspection reference a Work Order: A3 inspects a trailer at its
+	QC stage, before any job card or Manufacture entry exists. The matching
+	controller is integrations.quality_inspection.A3QualityInspection."""
+	if not frappe.db.exists("DocType", "Quality Inspection"):
+		return
+	from frappe.custom.doctype.property_setter.property_setter import make_property_setter
+
+	field = frappe.get_meta("Quality Inspection").get_field("reference_type")
+	options = (field.options or "").split("\n")
+	if "Work Order" in options:
+		return
+	make_property_setter(
+		"Quality Inspection", "reference_type", "options", "\n".join(options + ["Work Order"]),
+		"Text", validate_fields_for_doctype=False,
+	)
 
 
 def setup_custom_fields():

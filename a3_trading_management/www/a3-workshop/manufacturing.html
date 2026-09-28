@@ -420,8 +420,10 @@
 			kv([
 				["Produced", o.produced_qty + " / " + o.qty],
 				["Manufacture Entry", o.stock_entry || "—"],
-				["Delivery Status", o.stage === "Delivery" ? "Delivered — in stock" : (o.stage === "QC" ? "Ready for delivery" : "In production")]
+				["Delivery Status", o.stage === "Delivery" ? "Delivered — in stock" : (o.stage === "QC" ? "Ready for delivery" : "In production")],
+				["Quality Inspection", o.quality ? o.quality.name + " · " + o.quality.status : (o.stage === "QC" ? "Waiting — passed when moved to Delivery" : "—")]
 			]) +
+			(o.stage === "QC" && o.quality && o.quality.status === "Rejected" ? '<div class="mfg-warn"><i class="fa-solid fa-triangle-exclamation"></i> Failed QC. Re-inspect it on the <a href="/a3-workshop/quality">Quality</a> screen before delivery.</div>' : '') +
 			(o.stock_warning ? '<div class="mfg-warn"><i class="fa-solid fa-triangle-exclamation"></i> Stock not posted: ' + esc(o.stock_warning) + '</div>' : '') +
 			actionArea(o) +
 			'<div class="fieldset-title">Stage History</div>' + history;
