@@ -28,6 +28,10 @@
 	.qc-lines th { text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); padding:6px 8px; border-bottom:1px solid var(--border); }
 	.qc-lines td { padding:6px 8px; border-bottom:1px solid var(--border); vertical-align:middle; }
 	.qc-lines input, .qc-lines select { width:100%; min-width:60px; font:inherit; padding:5px 7px; border:1px solid var(--border); border-radius:6px; background:var(--surface); color:var(--text); }
+	.qc-default { display:inline-flex; align-items:center; gap:4px; padding:2px 8px; border-radius:999px; font-size:11px; font-weight:700;
+		background:#fff4d6; color:#8a6100; margin-right:6px; }
+	.qc-link { border:0; background:none; padding:0 4px; font:inherit; font-size:12px; color:var(--muted); cursor:pointer; text-decoration:underline; }
+	.qc-link:hover { color:var(--red); }
 	.qc-kv { display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:8px 16px; margin-bottom:14px; font-size:13.5px; }
 	.qc-kv span { display:block; font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); }
 	.qc-kv b { font-weight:600; }
@@ -190,13 +194,17 @@
 	<div class="card"><div class="card__body" style="overflow-x:auto">
 		{%- if board.templates %}
 		<table class="table">
-			<thead><tr><th>Checklist</th><th>Checks</th><th>Used for</th><th></th></tr></thead>
+			<thead><tr><th>Checklist</th><th>Checks</th><th>Used for</th><th>Default</th><th></th></tr></thead>
 			<tbody>
 			{%- for t in board.templates %}
 				<tr>
 					<td><b>{{ t.name }}</b></td>
 					<td>{%- for p in t.parameters %}{{ p.specification }}{% if p.numeric %} <span class="qc-sub">({{ "%g" | format(p.min_value) }}–{{ "%g" | format(p.max_value) }})</span>{% elif p.value %} <span class="qc-sub">({{ p.value }})</span>{% endif %}{% if not loop.last %}<br>{% endif %}{%- endfor %}</td>
-					<td>{%- for i in t.used_by %}{{ i.item_name or i.name }}{% if not loop.last %}, {% endif %}{%- else %}<span class="muted">No items yet</span>{%- endfor %}</td>
+					<td>{%- for i in t.used_by %}{{ i.item_name or i.name }}{% if not loop.last %}, {% endif %}{%- else %}<span class="muted">{{ "Any item with no checklist of its own" if t.is_default else "No items yet" }}</span>{%- endfor %}</td>
+					<td style="white-space:nowrap">
+						{%- if t.is_default %}<span class="qc-default"><i class="fa-solid fa-star"></i> Default</span>
+						<button type="button" class="qc-link" data-default-list="{{ t.name }}" data-set="0" title="Stop using this as the default">Remove</button>
+						{%- else %}<button type="button" class="btn btn--outline btn--sm" data-default-list="{{ t.name }}" data-set="1"><i class="fa-regular fa-star"></i> Set as default</button>{% endif %}</td>
 					<td><button type="button" class="btn btn--outline btn--sm" data-edit-list="{{ t.name }}">Edit</button></td>
 				</tr>
 			{%- endfor %}
@@ -205,6 +213,8 @@
 		{%- else %}
 		<div class="empty">No checklists yet. Without one an inspection is a single pass or fail; with one, each check is recorded.</div>
 		{%- endif %}
+		<div class="qc-sub" style="margin-top:12px"><i class="fa-solid fa-star" style="color:#d99a00"></i>
+			Give each item its own checklist from <b>Used for these items</b>. An item with no checklist of its own — a new item, say — is inspected against the <b>default</b> checklist.</div>
 	</div></div>
 </div>
 
@@ -230,7 +240,7 @@
 					<div class="qi-progress__text" id="qi-progress-text"></div>
 					<div class="qi-track"><div class="qi-fill" id="qi-fill"></div><div class="qi-fill qi-fill--bad" id="qi-fill-bad"></div></div>
 				</div>
-				<label class="qi-inline">Checklist <select id="qc-template"></select></label>
+				<label class="qi-inline">Checklist <select id="qc-template"></select> <span class="qc-default" id="qc-template-default" style="display:none"><i class="fa-solid fa-star"></i> default</span></label>
 				<label class="qi-inline">Sample <input id="qc-sample" type="number" step="any" min="0" style="width:74px"></label>
 				<button type="button" class="btn btn--outline btn--sm" id="qi-pass-rest"><i class="fa-solid fa-check-double"></i> Pass the rest</button>
 			</div>
@@ -293,7 +303,8 @@
 		</div>
 		<div class="modal__body">
 			<div class="form-grid">
-				<div class="field field--full"><label>Checklist name <span class="req">*</span></label><input id="ck-name" placeholder="e.g. Flatbed trailer final QC"></div>
+				<div class="field"><label>Checklist name <span class="req">*</span></label><input id="ck-name" placeholder="e.g. Flatbed trailer final QC"></div>
+				<div class="field" style="align-self:end"><label class="qc-check"><input type="checkbox" id="ck-default"> <span><b>Default checklist</b> — used for any item with no checklist of its own</span></label></div>
 			</div>
 			<div style="overflow-x:auto;margin-top:14px">
 				<table class="qc-lines" id="ck-table">
@@ -575,12 +586,14 @@
 			}
 			$("qc-sample").value = f.sample_size;
 			$("qc-template").innerHTML = '<option value="">None — one pass / fail</option>' + f.templates.map(function (t) { return '<option' + (t === f.template ? " selected" : "") + ">" + esc(t) + "</option>"; }).join("");
+			$("qc-template-default").style.display = f.template_is_default ? "" : "none";
 			renderReadings(f.parameters);
 			var first = $("qc-readings").querySelector("input"); if (first) setTimeout(function () { first.focus(); }, 50);
 		}).catch(function (e) { $("qc-sub").textContent = ""; $("qc-readings").innerHTML = ""; showErr("qc-err", e); });
 	}
 	$("qc-template").addEventListener("change", function () {
 		var t = this.value;
+		$("qc-template-default").style.display = "none";
 		if (!t) { renderReadings([]); return; }
 		post("get_template_parameters", { template: t }).then(renderReadings).catch(function (e) { showErr("qc-err", e); });
 	});
@@ -665,6 +678,7 @@
 		EDITING = t ? t.name : null; $("ck-err").style.display = "none";
 		$("ck-title").textContent = t ? "Edit checklist" : "New Checklist";
 		$("ck-name").value = t ? t.name : ""; $("ck-name").disabled = !!t;
+		$("ck-default").checked = !!(t && t.is_default);
 		$("ck-table").tBodies[0].innerHTML = "";
 		(t && t.parameters.length ? t.parameters : [null, null, null]).forEach(addCheck);
 		ITEMS = t ? t.used_by.map(function (i) { return { value: i.name, label: i.item_name || i.name }; }) : [];
@@ -675,6 +689,20 @@
 	}
 	$("ck-add").addEventListener("click", function () { openChecklist(null); });
 	$("ck-addrow").addEventListener("click", function () { addCheck(null); });
+	document.querySelectorAll("[data-default-list]").forEach(function (b) {
+		b.addEventListener("click", function () {
+			var name = b.dataset.defaultList, on = b.dataset.set === "1";
+			var current = TEMPLATES.filter(function (t) { return t.is_default && t.name !== name; })[0];
+			var msg = on
+				? name + " becomes the default checklist" + (current ? ", replacing " + current.name : "") + ". Items with no checklist of their own will be inspected against it."
+				: "Stop using " + name + " as the default? Items with no checklist of their own will then have none.";
+			if (!confirm(msg)) return;
+			b.disabled = true;
+			post("set_default_template", { template: name, is_default: on ? 1 : 0 })
+				.then(function () { reloadOn("lists"); })
+				.catch(function (e) { alert(e.message || e); b.disabled = false; });
+		});
+	});
 	document.querySelectorAll("[data-edit-list]").forEach(function (b) {
 		b.addEventListener("click", function () { openChecklist(TEMPLATES.filter(function (t) { return t.name === b.dataset.editList; })[0]); });
 	});
@@ -711,7 +739,8 @@
 		post("save_template", {
 			name: EDITING, template_name: $("ck-name").value, parameters: JSON.stringify(params),
 			items: JSON.stringify(ITEMS.map(function (i) { return i.value; })),
-			on_receipt: $("ck-receipt").checked ? 1 : 0, before_delivery: $("ck-delivery").checked ? 1 : 0
+			on_receipt: $("ck-receipt").checked ? 1 : 0, before_delivery: $("ck-delivery").checked ? 1 : 0,
+			is_default: $("ck-default").checked ? 1 : 0
 		}).then(function () { reloadOn("lists"); })
 		.catch(function (e) { showErr("ck-err", e); busy(btn, false, label); });
 	});

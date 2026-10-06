@@ -114,14 +114,135 @@ CUSTOM_FIELDS["Quality Inspection"] = [
 ]
 
 
+# Labour tracking: who carries out each operation. The BOM holds the usual
+# person for the step; the work order copies it and the floor can change it per
+# order. allow_on_submit because a BOM is submitted before anyone assigns labour.
+LABOUR_FIELDS = [
+	{
+		"fieldname": "custom_labour",
+		"fieldtype": "Link",
+		"options": "Employee",
+		"label": "Labour",
+		"insert_after": "workstation",
+		"allow_on_submit": 1,
+		"in_list_view": 1,
+		"columns": 2,
+	},
+	{
+		"fieldname": "custom_labour_name",
+		"fieldtype": "Data",
+		"label": "Labour Name",
+		"insert_after": "custom_labour",
+		"fetch_from": "custom_labour.employee_name",
+		"read_only": 1,
+		"allow_on_submit": 1,
+	},
+]
+for _dt in ("BOM Operation", "Work Order Operation"):
+	CUSTOM_FIELDS[_dt] = [dict(f) for f in LABOUR_FIELDS]
+
+# The default checklist: every item can have a checklist of its own, and one
+# checklist is marked the default, used for any item that has none (a new item,
+# say). See api.quality._template_for.
+CUSTOM_FIELDS["Quality Inspection Template"] = [
+	{
+		"fieldname": "custom_is_default",
+		"fieldtype": "Check",
+		"label": "Default Checklist",
+		"insert_after": "quality_inspection_template_name",
+		"description": "Used for any item that has no checklist of its own. Only one "
+		               "checklist can be the default.",
+	}
+]
+
+# Fields added earlier and since replaced; dropped on migrate.
+RETIRED_FIELDS = [("Quality Inspection Template", "custom_default_for")]
+
+
 def after_install():
+	drop_retired_fields()
 	setup_custom_fields()
 	setup_quality_inspection_reference()
+	setup_default_checklists()
+	setup_deletion_workflow()
 
 
 def after_migrate():
+	drop_retired_fields()
 	setup_custom_fields()
 	setup_quality_inspection_reference()
+	setup_default_checklists()
+	setup_deletion_workflow()
+
+
+# Two ready-made checklists, the first of them the default, so a new item is
+# never inspected against nothing. Only touched while no checklist is the
+# default, so a default chosen on the Quality screen is never overridden.
+DEFAULT_CHECKLISTS = [
+	{
+		"name": "General Trailer Inspection",
+		"checks": [
+			("Chassis number embossed and legible", 0, 0, 0, "Matches the work order"),
+			("Welds free of cracks and porosity", 0, 0, 0, "Visual check, all joints"),
+			("Paint finish and coverage", 0, 0, 0, "No runs, bare spots or overspray"),
+			("Brake system operation", 0, 0, 0, "Air holds, brakes apply and release"),
+			("Lights and wiring harness", 0, 0, 0, "All lamps working, 7-pin tested"),
+			("Tyre pressure (psi)", 1, 100, 120, ""),
+			("Landing gear operation", 0, 0, 0, "Both speeds, full travel"),
+			("King pin and twist locks secure", 0, 0, 0, "Torqued and pinned"),
+		],
+	},
+	{
+		"name": "General Material Inspection",
+		"checks": [
+			("Quantity matches delivery note", 0, 0, 0, "Counted against the note"),
+			("Specification matches the order", 0, 0, 0, "Grade, size and part number"),
+			("Free of visible damage", 0, 0, 0, "No dents, bends or cracks"),
+			("Free of rust and corrosion", 0, 0, 0, ""),
+			("Packaging and labelling intact", 0, 0, 0, ""),
+			("Test certificate received", 0, 0, 0, "Where the order asks for one"),
+		],
+	},
+]
+
+
+def setup_deletion_workflow():
+	"""Operator -> Finance -> Owner approval for deleting a posted invoice."""
+	from a3_trading_management.setup.deletion_workflow import setup
+
+	setup()
+
+
+def drop_retired_fields():
+	for doctype, fieldname in RETIRED_FIELDS:
+		name = frappe.db.get_value("Custom Field", {"dt": doctype, "fieldname": fieldname}, "name")
+		if name:
+			frappe.delete_doc("Custom Field", name, ignore_permissions=True, force=True)
+
+
+def setup_default_checklists():
+	qit = "Quality Inspection Template"
+	if not frappe.db.exists("DocType", qit) or not frappe.get_meta(qit).has_field("custom_is_default"):
+		return
+	if frappe.db.exists(qit, {"custom_is_default": 1}):
+		return
+	for i, spec in enumerate(DEFAULT_CHECKLISTS):
+		if frappe.db.exists(qit, spec["name"]):
+			if i == 0:
+				frappe.db.set_value(qit, spec["name"], "custom_is_default", 1)
+			continue
+		doc = frappe.new_doc(qit)
+		doc.quality_inspection_template_name = spec["name"]
+		doc.custom_is_default = 1 if i == 0 else 0
+		for check, numeric, lo, hi, expected in spec["checks"]:
+			if not frappe.db.exists("Quality Inspection Parameter", check):
+				frappe.get_doc({"doctype": "Quality Inspection Parameter", "parameter": check}).insert(
+					ignore_permissions=True)
+			doc.append("item_quality_inspection_parameter", {
+				"specification": check, "numeric": numeric,
+				"min_value": lo, "max_value": hi, "value": expected,
+			})
+		doc.insert(ignore_permissions=True)
 
 
 def setup_quality_inspection_reference():

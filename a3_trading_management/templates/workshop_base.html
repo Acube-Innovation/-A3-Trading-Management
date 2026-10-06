@@ -234,6 +234,9 @@
 	})(window, document);
 	</script>
 </head>
+{#- Any page opened with ?embed=1 drops the sidebar and top bar: it is being shown
+    inside another portal page (the Operations tabs, the Serial Register pop-up). -#}
+{%- set embed = embed or ((frappe.form_dict or {}).get("embed") and 1) -%}
 <body class="workshop{% if embed %} is-embed{% endif %}">
 	{%- if embed %}
 	{#- ?embed=1: the page is shown inside a pop-up on another portal page, so the
@@ -243,7 +246,7 @@
 		.is-embed .workshop-content { padding: 14px 18px; }
 	</style>
 	{%- endif %}
-	{#- Buying, selling and accounts sit behind one "Transactions" entry rather than
+	{#- Buying, selling and accounts sit behind one "Operations" entry rather than
 	    ten near-identical sidebar items. `children` keeps that entry highlighted
 	    while the user is on any of the pages it leads to. A Jinja comment cannot
 	    live inside the list expression itself. -#}
@@ -255,12 +258,14 @@
 		{"label": "Serial Register", "route": "/a3-workshop/serial-register", "icon": "fa-barcode"},
 		{"label": "Chassis Plates", "route": "/a3-workshop/chassis-plate-print", "icon": "fa-print"},
 		{"label": "Suppliers", "route": "/a3-workshop/suppliers", "icon": "fa-truck-field"},
-		{"label": "Transactions", "route": "/a3-workshop/transactions", "icon": "fa-file-invoice-dollar",
+		{"label": "Operations", "route": "/a3-workshop/transactions", "icon": "fa-file-invoice-dollar",
 		 "children": [
 			"/a3-workshop/purchase-requisitions", "/a3-workshop/purchase-orders",
 			"/a3-workshop/goods-receipt", "/a3-workshop/purchase-invoices",
 			"/a3-workshop/supplier-payments", "/a3-workshop/sales-orders",
-			"/a3-workshop/delivery-invoice", "/a3-workshop/payments-receipts",
+			"/a3-workshop/delivery-invoice", "/a3-workshop/awaiting-dispatch",
+			"/a3-workshop/delivery-notes", "/a3-workshop/sales-invoices",
+			"/a3-workshop/payments-receipts",
 			"/a3-workshop/journal-entries",
 		 ]},
 		{"label": "Live Stock", "route": "/a3-workshop/live-stock", "icon": "fa-boxes-stacked"},

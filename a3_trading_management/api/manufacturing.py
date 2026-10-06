@@ -161,6 +161,93 @@ def _ensure_workstation(name):
     return name
 
 
+def _labour(employee):
+    """A valid Employee name or None (labour is optional on every operation)."""
+    employee = (employee or "").strip()
+    if not employee:
+        return None
+    if not frappe.db.exists("Employee", employee):
+        frappe.throw(_("Labour {0} not found").format(employee))
+    return employee
+
+
+def _copy_labour_from_bom(wo):
+    """ERPNext copies BOM operations field by field and knows nothing of the
+    labour column, so carry it across: matched by BOM row order, else by name."""
+    if not wo.bom_no:
+        return
+    bom_ops = frappe.get_all(
+        "BOM Operation", filters={"parent": wo.bom_no, "parenttype": "BOM"},
+        fields=["idx", "operation", "custom_labour"], order_by="idx",
+    )
+    by_idx = {r.idx: r for r in bom_ops}
+    by_op = {}
+    for r in bom_ops:
+        by_op.setdefault(r.operation, r)
+    for d in wo.operations:
+        src = by_idx.get(d.idx)
+        if not src or src.operation != d.operation:
+            src = by_op.get(d.operation)
+        if src and src.custom_labour and not d.get("custom_labour"):
+            d.custom_labour = src.custom_labour
+
+
+# ---------------------------------------------------------------------------
+# Labour (who carries out each operation)
+# ---------------------------------------------------------------------------
+
+
+@frappe.whitelist()
+def list_labour():
+    """Every active employee, for the Labour dropdowns."""
+    return search_labour(limit=1000)
+
+
+@frappe.whitelist()
+def search_labour(search=None, limit=10):
+    """Labour picker for the operations tables: active employees."""
+    txt = "%{0}%".format((search or "").strip())
+    return frappe.get_all(
+        "Employee",
+        filters={"status": "Active"},
+        or_filters={"name": ["like", txt], "employee_name": ["like", txt], "designation": ["like", txt]},
+        fields=["name", "employee_name", "designation"],
+        order_by="employee_name",
+        limit_page_length=cint(limit) or 10,
+    )
+
+
+@frappe.whitelist()
+def create_labour(employee_name, designation=None):
+    """Add a worker from the operations table. Employee insists on a gender, a
+    date of birth and a joining date; the floor rarely knows the first two at
+    that moment, so placeholders go in and HR completes the record later."""
+    frappe.has_permission("Employee", "create", throw=True)
+    employee_name = (employee_name or "").strip()
+    if not employee_name:
+        frappe.throw(_("Name the worker"))
+    existing = frappe.db.get_value("Employee", {"employee_name": employee_name, "status": "Active"}, "name")
+    if existing:
+        return {"name": existing, "employee_name": employee_name}
+    parts = employee_name.split(" ", 1)
+    emp = frappe.new_doc("Employee")
+    emp.first_name = parts[0]
+    emp.last_name = parts[1] if len(parts) > 1 else None
+    emp.company = _current_company()
+    emp.status = "Active"
+    emp.gender = frappe.db.get_value("Gender", "Prefer not to say", "name") or frappe.db.get_value("Gender", {}, "name")
+    emp.date_of_birth = "1990-01-01"
+    emp.date_of_joining = frappe.utils.nowdate()
+    designation = (designation or "").strip()
+    if designation:
+        if not frappe.db.exists("Designation", designation):
+            frappe.get_doc({"doctype": "Designation", "designation_name": designation}).insert(ignore_permissions=True)
+        emp.designation = designation
+    emp.insert()
+    frappe.db.commit()
+    return {"name": emp.name, "employee_name": emp.employee_name, "designation": emp.designation}
+
+
 # ---------------------------------------------------------------------------
 # Options / lookups (feed the New Work Order modal)
 # ---------------------------------------------------------------------------
@@ -472,6 +559,7 @@ def create_bom(item, items, operations=None, quantity=1):
         )
         bom.append("operations", {
             "operation": operation, "workstation": workstation, "time_in_mins": flt(o["time_in_mins"]),
+            "custom_labour": _labour(o.get("labour")),
         })
     bom.insert()
     bom.submit()
@@ -639,6 +727,7 @@ def create_work_order(
 
     # Pull raw materials + operations from the BOM (server-side; no form JS runs).
     wo.get_items_and_operations_from_bom()
+    _copy_labour_from_bom(wo)
 
     wo.custom_production_stage = "Material"
     wo.append(
@@ -814,6 +903,23 @@ def get_work_order(name):
         for d in wo.required_items
     ]
 
+    # Labour the BOM assigns to each step: shown (and saved on the next save) for
+    # any operation the work order has not assigned yet, including orders raised
+    # before the BOM had labour on it.
+    bom_labour = {}
+    if wo.bom_no:
+        for b in frappe.get_all("BOM Operation", filters={"parent": wo.bom_no, "parenttype": "BOM"},
+                                fields=["idx", "operation", "custom_labour"], order_by="idx"):
+            if b.custom_labour:
+                bom_labour.setdefault(("idx", b.idx, b.operation), b.custom_labour)
+                bom_labour.setdefault(("op", b.operation), b.custom_labour)
+
+    def _op_labour(d):
+        if d.get("custom_labour"):
+            return d.custom_labour, False
+        found = bom_labour.get(("idx", d.idx, d.operation)) or bom_labour.get(("op", d.operation))
+        return (found, True) if found else ("", False)
+
     operations = [
         {
             "idx": d.idx,
@@ -825,9 +931,17 @@ def get_work_order(name):
             "hour_rate_fmt": _money(d.hour_rate, currency),
             "operating_cost": flt(d.planned_operating_cost),
             "operating_cost_fmt": _money(d.planned_operating_cost, currency),
+            "labour": _op_labour(d)[0],
+            "labour_from_bom": _op_labour(d)[1],
+            "labour_name": (frappe.db.get_value("Employee", _op_labour(d)[0], "employee_name")
+                            if _op_labour(d)[0] else "") or "",
         }
         for d in wo.operations
     ]
+
+    chassis_numbers = frappe.get_all(
+        "Trailer Serial", filters={"work_order": wo.name}, pluck="chassis_number", order_by="creation asc"
+    )
 
     rm_cost = sum(flt(d.amount) for d in wo.required_items)
     op_cost = flt(wo.total_operating_cost)
@@ -882,6 +996,7 @@ def get_work_order(name):
         "next_stage": STAGES[_stage_index(stage) + 1] if _stage_index(stage) < len(STAGES) - 1 else None,
         "wip_warehouse": wo.wip_warehouse,
         "fg_warehouse": wo.fg_warehouse,
+        "chassis_numbers": [c for c in chassis_numbers if c],
         "planned_start": frappe.utils.format_datetime(wo.planned_start_date, "dd MMM yyyy")
         if wo.planned_start_date
         else "—",
@@ -957,6 +1072,7 @@ def update_work_order_tables(name, required_items=None, operations=None):
                     "workstation": _ensure_workstation(r.get("workstation")),
                     "time_in_mins": flt(r.get("time_in_mins")),
                     "hour_rate": flt(r.get("hour_rate")),
+                    "custom_labour": _labour(r.get("labour")),
                 },
             )
 

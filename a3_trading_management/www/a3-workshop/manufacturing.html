@@ -37,6 +37,10 @@
 		padding:5px 8px; border-radius:6px; line-height:1; transition:background .12s; }
 	.mfg-row-x:hover { background:#fbd3de; border-color:#ef9db2; }
 	.mfg-warn { background:#fff6e6; border:1px solid #f0c36d; color:#8a6100; padding:9px 12px; border-radius:8px; font-size:12px; margin-top:12px; }
+	.mfg-labour { display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }
+	.mfg-labour__card { border:1px solid #f5c9d6; background:#fdf6f8; border-radius:8px; padding:7px 11px; font-size:12px; line-height:1.45; }
+	.mfg-labour__card b { font-size:13px; }
+	.mfg-labour__none { color:#8a6100; }
 	.mfg-note { width:100%; border:1px solid var(--border,#d8dde6); border-radius:8px; padding:8px 10px; font-size:13px; margin-top:12px; }
 </style>
 
@@ -171,7 +175,7 @@
 
 			<div class="fieldset-title" style="margin-top:18px">Operations <span class="muted" style="font-weight:400;text-transform:none;letter-spacing:0">(optional — gives the labour cost)</span></div>
 			<table class="mfg-table mfg-etable">
-				<thead><tr><th class="sl">#</th><th>Operation</th><th>Workstation</th><th style="width:90px">Mins</th><th style="width:100px">Rate / hr</th><th style="width:120px">Cost</th><th style="width:40px"></th></tr></thead>
+				<thead><tr><th class="sl">#</th><th>Operation</th><th>Workstation</th><th>Labour</th><th style="width:90px">Hrs</th><th style="width:100px">Rate / hr</th><th style="width:120px">Cost</th><th style="width:40px"></th></tr></thead>
 				<tbody id="bom-ops"></tbody>
 			</table>
 			<button type="button" class="btn btn--sm mfg-btn-red mfg-addrow" id="bom-op-add"><i class="fa-solid fa-plus"></i> Add operation</button>
@@ -247,6 +251,10 @@
 					<label>Default workstation <span class="muted" style="font-weight:400">— where it normally runs; sets its rate</span></label>
 					<input id="master-ws" placeholder="Search a workstation…">
 				</div>
+				<div class="field field--full" id="master-desig-field">
+					<label>Trade / designation <span class="muted" style="font-weight:400">— optional, e.g. Welder, Painter</span></label>
+					<input id="master-desig">
+				</div>
 				<div class="field field--full" id="master-rate-field">
 					<label>Rate per hour</label>
 					<input type="number" id="master-rate" min="0" step="any" placeholder="0.00">
@@ -268,6 +276,28 @@
 	var CURRENCY = "AED";
 	var current = null, search = "", detail = null;
 	var editRM = [], editOps = [];   // in-memory editable table state for the current draft WO
+	var LABOUR = [];                 // active employees, for the Labour dropdowns (loaded at boot)
+
+	// Operations are costed in minutes (ERPNext's unit) but entered and shown in hours.
+	function toHrs(mins) { return Math.round((Number(mins) || 0) / 60 * 100) / 100; }
+	function labourName(id) {
+		var e = LABOUR.filter(function (x) { return x.name === id; })[0];
+		return e ? (e.employee_name || e.name) : (id || "");
+	}
+	// <select> of every employee, the current one selected, plus a way to add one.
+	function labourSelect(attrs, current) {
+		var known = LABOUR.some(function (e) { return e.name === current; });
+		return '<select class="cell-inp" ' + attrs + '>' +
+			'<option value="">' + (LABOUR.length ? "— Select labour —" : "— No employees yet —") + '</option>' +
+			LABOUR.map(function (e) {
+				return '<option value="' + esc(e.name) + '"' + (e.name === current ? " selected" : "") + '>' + esc(e.employee_name || e.name) + (e.designation ? " · " + esc(e.designation) : "") + '</option>';
+			}).join("") +
+			(current && !known ? '<option value="' + esc(current) + '" selected>' + esc(current) + '</option>' : '') +
+			'<option value="__new__">+ Add new labour…</option></select>';
+	}
+	function loadLabour() {
+		return callMethod(API + "list_labour", {}).then(function (rows) { LABOUR = rows || []; }).catch(function () { LABOUR = []; });
+	}
 
 	function callMethod(method, args) {
 		return fetch("/api/method/" + method, {
@@ -350,19 +380,48 @@
 	}
 	// editable operations table (bound to editOps). Operation/Workstation are free
 	// text — missing masters are auto-created on save.
+	// Operation cost = hours × rate per hour (minutes are what is stored).
+	function opAmount(r) { return (Number(r.time_in_mins) || 0) / 60 * (Number(r.hour_rate) || 0); }
+	// Refresh one row's amount as hours or rate are typed, as the materials table does.
+	function refreshOpAmounts(i) {
+		var cell = detailEl.querySelector('[data-op-amt="' + i + '"]');
+		if (cell) cell.textContent = money(opAmount(editOps[i]));
+	}
 	function opTableHtml() {
 		var body = editOps.map(function (r, i) {
 			return '<tr>' +
 				'<td class="sl">' + (i + 1) + '</td>' +
 				'<td style="min-width:150px"><input class="cell-inp" data-op="operation" data-i="' + i + '" value="' + esc(r.operation || "") + '" placeholder="Operation" autocomplete="off"></td>' +
 				'<td style="min-width:130px"><input class="cell-inp" data-op="workstation" data-i="' + i + '" value="' + esc(r.workstation || "") + '" placeholder="Workstation" autocomplete="off"></td>' +
-				'<td style="width:80px"><input class="cell-inp" type="number" step="any" data-op="time_in_mins" data-i="' + i + '" value="' + (r.time_in_mins || 0) + '"></td>' +
-				'<td style="width:100px"><input class="cell-inp" type="number" step="any" data-op="hour_rate" data-i="' + i + '" value="' + (r.hour_rate || 0) + '"></td>' +
+				'<td style="min-width:170px">' + labourSelect('data-op-labour="' + i + '"', r.labour) +
+					(r.labour_from_bom ? '<div class="muted" style="font-size:10.5px;margin-top:2px">from BOM</div>' : '') + '</td>' +
+				'<td style="width:90px"><input class="cell-inp" type="number" step="0.25" min="0" data-op-hrs="' + i + '" value="' + toHrs(r.time_in_mins) + '"></td>' +
+				'<td style="width:110px"><input class="cell-inp" type="number" step="any" data-op="hour_rate" data-i="' + i + '" value="' + (r.hour_rate || 0) + '"></td>' +
+				'<td style="width:110px" data-op-amt="' + i + '">' + money(opAmount(r)) + '</td>' +
 				'<td style="width:34px"><button type="button" class="mfg-row-x" data-op-x="' + i + '" title="Remove row"><i class="fa-solid fa-trash"></i></button></td></tr>';
 		}).join("");
-		return '<table class="table mfg-etable mfg-table"><thead><tr><th class="sl">#</th><th>Operation</th><th>Workstation</th><th>Mins</th><th>Rate / hr</th><th></th></tr></thead><tbody>' +
-			(body || '<tr><td colspan="6" class="muted">No operations — add a row below.</td></tr>') + '</tbody></table>' +
+		return '<table class="table mfg-etable mfg-table"><thead><tr><th class="sl">#</th><th>Operation</th><th>Workstation</th><th>Labour</th><th>Hrs</th><th>Rate / hr</th><th>Amount</th><th></th></tr></thead><tbody>' +
+			(body || '<tr><td colspan="8" class="muted">No operations — add a row below.</td></tr>') + '</tbody>' +
+			'</table>' +
 			'<button type="button" class="btn btn--sm mfg-addrow mfg-btn-red" data-op-add><i class="fa-solid fa-plus"></i> Add operation row</button>';
+	}
+
+	// Who is on this order: one card per worker with the operations and hours
+	// assigned, so the floor can check each person's work at a glance.
+	function labourSummary(ops) {
+		var byWho = {}, order = [], unassigned = [];
+		(ops || []).forEach(function (r) {
+			if (!r.operation) return;
+			if (!r.labour) { unassigned.push(r.operation); return; }
+			if (!byWho[r.labour]) { byWho[r.labour] = { name: r.labour_name || r.labour, ops: [], mins: 0 }; order.push(r.labour); }
+			byWho[r.labour].ops.push(r.operation); byWho[r.labour].mins += Number(r.time_in_mins) || 0;
+		});
+		if (!order.length && !unassigned.length) return "";
+		return '<div class="mfg-labour">' + order.map(function (k) {
+			var w = byWho[k];
+			return '<div class="mfg-labour__card"><b><i class="fa-solid fa-user-gear"></i> ' + esc(w.name) + '</b><br>' +
+				esc(w.ops.join(", ")) + ' · ' + (Math.round(w.mins / 6) / 10) + ' h</div>';
+		}).join("") + (unassigned.length ? '<div class="mfg-labour__card mfg-labour__none"><b><i class="fa-solid fa-user-slash"></i> No labour assigned</b><br>' + esc(unassigned.join(", ")) + '</div>' : '') + '</div>';
 	}
 
 	function actionArea(o) {
@@ -384,13 +443,14 @@
 		tagEl.textContent = o.item_name;
 		if (o.editable && seed !== false) {
 			editRM = (o.required_items || []).map(function (r) { return { item_code: r.item_code, item_name: r.item_name, uom: r.uom, qty: r.qty, rate: r.rate, source_warehouse: r.source_warehouse }; });
-			editOps = (o.operations || []).map(function (r) { return { operation: r.operation, workstation: r.workstation, time_in_mins: r.time_in_mins, hour_rate: r.hour_rate }; });
+			editOps = (o.operations || []).map(function (r) { return { operation: r.operation, workstation: r.workstation, labour: r.labour, labour_name: r.labour_name, labour_from_bom: r.labour_from_bom, time_in_mins: r.time_in_mins, hour_rate: r.hour_rate }; });
 		}
 
 		var rmSection = o.editable ? rmTableHtml()
 			: roTable(["Item", "Qty", "Rate", "Amount"], (o.required_items || []).map(function (r) { return [esc(r.item_name), r.qty + " " + esc(r.uom || ""), r.rate_fmt, r.amount_fmt]; }));
 		var opSection = o.editable ? opTableHtml()
-			: roTable(["Operation", "Workstation", "Mins", "Rate / hr", "Cost"], (o.operations || []).map(function (r) { return [esc(r.operation), esc(r.workstation || "—"), r.time_in_mins, r.hour_rate_fmt, r.operating_cost_fmt]; }));
+			: roTable(["Operation", "Workstation", "Labour", "Hrs", "Rate / hr", "Cost"], (o.operations || []).map(function (r) { return [esc(r.operation), esc(r.workstation || "—"), esc(r.labour_name || r.labour || "—"), toHrs(r.time_in_mins), r.hour_rate_fmt, r.operating_cost_fmt]; }));
+		opSection += labourSummary(o.editable ? editOps : o.operations);
 
 		var saveBtn = o.editable ? '<button class="btn btn--sm mfg-btn-red" id="save-tables" style="margin-top:10px"><i class="fa-solid fa-floppy-disk"></i> Save materials & operations</button>' : '';
 
@@ -408,7 +468,7 @@
 			'<span class="badge ' + o.badge + '">' + esc(o.status) + '</span></div></div>' +
 			stepperHtml(o) +
 			'<div class="fieldset-title">Work Order</div>' +
-			kv([["Item", o.item_name], ["For Sales Order", o.sales_order ? o.sales_order + (o.customer ? " · " + o.customer : "") : "Build to stock"], ["Specification", o.description || "—"], ["Quantity", o.qty], ["BOM", o.bom], ["Production Stage", o.stage], ["ERP Status", o.erp_status], ["Started", o.planned_start], ["Target Delivery", o.target], ["Raw material from", o.source_warehouse || "—"], ["FG Warehouse", o.fg_warehouse]]) +
+			kv([["Item", o.item_name], ["For Sales Order", o.sales_order ? o.sales_order + (o.customer ? " · " + o.customer : "") : "Build to stock"], ["Specification", o.description || "—"], ["Quantity", o.qty], ["BOM", o.bom], ["Production Stage", o.stage], ["ERP Status", o.erp_status], ["Started", o.planned_start], ["Target Delivery", o.target], ["Raw material from", o.source_warehouse || "—"], ["FG Warehouse", o.fg_warehouse], ["Chassis Number", (o.chassis_numbers || []).join(", ") || "—"]]) +
 			'<div class="fieldset-title">BOM — Raw Materials' + (o.editable ? ' <span class="muted" style="font-weight:400">(editable)</span>' : '') + '</div>' + rmSection +
 			'<div class="fieldset-title">BOM — Operations' + (o.editable ? ' <span class="muted" style="font-weight:400">(editable)</span>' : '') + '</div>' + opSection +
 			saveBtn +
@@ -471,6 +531,7 @@
 			inp.addEventListener("input", function () {
 				var i = +inp.dataset.i; var k = inp.dataset.op;
 				editOps[i][k] = (k === "time_in_mins" || k === "hour_rate") ? (parseFloat(inp.value) || 0) : inp.value;
+				if (k === "hour_rate") refreshOpAmounts(i);
 			});
 		});
 		// operation / workstation pickers: an operation fills an empty workstation and
@@ -494,13 +555,36 @@
 				rerenderTables();
 			});
 		});
+		// labour dropdown: every employee, or add a new one
+		detailEl.querySelectorAll("[data-op-labour]").forEach(function (sel) {
+			var i = +sel.dataset.opLabour;
+			sel.addEventListener("change", function () {
+				if (sel.value === "__new__") {
+					sel.value = editOps[i].labour || "";
+					openMasterModal("labour", "", function (it) {
+						editOps[i].labour = it.value; editOps[i].labour_name = it.label; editOps[i].labour_from_bom = false;
+						rerenderTables();
+					});
+					return;
+				}
+				editOps[i].labour = sel.value; editOps[i].labour_name = labourName(sel.value); editOps[i].labour_from_bom = false;
+				rerenderTables();
+			});
+		});
+		// hours in, minutes stored
+		detailEl.querySelectorAll("[data-op-hrs]").forEach(function (inp) {
+			inp.addEventListener("input", function () {
+				editOps[+inp.dataset.opHrs].time_in_mins = Math.round((parseFloat(inp.value) || 0) * 60 * 100) / 100;
+				refreshOpAmounts(+inp.dataset.opHrs);
+			});
+		});
 		// operation delete + add row
 		detailEl.querySelectorAll("[data-op-x]").forEach(function (b) {
 			b.addEventListener("click", function () { editOps.splice(+b.dataset.opX, 1); rerenderTables(); });
 		});
 		var opAdd = detailEl.querySelector("[data-op-add]");
 		if (opAdd) opAdd.addEventListener("click", function () {
-			editOps.push({ operation: "", workstation: "", time_in_mins: 0, hour_rate: 0 }); rerenderTables();
+			editOps.push({ operation: "", workstation: "", labour: "", labour_name: "", time_in_mins: 0, hour_rate: 0 }); rerenderTables();
 		});
 	}
 	// re-render the panel WITHOUT re-seeding the editable tables (keeps in-memory edits)
@@ -829,17 +913,19 @@
 	var masterModal = document.getElementById("master-modal"), masterKind = null, masterDone = null, masterWs = null;
 	function openMasterModal(kind, name, onCreated) {
 		masterKind = kind; masterDone = onCreated; masterWs = null;
-		var op = kind === "operation";
-		document.getElementById("master-title").textContent = op ? "New Operation" : "New Workstation";
-		document.getElementById("master-sub").textContent = op ? "A step of the build, e.g. Welding or Painting" : "A bay or machine where operations run";
-		document.getElementById("master-name-label").innerHTML = (op ? "Operation" : "Workstation") + ' name <span class="req">*</span>';
+		var op = kind === "operation", lab = kind === "labour";
+		document.getElementById("master-title").textContent = lab ? "New Labour" : op ? "New Operation" : "New Workstation";
+		document.getElementById("master-sub").textContent = lab ? "A worker who can be assigned to operations" : op ? "A step of the build, e.g. Welding or Painting" : "A bay or machine where operations run";
+		document.getElementById("master-name-label").innerHTML = (lab ? "Worker" : op ? "Operation" : "Workstation") + ' name <span class="req">*</span>';
 		document.getElementById("master-name").value = name || "";
 		document.getElementById("master-ws").value = "";
 		document.getElementById("master-rate").value = "";
+		document.getElementById("master-desig").value = "";
 		document.getElementById("master-ws-field").style.display = op ? "" : "none";
-		document.getElementById("master-rate-field").style.display = op ? "none" : "";
+		document.getElementById("master-rate-field").style.display = (op || lab) ? "none" : "";
+		document.getElementById("master-desig-field").style.display = lab ? "" : "none";
 		masterModal.classList.add("is-open");
-		document.getElementById(op ? "master-ws" : "master-rate").focus();
+		document.getElementById(lab ? (name ? "master-desig" : "master-name") : op ? "master-ws" : "master-rate").focus();
 	}
 	function closeMasterModal() { masterModal.classList.remove("is-open"); masterDone = null; }
 	masterModal.querySelectorAll("[data-close]").forEach(function (b) { b.addEventListener("click", closeMasterModal); });
@@ -853,14 +939,20 @@
 		var wsTyped = document.getElementById("master-ws").value.trim();
 		if (op && wsTyped && (!masterWs || masterWs.value !== wsTyped)) { alert("Pick the workstation from the list."); return; }
 		var btn = this; btn.disabled = true;
-		(op
+		(masterKind === "labour"
+			? callMethod(API + "create_labour", { employee_name: name, designation: document.getElementById("master-desig").value.trim() || null })
+			: op
 			? callMethod(API + "create_operation", { name: name, workstation: wsTyped || null })
 			: callMethod(API + "create_workstation", { name: name, hour_rate: document.getElementById("master-rate").value || 0 })
 		).then(function (r) {
 			var done = masterDone;
 			closeMasterModal();
 			masters = null;   // the BOM pop-up's lists now include it
-			if (done) done({ value: r.name, label: r.name, workstation: r.workstation, hour_rate: r.hour_rate });
+			if (masterKind === "labour" && !LABOUR.some(function (e) { return e.name === r.name; })) {
+				LABOUR.push({ name: r.name, employee_name: r.employee_name, designation: r.designation });
+				LABOUR.sort(function (a, b) { return (a.employee_name || "").localeCompare(b.employee_name || ""); });
+			}
+			if (done) done({ value: r.name, label: r.employee_name || r.name, workstation: r.workstation, hour_rate: r.hour_rate });
 		}).catch(function (e) { alert("Could not create it: " + e.message); })
 			.then(function () { btn.disabled = false; });
 	});
@@ -903,7 +995,8 @@
 			return '<tr><td class="sl">' + (i + 1) + '</td>' +
 				'<td><input class="cell-inp" data-op-name="' + i + '" value="' + esc(o.operation || "") + '" placeholder="e.g. Welding & Fabrication"></td>' +
 				'<td><input class="cell-inp" data-op-ws="' + i + '" value="' + esc(o.workstation || "") + '" placeholder="Workstation"></td>' +
-				'<td><input class="cell-inp" type="number" min="0" step="any" data-op-min="' + i + '" value="' + esc(o.time_in_mins || "") + '"></td>' +
+				'<td>' + labourSelect('data-op-lab="' + i + '"', o.labour) + '</td>' +
+				'<td><input class="cell-inp" type="number" min="0" step="0.25" data-op-min="' + i + '" value="' + (o.time_in_mins ? toHrs(o.time_in_mins) : "") + '"></td>' +
 				'<td class="num">' + (o.workstation ? rateOf(o).toFixed(2) : "") + '</td>' +
 				'<td class="num" data-op-cost="' + i + '">' + (o.workstation ? money(rateOf(o) * (Number(o.time_in_mins) || 0) / 60) : "") + '</td>' +
 				'<td><button type="button" class="mfg-row-x" data-op-del="' + i + '"><i class="fa-solid fa-trash"></i></button></td></tr>';
@@ -972,9 +1065,20 @@
 				if (v !== o.workstation) { o.workstation = v; o.hour_rate = null; }
 			});
 		});
+		ops.querySelectorAll("[data-op-lab]").forEach(function (sel) {
+			var o = bomOps[+sel.dataset.opLab];
+			sel.addEventListener("change", function () {
+				if (sel.value === "__new__") {
+					sel.value = o.labour || "";
+					openMasterModal("labour", "", function (it) { o.labour = it.value; o.labour_name = it.label; renderBom(); });
+					return;
+				}
+				o.labour = sel.value; o.labour_name = labourName(sel.value);
+			});
+		});
 		ops.querySelectorAll("[data-op-min]").forEach(function (inp) {
 			inp.addEventListener("input", function () {
-				var i = +inp.dataset.opMin, o = bomOps[i]; o.time_in_mins = inp.value;
+				var i = +inp.dataset.opMin, o = bomOps[i]; o.time_in_mins = Math.round((parseFloat(inp.value) || 0) * 60 * 100) / 100;
 				var cell = ops.querySelector('[data-op-cost="' + i + '"]');
 				if (cell && o.workstation) cell.textContent = money(rateOf(o) * (Number(o.time_in_mins) || 0) / 60);
 				bomTotals();
@@ -993,8 +1097,8 @@
 			.map(function (r) { return { item_code: r.item_code, qty: Number(r.qty) }; });
 		if (!items.length) { alert("Add at least one raw material with a quantity."); return; }
 		var operations = bomOps.filter(function (o) { return o.operation; })
-			.map(function (o) { return { operation: o.operation, workstation: o.workstation || null, time_in_mins: Number(o.time_in_mins) || 0 }; });
-		if (operations.some(function (o) { return !o.time_in_mins; })) { alert("Give every operation its time in minutes."); return; }
+			.map(function (o) { return { operation: o.operation, workstation: o.workstation || null, labour: o.labour || null, time_in_mins: Number(o.time_in_mins) || 0 }; });
+		if (operations.some(function (o) { return !o.time_in_mins; })) { alert("Give every operation its time in hours."); return; }
 		var noWs = operations.filter(function (o) { return !o.workstation; })[0];
 		if (noWs) { alert("Choose a workstation for " + noWs.operation + "."); return; }
 		var btn = this; btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Creating…';
@@ -1028,7 +1132,8 @@
 	});
 
 	// ---- boot ----------------------------------------------------------
-	callMethod(API + "get_work_order_options", {}).then(function (o) {
+	Promise.all([loadLabour(), callMethod(API + "get_work_order_options", {})]).then(function (res) {
+		var o = res[1] || {};
 		CURRENCY = o.currency || "AED";
 		var whOpts = (o.warehouses || []).map(function (w) { return '<option value="' + esc(w.name) + '">' + esc(w.warehouse_name || w.name) + '</option>'; }).join("");
 		var wip = document.getElementById("wo-source"), fg = document.getElementById("wo-fg");

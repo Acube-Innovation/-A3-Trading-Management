@@ -52,9 +52,9 @@
 
 <h2 class="sec">Operations</h2>
 {% if wo.operations %}
-<table class="t"><thead><tr><th>#</th><th>Operation</th><th>Workstation</th><th class="right">Mins</th><th style="width:110px">Done By / Sign</th></tr></thead><tbody>
+<table class="t"><thead><tr><th>#</th><th>Operation</th><th>Workstation</th><th>Labour</th><th class="right">Mins</th><th style="width:110px">Sign</th></tr></thead><tbody>
 	{% for o in wo.operations %}
-	<tr><td>{{ loop.index }}</td><td><b>{{ o.operation }}</b></td><td>{{ o.workstation }}</td><td class="right">{{ o.mins }}</td><td></td></tr>
+	<tr><td>{{ loop.index }}</td><td><b>{{ o.operation }}</b></td><td>{{ o.workstation }}</td><td>{{ o.labour }}</td><td class="right">{{ o.mins }}</td><td></td></tr>
 	{% endfor %}
 </tbody></table>
 {% else %}<p class="muted">No operations.</p>{% endif %}

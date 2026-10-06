@@ -35,8 +35,12 @@ GROUPS = [
 		"tiles": [
 			{"label": "Sales Orders", "route": "/a3-workshop/sales-orders",
 			 "icon": "fa-cart-shopping", "sub": "Orders for trailers and parts"},
-			{"label": "Delivery & Invoice", "route": "/a3-workshop/delivery-invoice",
-			 "icon": "fa-truck-fast", "sub": "Dispatch a trailer and bill it"},
+			{"label": "Awaiting Dispatch", "route": "/a3-workshop/awaiting-dispatch",
+			 "icon": "fa-hourglass-half", "sub": "Confirmed orders waiting to leave the yard"},
+			{"label": "Delivery Notes", "route": "/a3-workshop/delivery-notes",
+			 "icon": "fa-truck-fast", "sub": "Trailers dispatched against their serial"},
+			{"label": "Sales Invoices", "route": "/a3-workshop/sales-invoices",
+			 "icon": "fa-file-invoice", "sub": "Bill the delivery and receive payment"},
 		],
 	},
 	{
@@ -52,14 +56,27 @@ GROUPS = [
 ]
 
 
+def _tabs():
+	"""GROUPS as the page's tabs: one per group, one sub-tab per screen. The
+	group's footer screen (Suppliers) is the last sub-tab of its group."""
+	out = []
+	for g in GROUPS:
+		pages = [dict(t) for t in g["tiles"]] + ([dict(g["footer"])] if g.get("footer") else [])
+		for t in pages:
+			t["key"] = t["route"].rstrip("/").rsplit("/", 1)[-1]
+		out.append({"key": g["title"].lower(), "title": g["title"], "subtitle": g["subtitle"], "pages": pages})
+	return out
+
+
 def get_context(context):
 	require_login(context)
-	context.title = "Transactions"
+	context.title = "Operations"
 	context.page_icon = "fa-file-invoice-dollar"
 	context.subtitle = "Buying, selling and accounts"
-	context.breadcrumb = "Transactions"
+	context.breadcrumb = "Operations"
 
 	context.groups = GROUPS
+	context.tabs = _tabs()
 	context.page_count = sum(len(g["tiles"]) for g in GROUPS)
 	context.page_count_label = "screens"
 	return context

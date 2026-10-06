@@ -359,6 +359,8 @@ def bill_against(purchase_receipt=None, purchase_order=None):
 		pi = make_purchase_invoice(purchase_order)
 	else:
 		frappe.throw(_("Pass a purchase receipt or a purchase order to bill against"))
+	# The mapper copies the receipt/order's unchecked value; invoices default to no rounding.
+	pi.disable_rounded_total = 1
 	apply_taxes(pi)
 	pi.flags.ignore_permissions = True
 	pi.insert(ignore_permissions=True)

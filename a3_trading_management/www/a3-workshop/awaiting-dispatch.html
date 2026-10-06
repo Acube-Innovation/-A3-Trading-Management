@@ -1,0 +1,73 @@
+{% extends "templates/workshop_base.html" %}
+{% from "templates/macros/trading.html" import status_pill, filter_bar, filter_script, call_method_js, stat_row, dispatch_nav %}
+
+{% block page_content %}
+{#- Step 1 of 3: confirmed customer orders not yet fully delivered. Dispatching
+    one raises a Delivery Note carrying the reserved trailer's serial and chassis
+    number (api.selling.dispatch_serial); it then appears on Delivery Notes. -#}
+{%- set reserved = to_dispatch | selectattr("reserved_serials") | list -%}
+
+{{ dispatch_nav("awaiting") }}
+
+{{ stat_row([
+	{"label": "To Dispatch", "value": to_dispatch | length, "sub": "Confirmed, not yet delivered"},
+	{"label": "Trailer Reserved", "value": reserved | length, "sub": "Ready to leave the yard"},
+	{"label": "Nothing Reserved", "value": (to_dispatch | length) - (reserved | length), "sub": "Waiting on a build or reservation"},
+	{"label": "Order Value", "value": frappe.utils.fmt_money(to_dispatch | sum(attribute="grand_total")), "sub": "Awaiting dispatch"},
+]) }}
+
+<div class="toolbar">
+	<div class="section-title" style="margin:0">Awaiting Dispatch</div>
+	<div class="toolbar__right">
+		<a class="btn btn--outline btn--sm" href="/a3-workshop/sales-orders">
+			<i class="fa-solid fa-cart-shopping"></i> Sales Orders</a>
+	</div>
+</div>
+
+{{ filter_bar("Search order, customer or chassis…", [
+	{"key": "res", "label": "Any reservation", "options": ["Trailer reserved", "None reserved"]},
+]) }}
+
+<div class="card"><div class="card__body" style="overflow-x:auto">
+	{%- if to_dispatch %}
+	<table class="table" id="tf-table">
+		<thead><tr><th>Order</th><th>Customer</th><th>Order Date</th><th>Due</th><th>Trailer reserved</th>
+			<th class="num">Total</th><th class="num">Delivered</th><th></th></tr></thead>
+		<tbody>
+		{%- for o in to_dispatch %}
+			{%- set chassis = o.reserved_serials | map(attribute="chassis_number") | select | join(", ") %}
+			<tr data-hay="{{ (o.name ~ ' ' ~ (o.customer_name or o.customer) ~ ' ' ~ chassis) | lower }}"
+				data-res="{{ 'Trailer reserved' if o.reserved_serials else 'None reserved' }}">
+				<td><b>{{ o.name }}</b></td>
+				<td>{{ o.customer_name or o.customer }}</td>
+				<td>{{ frappe.utils.formatdate(o.transaction_date, "dd MMM yyyy") if o.transaction_date else "—" }}</td>
+				<td>{{ frappe.utils.formatdate(o.delivery_date, "dd MMM yyyy") if o.delivery_date else "—" }}</td>
+				<td>{%- if chassis %}{{ chassis }}{%- else %}<span class="muted">none reserved</span>{% endif %}</td>
+				<td class="num">{{ frappe.utils.fmt_money(o.grand_total, currency=o.currency) }}</td>
+				<td class="num">{{ "%.0f%%" | format(o.per_delivered or 0) }}</td>
+				<td><button class="btn btn--primary btn--sm"
+					onclick="dispatch('{{ o.name }}', {{ (o.reserved_serials | map(attribute='name') | list) | tojson | forceescape }})">
+					<i class="fa-solid fa-truck-ramp-box"></i> Dispatch</button></td>
+			</tr>
+		{%- endfor %}
+		</tbody>
+	</table>
+	{%- else %}<div class="empty">Nothing waiting — every confirmed order has been dispatched.</div>{% endif %}
+</div></div>
+
+{{ filter_script() }}
+{{ call_method_js() }}
+<script>
+function dispatch(so, serials) {
+	if (!confirm("Dispatch " + so + (serials && serials.length ? " with " + serials.length + " trailer(s)?" : "?"))) return;
+	tradingCall("a3_trading_management.api.selling.dispatch_serial",
+		{ sales_order: so, serials: JSON.stringify(serials || []) })
+		.then(function (r) {
+			var dn = r && (r.delivery_note || r.name);
+			alert("Delivery note " + (dn || "") + " created. It is on the Delivery Notes screen to submit and invoice.");
+			location.href = "/a3-workshop/delivery-notes";
+		})
+		.catch(function (err) { alert("Could not complete that: " + ((err && err.message) || err)); });
+}
+</script>
+{% endblock %}

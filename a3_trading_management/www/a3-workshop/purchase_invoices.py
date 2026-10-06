@@ -15,6 +15,10 @@ def get_context(context):
 
 	context.invoices = list_purchase_invoices(search=(frappe.form_dict.get("q") or "").strip() or None)
 	context.on_hold = [i for i in context.invoices if i.get("custom_approval_hold")]
+	# Posted invoices are deleted through an approved Invoice Deletion Request.
+	from a3_trading_management.api.invoice_delete import portal_context
+
+	context.can_request_delete, context.open_deletions = portal_context("Purchase Invoice")
 	context.page_count = len(context.invoices)
 	context.page_count_label = "invoices"
 	return context

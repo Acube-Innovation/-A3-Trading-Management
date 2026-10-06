@@ -59,6 +59,7 @@ def _workorder(context, name):
 		],
 		"operations": [
 			{"operation": o.operation, "workstation": o.workstation or "—",
+			 "labour": o.get("custom_labour_name") or o.get("custom_labour") or "",
 			 "mins": flt(o.time_in_mins), "status": o.get("status") or "—"}
 			for o in (doc.get("operations") or [])
 		],

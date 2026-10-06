@@ -1,0 +1,95 @@
+{% extends "templates/workshop_base.html" %}
+{% from "templates/macros/trading.html" import status_pill, filter_bar, filter_script, call_method_js, stat_row, doc_modals, dispatch_nav, deletion_request_js %}
+
+{% block page_content %}
+{#- Step 3 of 3: the invoices raised from delivery notes, so the customer is
+    billed for a specific identified trailer rather than a quantity. -#}
+{%- set posted = invoices | selectattr("docstatus", "equalto", 1) | list -%}
+{%- set unpaid = [] -%}
+{%- for i in posted %}{% if (i.outstanding_amount or 0) > 0 %}{% set _ = unpaid.append(i) %}{% endif %}{% endfor -%}
+
+{{ dispatch_nav("invoices") }}
+
+{{ stat_row([
+	{"label": "Sales Invoices", "value": invoices | length, "sub": "Raised"},
+	{"label": "Draft", "value": (invoices | length) - (posted | length), "sub": "Not yet posted"},
+	{"label": "Unpaid", "value": unpaid | length, "sub": "Posted, money still due"},
+	{"label": "Outstanding", "value": frappe.utils.fmt_money(posted | sum(attribute="outstanding_amount")), "sub": "Invoiced, unpaid"},
+]) }}
+
+<div class="toolbar">
+	<div class="section-title" style="margin:0">Sales Invoices</div>
+	<div class="toolbar__right">
+		<a class="btn btn--outline btn--sm" href="/a3-workshop/delivery-notes">
+			<i class="fa-solid fa-truck-fast"></i> Delivery Notes</a>
+		<a class="btn btn--outline btn--sm" href="/a3-workshop/payments-receipts">
+			<i class="fa-solid fa-right-left"></i> Payments &amp; Receipts</a>
+	</div>
+</div>
+
+{{ filter_bar("Search invoice, customer or chassis…", [
+	{"key": "st", "label": "All statuses", "options": invoices | map(attribute="status") | unique | sort | list},
+]) }}
+
+<div class="card"><div class="card__body" style="overflow-x:auto">
+	{%- if invoices %}
+	<table class="table" id="tf-table">
+		<thead><tr><th>Invoice</th><th>Customer</th><th>Chassis</th><th>Date</th><th>Due</th>
+			<th class="num">Total</th><th class="num">Outstanding</th><th>Status</th><th>Action</th></tr></thead>
+		<tbody>
+		{%- for i in invoices %}
+			<tr data-hay="{{ (i.name ~ ' ' ~ (i.customer_name or i.customer) ~ ' ' ~ (i.custom_chassis_number or '')) | lower }}"
+				data-st="{{ i.status }}">
+				<td><b>{{ i.name }}</b></td>
+				<td>{{ i.customer_name or i.customer }}</td>
+				<td>{{ i.custom_chassis_number or "—" }}</td>
+				<td>{{ frappe.utils.formatdate(i.posting_date, "dd MMM yyyy") }}</td>
+				<td>{{ frappe.utils.formatdate(i.due_date, "dd MMM yyyy") if i.due_date else "—" }}</td>
+				<td class="num">{{ frappe.utils.fmt_money(i.grand_total, currency=i.currency) }}</td>
+				<td class="num">{{ frappe.utils.fmt_money(i.outstanding_amount, currency=i.currency) }}</td>
+				<td>{{ status_pill(i.status, i.docstatus) }}</td>
+				<td style="white-space:nowrap">
+					{%- if i.docstatus == 1 and (i.outstanding_amount or 0) > 0 %}
+					<button class="btn btn--outline btn--sm" onclick="receive('{{ i.name }}', {{ i.outstanding_amount or 0 }})">Receive</button>
+					{%- endif %}
+					{%- if i.docstatus == 0 %}<button type="button" class="btn btn--primary btn--sm" onclick="openDoc('Sales Invoice', '{{ i.name }}', { submit: { method: 'a3_trading_management.api.selling.submit_sales_invoice', label: 'Submit — post to ledger', confirm: 'Submit {{ i.name }}? This posts it to the ledger.' } })">Open &amp; Submit</button>
+					{%- else %}<button type="button" class="btn btn--outline btn--sm" onclick="openDoc('Sales Invoice', '{{ i.name }}', { print: '/printview?doctype=Sales%20Invoice&name={{ i.name | urlencode }}&trigger_print=1' })">Open</button>{% endif %}
+					{#- Task 28: a draft is deleted straight away; a posted or cancelled
+					    invoice goes through an Invoice Deletion Request (operator ->
+					    finance -> owner) that removes its ledger entries with it. -#}
+					{%- if i.name in open_deletions %}
+					<span class="badge badge--pending" title="Deletion requested">Deletion: {{ open_deletions[i.name] }}</span>
+					{%- elif i.docstatus == 0 and can_delete_invoice %}
+					<button class="btn btn--outline btn--sm" style="color:#b3261e"
+						onclick="deleteInvoice('{{ i.name }}')">Delete</button>
+					{%- elif i.docstatus != 0 and can_request_delete %}
+					<button class="btn btn--outline btn--sm" style="color:#b3261e"
+						onclick="requestDeletion('Sales Invoice', '{{ i.name }}')">Request Delete</button>
+					{%- endif %}
+				</td>
+			</tr>
+		{%- endfor %}
+		</tbody>
+	</table>
+	{%- else %}<div class="empty">No sales invoices yet. Invoice a submitted note from <a href="/a3-workshop/delivery-notes">Delivery Notes</a>.</div>{% endif %}
+</div></div>
+
+{{ filter_script() }}
+{{ call_method_js() }}
+{{ deletion_request_js() }}
+<script>
+function deleteInvoice(name) {
+	if (!confirm("Delete sales invoice " + name + "?\n\nThis cannot be undone.")) return;
+	if (!confirm("Confirm once more: permanently delete " + name + "?")) return;
+	tradingAction("a3_trading_management.api.selling.delete_sales_invoice",
+		{ name: name, confirm: 1 }, "Sales invoice " + name + " deleted.");
+}
+function receive(si, outstanding) {
+	var amt = prompt("Receive against " + si + "\nOutstanding: " + outstanding + "\nAmount:", outstanding);
+	if (!amt) return;
+	tradingAction("a3_trading_management.api.selling.receive_against_invoice",
+		{ sales_invoice: si, amount: amt }, "Receipt drafted — submit it on Payments & Receipts.");
+}
+</script>
+{{ doc_modals() }}
+{% endblock %}

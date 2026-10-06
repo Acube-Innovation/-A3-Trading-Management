@@ -215,12 +215,17 @@ def submit_sales_order(name):
 # Tasks 23 and 24 — dispatch against the serial, and invoice it
 # ---------------------------------------------------------------------------
 
+def _chassis_field(doctype):
+	"""The chassis number column, where the custom field is on this site."""
+	return ["custom_chassis_number"] if frappe.get_meta(doctype).has_field("custom_chassis_number") else []
+
+
 @frappe.whitelist()
 def list_deliveries(search=None, limit=200):
 	return rows(
 		"Delivery Note",
 		["name", "customer", "customer_name", "posting_date", "status", "docstatus",
-		 "grand_total", "currency"],
+		 "grand_total", "currency", "per_billed"] + _chassis_field("Delivery Note"),
 		search=search, search_fields=["name", "customer", "customer_name"], limit=limit,
 	)
 
@@ -233,7 +238,7 @@ def list_sales_invoices(search=None, status=None, limit=200):
 	return rows(
 		"Sales Invoice",
 		["name", "customer", "customer_name", "posting_date", "due_date", "status",
-		 "docstatus", "grand_total", "outstanding_amount", "currency"],
+		 "docstatus", "grand_total", "outstanding_amount", "currency"] + _chassis_field("Sales Invoice"),
 		filters=filters, search=search, search_fields=["name", "customer", "customer_name"],
 		limit=limit,
 	)
@@ -273,6 +278,8 @@ def invoice_delivery(delivery_note):
 	if carried.get("custom_trailer_serial") and _has_field("Sales Invoice", "custom_trailer_serial"):
 		si.custom_trailer_serial = carried["custom_trailer_serial"]
 		si.custom_chassis_number = carried.get("custom_chassis_number")
+	# The mapper copies the Delivery Note's unchecked value; invoices default to no rounding.
+	si.disable_rounded_total = 1
 	apply_taxes(si)
 	si.flags.ignore_permissions = True
 	si.insert(ignore_permissions=True)
@@ -335,11 +342,11 @@ def selling_summary():
 
 @frappe.whitelist()
 def delete_sales_invoice(name, confirm=None):
-	"""Delete a sales invoice, following the ledger's own rules on what may go.
+	"""Delete a DRAFT sales invoice.
 
-	Permission-guarded and deliberately narrow: a SUBMITTED invoice has hit the
-	ledger and is only removable once cancelled, which is ERPNext's rule, not one
-	invented here. The caller must pass confirm=1 — the screen asks first.
+	Permission-guarded and deliberately narrow: a posted (or cancelled) invoice
+	has ledger entries and is removed only through an approved Invoice Deletion
+	Request. The caller must pass confirm=1 — the screen asks first.
 	"""
 	frappe.has_permission("Sales Invoice", "delete", throw=True)
 	if not frappe.utils.cint(confirm):
@@ -348,15 +355,15 @@ def delete_sales_invoice(name, confirm=None):
 	docstatus = frappe.db.get_value("Sales Invoice", name, "docstatus")
 	if docstatus is None:
 		frappe.throw(_("Sales Invoice {0} does not exist").format(name))
-	if docstatus == 1:
+	if docstatus != 0:
+		# A posted or cancelled invoice still has ledger entries; those go only
+		# through an approved Invoice Deletion Request (api.invoice_delete).
 		frappe.throw(
-			_("{0} is submitted and sits in the ledger. Cancel it first — a posted "
-			  "invoice cannot simply be deleted.").format(name),
+			_("{0} has been posted to the ledger. Use Request Delete — Finance and the "
+			  "Owner must approve before it and its ledger entries are removed.").format(name),
 			title=_("Invoice is posted"),
 		)
 
-	# A cancelled invoice with payments still pointing at it must not leave those
-	# payments dangling, so the ledger's own link check is left to run.
 	frappe.delete_doc("Sales Invoice", name, ignore_permissions=False)
 	frappe.db.commit()
 	return {"deleted": name}

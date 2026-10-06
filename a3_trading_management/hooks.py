@@ -25,7 +25,12 @@ after_migrate = "a3_trading_management.setup.install.after_migrate"
 boot_session = "a3_trading_management.api.session.boot_session"
 app_include_js = ["a3_trading_management.bundle.js", "/assets/a3_trading_management/js/workshop_navbar.js"]
 app_include_css = "/assets/a3_trading_management/css/workshop_navbar.css"
-doctype_js = {"Item": "public/js/item.js"}
+doctype_js = {
+	"Item": "public/js/item.js",
+	# "Request Deletion" on posted invoices (Invoice Deletion Request workflow).
+	"Sales Invoice": ["public/js/invoice_deletion.js", "public/js/invoice_rounding.js"],
+	"Purchase Invoice": ["public/js/invoice_deletion.js", "public/js/invoice_rounding.js"],
+}
 
 # Portal
 # ------
@@ -71,9 +76,19 @@ override_doctype_class = {
 # Document Events (ERPNext / core doctypes only; this app's own doctypes have controllers)
 # ---------------
 doc_events = {
+	# UAE VAT 201 reads VAT Emirate (sales) and Recoverable Standard Rated
+	# Expenses (purchases), which ERPNext otherwise leaves blank.
+	"Sales Invoice": {
+		"validate": "a3_trading_management.integrations.uae_vat.sales_invoice_validate",
+	},
+	"Purchase Invoice": {
+		"validate": "a3_trading_management.integrations.uae_vat.purchase_invoice_validate",
+	},
 	# Items are numbered from a series while Item Code stays a typeable field.
 	"Item": {
 		"before_naming": "a3_trading_management.integrations.item.before_naming",
+		# Is Zero Rated / Is Exempt only change the VAT charged via an Item Tax Template.
+		"validate": "a3_trading_management.integrations.uae_vat.item_validate",
 	},
 	# Phase 2: serials are minted from Work Order events so that a work order raised
 	# from the Desk, an import or the portal all behave the same way.

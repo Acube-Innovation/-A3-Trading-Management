@@ -1,0 +1,77 @@
+{% extends "templates/workshop_base.html" %}
+{% from "templates/macros/trading.html" import status_pill, filter_bar, filter_script, call_method_js, stat_row, doc_modals, dispatch_nav %}
+
+{% block page_content %}
+{#- Step 2 of 3: the delivery notes. The serial and chassis number ride on the
+    note through custom_trailer_serial / custom_chassis_number (task 24), which
+    are not print-hidden, so they land on the printed note. Invoicing a submitted
+    note raises the Sales Invoice on the next screen. -#}
+{%- set drafts = deliveries | selectattr("docstatus", "equalto", 0) | list -%}
+{%- set to_bill = [] -%}
+{%- for d in deliveries %}{% if d.docstatus == 1 and (d.per_billed or 0) < 100 %}{% set _ = to_bill.append(d) %}{% endif %}{% endfor -%}
+
+{{ dispatch_nav("notes") }}
+
+{{ stat_row([
+	{"label": "Delivery Notes", "value": deliveries | length, "sub": "All dispatches"},
+	{"label": "Draft", "value": drafts | length, "sub": "Trailer not yet signed out"},
+	{"label": "To Invoice", "value": to_bill | length, "sub": "Delivered, not billed"},
+	{"label": "Value To Invoice", "value": frappe.utils.fmt_money(to_bill | sum(attribute="grand_total")), "sub": "Delivered, not billed"},
+]) }}
+
+<div class="toolbar">
+	<div class="section-title" style="margin:0">Delivery Notes</div>
+	<div class="toolbar__right">
+		<a class="btn btn--outline btn--sm" href="/a3-workshop/awaiting-dispatch">
+			<i class="fa-solid fa-hourglass-half"></i> Awaiting Dispatch</a>
+	</div>
+</div>
+
+{{ filter_bar("Search note, customer or chassis…", [
+	{"key": "st", "label": "All statuses", "options": deliveries | map(attribute="status") | unique | sort | list},
+]) }}
+
+<div class="card"><div class="card__body" style="overflow-x:auto">
+	{%- if deliveries %}
+	<table class="table" id="tf-table">
+		<thead><tr><th>Note</th><th>Customer</th><th>Chassis</th><th>Date</th><th class="num">Total</th>
+			<th class="num">Billed</th><th>Status</th><th>Action</th></tr></thead>
+		<tbody>
+		{%- for d in deliveries %}
+			<tr data-hay="{{ (d.name ~ ' ' ~ (d.customer_name or d.customer) ~ ' ' ~ (d.custom_chassis_number or '')) | lower }}"
+				data-st="{{ d.status }}">
+				<td><b>{{ d.name }}</b></td>
+				<td>{{ d.customer_name or d.customer }}</td>
+				<td>{{ d.custom_chassis_number or "—" }}</td>
+				<td>{{ frappe.utils.formatdate(d.posting_date, "dd MMM yyyy") }}</td>
+				<td class="num">{{ frappe.utils.fmt_money(d.grand_total, currency=d.currency) }}</td>
+				<td class="num">{{ "%.0f%%" | format(d.per_billed or 0) }}</td>
+				<td>{{ status_pill(d.status, d.docstatus) }}</td>
+				<td style="white-space:nowrap">
+					{%- if d.docstatus == 1 %}
+					{%- if (d.per_billed or 0) < 100 %}<button class="btn btn--primary btn--sm" onclick="invoice('{{ d.name }}')"><i class="fa-solid fa-file-invoice"></i> Invoice</button>{% endif %}
+					<a class="btn btn--outline btn--sm" href="/printview?doctype=Delivery%20Note&name={{ d.name | urlencode }}&trigger_print=1" target="_blank" rel="noopener">Print</a>
+					{%- else %}<button type="button" class="btn btn--primary btn--sm" onclick="openDoc('Delivery Note', '{{ d.name }}', { submit: { method: 'a3_trading_management.api.selling.submit_delivery_note', label: 'Submit — trailer has left', confirm: 'Submit {{ d.name }}? The trailer leaves stock and the customer becomes its owner.' } })">Open &amp; Submit</button>{% endif %}
+				</td>
+			</tr>
+		{%- endfor %}
+		</tbody>
+	</table>
+	{%- else %}<div class="empty">Nothing dispatched yet. Dispatch an order from <a href="/a3-workshop/awaiting-dispatch">Awaiting Dispatch</a>.</div>{% endif %}
+</div></div>
+
+{{ filter_script() }}
+{{ call_method_js() }}
+<script>
+function invoice(dn) {
+	if (!confirm("Invoice delivery " + dn + "?")) return;
+	tradingCall("a3_trading_management.api.selling.invoice_delivery", { delivery_note: dn })
+		.then(function () {
+			alert("Sales invoice created, carrying the serial and chassis number. It is on the Sales Invoices screen.");
+			location.href = "/a3-workshop/sales-invoices";
+		})
+		.catch(function (err) { alert("Could not complete that: " + ((err && err.message) || err)); });
+}
+</script>
+{{ doc_modals() }}
+{% endblock %}
