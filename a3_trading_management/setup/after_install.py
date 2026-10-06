@@ -9,6 +9,9 @@ import frappe
 TRADING_ROLES = [
     "A3 Trading Admin",
     "Workshop Manager",
+    "Operator",         # raises invoice deletion requests
+    "Finance Manager",  # finance approval of an invoice deletion (with Accounts Manager)
+    "Super Admin",      # the Owner: final approval; held through the Super Admin role profile
 ]
 
 # Portal-only roles get no desk access.

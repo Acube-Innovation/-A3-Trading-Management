@@ -1,5 +1,5 @@
 {% extends "templates/workshop_base.html" %}
-{% from "templates/macros/trading.html" import status_pill, filter_bar, filter_script, call_method_js, stat_row, doc_modals %}
+{% from "templates/macros/trading.html" import status_pill, filter_bar, filter_script, call_method_js, stat_row, doc_modals, deletion_request_js %}
 
 {% block page_content %}
 {#- Bill against a receipt or an order, with a hold and approval step before the
@@ -56,7 +56,15 @@
 						{%- endif %}
 					{%- elif i.docstatus == 1 and (i.outstanding_amount or 0) > 0 %}
 					<button class="btn btn--outline btn--sm" onclick="payInv('{{ i.name }}', {{ i.outstanding_amount or 0 }})">Pay</button>
-					{%- else %}<span class="muted">—</span>{% endif %}
+					{%- endif %}
+					{#- A posted or cancelled bill is deleted through an Invoice Deletion
+					    Request (operator -> finance -> owner), never directly. -#}
+					{%- if i.name in open_deletions %}
+					<span class="badge badge--pending" title="Deletion requested">Deletion: {{ open_deletions[i.name] }}</span>
+					{%- elif i.docstatus != 0 and can_request_delete %}
+					<button class="btn btn--outline btn--sm" style="color:#b3261e"
+						onclick="requestDeletion('Purchase Invoice', '{{ i.name }}')">Request Delete</button>
+					{%- endif %}
 				</td>
 			</tr>
 		{%- endfor %}
@@ -68,6 +76,7 @@
 </div></div>
 
 {{ call_method_js() }}
+{{ deletion_request_js() }}
 <script>
 function approveInv(name) {
 	if (!confirm("Approve " + name + "? This posts it to the ledger.")) return;

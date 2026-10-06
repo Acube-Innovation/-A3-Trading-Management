@@ -1,94 +1,116 @@
 {% extends "templates/workshop_base.html" %}
 
 {% block page_content %}
-{#- A chooser, not a screen of its own: the buying, selling and accounts pages sit
-    behind one menu entry so the sidebar does not carry ten near-identical items.
-    One card per group, side by side, each listing its screens in the order the
-    work happens. Every row links straight to the page that already exists. -#}
+{#- Buying, selling and accounts behind one menu entry: three tabs, and inside
+    each a sub-tab per screen. The chosen screen is the existing page itself,
+    opened with ?embed=1 (no sidebar or top bar) in a frame below the tabs — so
+    nothing is duplicated here. The choice is kept in the address (#selling/
+    delivery-notes) so it survives a reload and can be bookmarked. -#}
 
 <style>
-	.tx-board {
-		display: grid;
-		grid-template-columns: repeat(3, minmax(0, 1fr));
-		gap: 18px;
-		align-items: start;
-	}
-	.tx-card .card__head { align-items: flex-start; }
-	.tx-card__title { min-width: 0; }
-	.tx-card__sub { color: var(--muted); font-size: 12.5px; margin-top: 3px; line-height: 1.4; }
-	.tx-card__count {
-		flex: 0 0 auto; margin-left: 12px; margin-top: 2px;
-		font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
-		color: var(--muted); background: var(--bg); border: 1px solid var(--border);
-		border-radius: 999px; padding: 3px 9px; white-space: nowrap;
-	}
-	.tx-list { padding: 4px 0; }
-	.tx-step {
-		display: flex; align-items: center; gap: 14px;
-		padding: 13px 20px;
-		color: inherit; text-decoration: none;
-		border-top: 1px solid var(--border);
-		transition: background .12s ease;
-	}
-	.tx-list .tx-step:first-child { border-top: 0; }
-	.tx-step:hover, .tx-step:focus-visible { background: var(--bg); text-decoration: none; outline: none; }
-	.tx-step:hover .tx-step__label, .tx-step:focus-visible .tx-step__label { color: var(--red); }
-	.tx-step:hover .tx-step__go, .tx-step:focus-visible .tx-step__go { color: var(--red); transform: translateX(3px); }
-	.tx-step__icon {
-		flex: 0 0 40px; width: 40px; height: 40px; border-radius: 10px;
-		display: grid; place-items: center;
-		background: var(--red-soft); color: var(--red); font-size: 16px;
-	}
-	.tx-step__text { flex: 1 1 auto; min-width: 0; }
-	.tx-step__label { display: block; font-weight: 700; font-size: 14px; color: var(--text); line-height: 1.3; }
-	.tx-step__sub {
-		display: block; color: var(--muted); font-size: 12.5px; margin-top: 2px;
-		white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-	}
-	.tx-step__no {
-		flex: 0 0 auto; font-size: 11px; font-weight: 700; letter-spacing: .04em;
-		color: var(--muted); font-variant-numeric: tabular-nums;
-	}
-	.tx-step__go { flex: 0 0 auto; color: var(--muted); font-size: 12px; transition: transform .12s ease, color .12s ease; }
-	.tx-foot { border-top: 1px dashed var(--border); }
-	.tx-foot .tx-step__icon { background: var(--navy-soft); color: var(--navy); }
-	@media (max-width: 1100px) { .tx-board { grid-template-columns: 1fr; } }
+	.op-tabs { display:flex; gap:6px; border-bottom:1px solid var(--border); margin-bottom:12px; overflow-x:auto; }
+	.op-tab { display:inline-flex; align-items:center; gap:8px; padding:11px 18px; border:0; background:none; cursor:pointer;
+		font:inherit; font-size:14px; font-weight:700; color:var(--muted); border-bottom:3px solid transparent; margin-bottom:-1px; white-space:nowrap; }
+	.op-tab:hover { color:var(--text); }
+	.op-tab.is-active { color:var(--red); border-bottom-color:var(--red); }
+	.op-tab__n { font-size:11px; padding:1px 7px; border-radius:999px; background:var(--bg); color:var(--muted); }
+	.op-tab.is-active .op-tab__n { background:var(--red-soft); color:var(--red); }
+	.op-sub { display:none; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:12px; }
+	.op-sub.is-active { display:flex; }
+	.op-sub__hint { color:var(--muted); font-size:12px; margin-right:6px; }
+	.op-subtab { display:inline-flex; align-items:center; gap:7px; padding:7px 14px; border-radius:999px; cursor:pointer;
+		border:1px solid var(--border); background:var(--surface); color:var(--text); font:inherit; font-size:13px; font-weight:600; }
+	.op-subtab:hover { border-color:var(--red); }
+	.op-subtab.is-active { background:var(--red); border-color:var(--red); color:#fff; }
+	.op-subtab__no { font-size:10px; opacity:.7; }
+	.op-frame-wrap { position:relative; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius, 12px); overflow:hidden; }
+	.op-frame { display:block; width:100%; height:calc(100vh - 250px); min-height:520px; border:0; background:var(--bg); }
+	.op-loading { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; gap:10px;
+		color:var(--muted); font-size:13px; background:var(--bg); }
+	.op-open { margin-left:auto; font-size:12px; }
 </style>
 
-<div class="tx-board">
-	{%- for g in groups %}
-	<section class="card tx-card">
-		<div class="card__head">
-			<div class="tx-card__title">
-				<h3>{{ g.title }}</h3>
-				<div class="tx-card__sub">{{ g.subtitle }}</div>
-			</div>
-			<span class="tx-card__count">{{ g.tiles | length }} screen{{ "s" if g.tiles | length != 1 else "" }}</span>
-		</div>
-		<div class="tx-list">
-			{%- for t in g.tiles %}
-			<a class="tx-step" href="{{ t.route }}">
-				<span class="tx-step__icon"><i class="fa-solid {{ t.icon }}"></i></span>
-				<span class="tx-step__text">
-					<span class="tx-step__label">{{ t.label }}</span>
-					<span class="tx-step__sub">{{ t.sub }}</span>
-				</span>
-				{%- if g.flow %}<span class="tx-step__no">{{ loop.index }} / {{ g.tiles | length }}</span>{% endif %}
-				<i class="fa-solid fa-chevron-right tx-step__go"></i>
-			</a>
-			{%- endfor %}
-			{%- if g.footer %}
-			<a class="tx-step tx-foot" href="{{ g.footer.route }}">
-				<span class="tx-step__icon"><i class="fa-solid {{ g.footer.icon }}"></i></span>
-				<span class="tx-step__text">
-					<span class="tx-step__label">{{ g.footer.label }}</span>
-					<span class="tx-step__sub">{{ g.footer.sub }}</span>
-				</span>
-				<i class="fa-solid fa-chevron-right tx-step__go"></i>
-			</a>
-			{%- endif %}
-		</div>
-	</section>
+<div class="op-tabs" role="tablist">
+	{%- for g in tabs %}
+	<button type="button" class="op-tab{% if loop.first %} is-active{% endif %}" role="tab" data-tab="{{ g.key }}" title="{{ g.subtitle }}">
+		{{ g.title }} <span class="op-tab__n">{{ g.pages | length }}</span></button>
 	{%- endfor %}
 </div>
+
+{%- for g in tabs %}
+<div class="op-sub{% if loop.first %} is-active{% endif %}" data-sub="{{ g.key }}">
+	{%- for p in g.pages %}
+	<button type="button" class="op-subtab{% if loop.first %} is-active{% endif %}" data-tab="{{ g.key }}" data-page="{{ p.key }}"
+		data-route="{{ p.route }}" title="{{ p.sub }}">
+		<i class="fa-solid {{ p.icon }}"></i> {{ p.label }}</button>
+	{%- endfor %}
+	<a class="btn btn--outline btn--sm op-open" href="#" data-open-full target="_blank" rel="noopener" title="Open this screen on its own">
+		<i class="fa-solid fa-up-right-from-square"></i> Open full page</a>
+</div>
+{%- endfor %}
+
+<div class="op-frame-wrap">
+	<div class="op-loading" id="op-loading"><i class="fa-solid fa-spinner fa-spin"></i> Loading…</div>
+	<iframe class="op-frame" id="op-frame" title="Operations screen"></iframe>
+</div>
+
+<script>
+(function () {
+	var frame = document.getElementById("op-frame"), loading = document.getElementById("op-loading");
+	var subs = Array.prototype.slice.call(document.querySelectorAll(".op-subtab"));
+	var ROUTES = {};  // route -> sub-tab button, to follow links made inside the frame
+	subs.forEach(function (b) { ROUTES[b.dataset.route] = b; });
+	var last = {};    // tab -> last page opened in it
+
+	function pageBtn(tab, page) {
+		return subs.filter(function (b) { return b.dataset.tab === tab && (!page || b.dataset.page === page); })[0];
+	}
+	function show(tab, page, fromFrame) {
+		var btn = pageBtn(tab, page || last[tab]) || pageBtn(tab) || subs[0];
+		tab = btn.dataset.tab; page = btn.dataset.page; last[tab] = page;
+		document.querySelectorAll(".op-tab").forEach(function (t) { t.classList.toggle("is-active", t.dataset.tab === tab); });
+		document.querySelectorAll(".op-sub").forEach(function (s) { s.classList.toggle("is-active", s.dataset.sub === tab); });
+		subs.forEach(function (b) { b.classList.toggle("is-active", b === btn); });
+		var open = document.querySelector('.op-sub[data-sub="' + tab + '"] [data-open-full]');
+		if (open) open.href = btn.dataset.route;
+		if (history.replaceState) history.replaceState(null, "", location.pathname + "#" + tab + "/" + page);
+		if (!fromFrame) {
+			loading.style.display = "";
+			frame.src = btn.dataset.route + "?embed=1";
+		}
+	}
+
+	document.querySelectorAll(".op-tab").forEach(function (t) {
+		t.addEventListener("click", function () { show(t.dataset.tab); });
+	});
+	subs.forEach(function (b) {
+		b.addEventListener("click", function () { show(b.dataset.tab, b.dataset.page); });
+	});
+
+	// A screen inside the frame may move on to another (Dispatch -> Delivery Notes,
+	// a link to Suppliers). One of ours: select its tab and keep it embedded.
+	// Anything else leaves the Operations page for that screen.
+	frame.addEventListener("load", function () {
+		loading.style.display = "none";
+		var loc;
+		try { loc = frame.contentWindow.location; } catch (e) { return; }
+		if (!loc || loc.href === "about:blank") return;
+		var embedded = /[?&]embed=1\b/.test(loc.search);
+		var btn = ROUTES[loc.pathname.replace(/\/$/, "")];
+		if (btn) {
+			show(btn.dataset.tab, btn.dataset.page, true);
+			// reached without ?embed=1: reopen it embedded, keeping its own filters
+			if (!embedded) {
+				loading.style.display = "";
+				frame.src = loc.pathname + (loc.search ? loc.search + "&" : "?") + "embed=1" + loc.hash;
+			}
+		} else if (!embedded) {
+			location.href = loc.pathname + loc.search + loc.hash;
+		}
+	});
+
+	var h = (location.hash || "").replace("#", "").split("/");
+	show(h[0] || "buying", h[1]);
+})();
+</script>
 {% endblock %}

@@ -210,7 +210,9 @@ def inspections(limit=500):
 
 def templates():
 	out = []
-	for t in frappe.get_all(QI + " Template", fields=["name"], order_by="name asc"):
+	has_default = frappe.get_meta(QI + " Template").has_field("custom_is_default")
+	fields = ["name", "custom_is_default"] if has_default else ["name"]
+	for t in frappe.get_all(QI + " Template", fields=fields, order_by="name asc"):
 		params = frappe.get_all(
 			"Item Quality Inspection Parameter",
 			filters={"parenttype": QI + " Template", "parent": t.name},
@@ -222,7 +224,8 @@ def templates():
 			fields=["name", "item_name", "inspection_required_before_purchase", "inspection_required_before_delivery"],
 			order_by="item_name asc",
 		)
-		out.append({"name": t.name, "parameters": params, "used_by": items})
+		out.append({"name": t.name, "parameters": params, "used_by": items,
+		            "is_default": cint(t.get("custom_is_default"))})
 	return out
 
 
@@ -254,13 +257,22 @@ def get_board():
 # ---------------------------------------------------------------------------
 
 
+def default_template():
+	"""The one checklist marked default, used for any item with none of its own."""
+	if not frappe.get_meta(QI + " Template").has_field("custom_is_default"):
+		return ""
+	return frappe.db.get_value(QI + " Template", {"custom_is_default": 1}, "name") or ""
+
+
 def _template_for(reference_type, reference_name, item_code):
+	"""The item's own checklist, else its BOM's, else the default checklist — so
+	a new item with no checklist is still inspected against one."""
 	template = frappe.db.get_value("Item", item_code, "quality_inspection_template")
 	if not template and reference_type == WO:
 		bom = frappe.db.get_value(WO, reference_name, "bom_no")
 		if bom:
 			template = frappe.db.get_value("BOM", bom, "quality_inspection_template")
-	return template or ""
+	return template or default_template()
 
 
 def _parameters(template):
@@ -352,6 +364,7 @@ def get_inspection_form(reference_type, reference_name, item_code=None, child_ro
 	if due:
 		meta.append(["Due", _date(due)])
 	template = _template_for(reference_type, reference_name, item_code)
+	own = frappe.db.get_value("Item", item_code, "quality_inspection_template")
 	last, previous = _last_inspection_detail(reference_type, reference_name, item_code)
 	return {
 		"reference_type": reference_type,
@@ -364,6 +377,7 @@ def get_inspection_form(reference_type, reference_name, item_code=None, child_ro
 		"chassis": chassis,
 		"meta": meta,
 		"template": template,
+		"template_is_default": bool(template and not own and template == default_template()),
 		"parameters": _parameters(template),
 		"templates": frappe.get_all(QI + " Template", pluck="name", order_by="name asc"),
 		"last": last,
@@ -628,7 +642,8 @@ def search_items(search=None, limit=15):
 
 
 @frappe.whitelist()
-def save_template(template_name, parameters, items=None, on_receipt=0, before_delivery=0, name=None):
+def save_template(template_name, parameters, items=None, on_receipt=0, before_delivery=0, name=None,
+                  is_default=None):
 	"""Create or update a checklist and the items inspected against it.
 
 	`parameters`: [{specification, numeric, min_value, max_value, value}].
@@ -669,6 +684,8 @@ def save_template(template_name, parameters, items=None, on_receipt=0, before_de
 		})
 	doc.flags.ignore_permissions = True
 	doc.save(ignore_permissions=True)
+	if is_default is not None:
+		_set_default(doc.name, is_default)
 
 	wanted = set(_parse(items) or [])
 	for code in frappe.get_all("Item", filters={"quality_inspection_template": doc.name}, pluck="name"):
@@ -681,3 +698,24 @@ def save_template(template_name, parameters, items=None, on_receipt=0, before_de
 			"inspection_required_before_delivery": cint(before_delivery),
 		})
 	return doc.name
+
+
+def _set_default(template, is_default):
+	"""Mark `template` the default checklist (or unmark it). Only one checklist is
+	the default, so marking one clears the previous."""
+	if cint(is_default):
+		for other in frappe.get_all(QI + " Template",
+		                            filters={"custom_is_default": 1, "name": ["!=", template]},
+		                            pluck="name"):
+			frappe.db.set_value(QI + " Template", other, "custom_is_default", 0)
+	frappe.db.set_value(QI + " Template", template, "custom_is_default", 1 if cint(is_default) else 0)
+
+
+@frappe.whitelist()
+def set_default_template(template, is_default=1):
+	"""The checklist list's "Set as default" / "Remove default" buttons."""
+	frappe.has_permission(QI + " Template", "write", throw=True)
+	if not frappe.db.exists(QI + " Template", template):
+		frappe.throw(_("Checklist {0} not found").format(template))
+	_set_default(template, is_default)
+	return templates()

@@ -108,6 +108,36 @@ function tradingAction(method, args, okMsg) {
 </script>
 {%- endmacro -%}
 
+{#- Portal side of the invoice deletion workflow: shows what a deletion would do,
+    asks for a reason and raises an Invoice Deletion Request. Nothing is deleted
+    here -- Finance and then the Owner approve it in the Desk. Needs call_method_js(). -#}
+{%- macro deletion_request_js() -%}
+<script>
+function requestDeletion(doctype, name) {
+	tradingCall("a3_trading_management.api.invoice_delete.preview_deletion", { doctype: doctype, name: name })
+	.then(function (impact) {
+		if (impact.open_request) {
+			alert(name + " already has deletion request " + impact.open_request.name + " (" + impact.open_request.workflow_state + ").");
+			return;
+		}
+		function block(title, rows) { return rows && rows.length ? "\n" + title + ":\n - " + rows.join("\n - ") + "\n" : ""; }
+		if (impact.blockers && impact.blockers.length) {
+			alert("Cannot request deletion of " + name + ":\n" + block("Fix these first", impact.blockers));
+			return;
+		}
+		var reason = prompt("Request deletion of " + name + "\n"
+			+ block("Will be removed", impact.removes) + block("Will be updated", impact.updates)
+			+ block("Please note", impact.warnings)
+			+ "\nNothing is deleted now: Finance, then the Owner must approve.\n\nReason for deleting:");
+		if (!reason || !reason.trim()) return;
+		tradingAction("a3_trading_management.api.invoice_delete.request_deletion",
+			{ doctype: doctype, name: name, reason: reason.trim() },
+			"Deletion request sent to Finance for " + name + ".");
+	}).catch(function (err) { alert("Could not complete that: " + ((err && err.message) || err)); });
+}
+</script>
+{%- endmacro -%}
+
 {#- The row of stat cards every workshop list page opens with. The markup and the
     class names are the portal's own (`.tc-stats` > `.stat-card.stat-card--sm`), so
     the look comes entirely from the shared workshop stylesheet and follows it when
@@ -378,4 +408,35 @@ function tradingAction(method, args, okMsg) {
 	});
 })();
 </script>
+{%- endmacro -%}
+
+
+{#- The three dispatch-and-bill screens, one after the other: what is waiting to
+    leave, the delivery notes, and the invoices raised from them. A strip of links
+    at the top of each lets the user step between them. -#}
+{%- macro dispatch_nav(active) -%}
+<div class="dispatch-nav">
+	{%- for key, label, icon, route in [
+		("awaiting", "Awaiting Dispatch", "fa-hourglass-half", "/a3-workshop/awaiting-dispatch"),
+		("notes", "Delivery Notes", "fa-truck-fast", "/a3-workshop/delivery-notes"),
+		("invoices", "Sales Invoices", "fa-file-invoice", "/a3-workshop/sales-invoices"),
+	] %}
+	<a class="dispatch-nav__step{% if key == active %} is-active{% endif %}" href="{{ route }}">
+		<span class="dispatch-nav__no">{{ loop.index }}</span><i class="fa-solid {{ icon }}"></i> {{ label }}</a>
+	{%- if not loop.last %}<i class="fa-solid fa-chevron-right dispatch-nav__sep"></i>{% endif %}
+	{%- endfor %}
+</div>
+<style>
+	.dispatch-nav { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:16px; }
+	.dispatch-nav__step { display:inline-flex; align-items:center; gap:7px; padding:7px 14px; border-radius:999px;
+		border:1px solid var(--border); background:var(--surface); color:var(--text); font-size:13px; font-weight:600; text-decoration:none; }
+	.dispatch-nav__step:hover { border-color:var(--red); text-decoration:none; }
+	.dispatch-nav__step.is-active { background:var(--red); border-color:var(--red); color:#fff; }
+	.dispatch-nav__no { display:inline-grid; place-items:center; width:18px; height:18px; border-radius:50%; font-size:10px;
+		background:var(--bg); color:var(--muted); }
+	.dispatch-nav__step.is-active .dispatch-nav__no { background:rgba(255,255,255,.25); color:#fff; }
+	.dispatch-nav__sep { color:var(--muted); font-size:11px; }
+	/* inside the Operations tabs the sub-tabs already do this job */
+	.is-embed .dispatch-nav { display:none; }
+</style>
 {%- endmacro -%}

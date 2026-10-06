@@ -1,0 +1,295 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "format:IDR-{YYYY}-{#####}",
+ "creation": "2026-10-05 13:00:00.000000",
+ "description": "A request to delete a posted Sales or Purchase Invoice with everything it wrote. Raised by an Operator, approved by Finance (Accounts Manager or Finance Manager), then by the Owner (Super Admin); the deletion runs on the Owner's approval.",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "workflow_state",
+  "invoice_type",
+  "invoice",
+  "column_break_inv",
+  "party",
+  "company",
+  "posting_date",
+  "column_break_amt",
+  "grand_total",
+  "outstanding_amount",
+  "currency",
+  "invoice_status",
+  "reason_section",
+  "reason",
+  "impact_section",
+  "impact",
+  "approvals_section",
+  "requested_by",
+  "requested_on",
+  "finance_approved_by",
+  "finance_approved_on",
+  "column_break_appr",
+  "owner_approved_by",
+  "owner_approved_on",
+  "rejected_by",
+  "rejected_on",
+  "result_section",
+  "deleted_on",
+  "deletion_log"
+ ],
+ "fields": [
+  {
+   "fieldname": "workflow_state",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "no_copy": 1,
+   "options": "Workflow State",
+   "read_only": 1
+  },
+  {
+   "fieldname": "invoice_type",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Invoice Type",
+   "options": "Sales Invoice\nPurchase Invoice",
+   "reqd": 1,
+   "set_only_once": 1
+  },
+  {
+   "description": "Kept as plain text: the invoice no longer exists once the request is carried out.",
+   "fieldname": "invoice",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Invoice",
+   "reqd": 1,
+   "set_only_once": 1
+  },
+  {
+   "fieldname": "column_break_inv",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "party",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Customer / Supplier",
+   "read_only": 1
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company",
+   "read_only": 1
+  },
+  {
+   "fieldname": "posting_date",
+   "fieldtype": "Date",
+   "label": "Invoice Date",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_amt",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "grand_total",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Grand Total",
+   "options": "currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "outstanding_amount",
+   "fieldtype": "Currency",
+   "label": "Outstanding",
+   "options": "currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "currency",
+   "fieldtype": "Link",
+   "hidden": 1,
+   "label": "Currency",
+   "options": "Currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "invoice_status",
+   "fieldtype": "Data",
+   "label": "Invoice Status When Requested",
+   "read_only": 1
+  },
+  {
+   "fieldname": "reason_section",
+   "fieldtype": "Section Break",
+   "label": "Reason"
+  },
+  {
+   "fieldname": "reason",
+   "fieldtype": "Small Text",
+   "label": "Why should this invoice be deleted?",
+   "reqd": 1,
+   "set_only_once": 1
+  },
+  {
+   "fieldname": "impact_section",
+   "fieldtype": "Section Break",
+   "label": "What the deletion will do"
+  },
+  {
+   "description": "Worked out when the request is raised and again at every approval.",
+   "fieldname": "impact",
+   "fieldtype": "Long Text",
+   "label": "Impact",
+   "read_only": 1
+  },
+  {
+   "fieldname": "approvals_section",
+   "fieldtype": "Section Break",
+   "label": "Approvals"
+  },
+  {
+   "fieldname": "requested_by",
+   "fieldtype": "Link",
+   "label": "Requested By",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "requested_on",
+   "fieldtype": "Datetime",
+   "label": "Requested On",
+   "read_only": 1
+  },
+  {
+   "fieldname": "finance_approved_by",
+   "fieldtype": "Link",
+   "label": "Finance Approved By",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "finance_approved_on",
+   "fieldtype": "Datetime",
+   "label": "Finance Approved On",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_appr",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "owner_approved_by",
+   "fieldtype": "Link",
+   "label": "Owner Approved By",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "owner_approved_on",
+   "fieldtype": "Datetime",
+   "label": "Owner Approved On",
+   "read_only": 1
+  },
+  {
+   "fieldname": "rejected_by",
+   "fieldtype": "Link",
+   "label": "Rejected By",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "rejected_on",
+   "fieldtype": "Datetime",
+   "label": "Rejected On",
+   "read_only": 1
+  },
+  {
+   "collapsible": 0,
+   "depends_on": "deleted_on",
+   "fieldname": "result_section",
+   "fieldtype": "Section Break",
+   "label": "Result"
+  },
+  {
+   "fieldname": "deleted_on",
+   "fieldtype": "Datetime",
+   "label": "Deleted On",
+   "read_only": 1
+  },
+  {
+   "fieldname": "deletion_log",
+   "fieldtype": "Long Text",
+   "label": "What was done",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-10-05 15:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "A3 Trading Management",
+ "name": "Invoice Deletion Request",
+ "naming_rule": "Expression",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Operator",
+   "write": 1
+  },
+  {
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Accounts Manager",
+   "write": 1
+  },
+  {
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Finance Manager",
+   "write": 1
+  },
+  {
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Super Admin",
+   "write": 1
+  }
+ ],
+ "search_fields": "invoice,party",
+ "show_title_field_in_link": 0,
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "invoice",
+ "track_changes": 1
+}
