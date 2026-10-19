@@ -41,6 +41,14 @@ def sales_invoice_validate(doc, method=None):
 		doc.vat_emirate = frappe.db.get_value("Address", doc.company_address, "emirate") or ""
 
 
+def purchase_invoice_before_validate(doc, method=None):
+	"""Reverse charge bills claim through Recoverable Reverse Charge, and ERPNext's
+	own validate refuses one that still carries the standard-rated figure (which
+	an earlier save filled in), so clear it before that check runs."""
+	if doc.get("reverse_charge") == "Y" and doc.meta.has_field("recoverable_standard_rated_expenses"):
+		doc.recoverable_standard_rated_expenses = 0
+
+
 def purchase_invoice_validate(doc, method=None):
 	"""Recoverable Standard Rated Expenses = the bill's input VAT, unless someone
 	typed their own figure. A figure that still equals the VAT computed at the
@@ -51,7 +59,10 @@ def purchase_invoice_validate(doc, method=None):
 	current = flt(doc.recoverable_standard_rated_expenses)
 	before = doc.get_doc_before_save()
 	was_auto = before is not None and current == flt(purchase_vat(before))
-	if not current or was_auto:
+	# A debit note arrives with the original bill's positive figure copied over;
+	# its VAT is negative, so a positive figure on a return is never typed.
+	copied = doc.get("is_return") and current > 0
+	if not current or was_auto or copied:
 		doc.recoverable_standard_rated_expenses = purchase_vat(doc)
 
 
@@ -78,10 +89,14 @@ def item_validate(doc, method=None):
 	applies unless the item carries a 0% Item Tax Template. So a ticked item gets
 	the matching UAE template (replacing any other UAE VAT one), and an unticked
 	item loses the Zero/Exempted template this put there.
+
+	ERPNext only uses an item tax row whose Tax Category equals the invoice's
+	(blank matches blank), so the template goes in once per Tax Category.
 	"""
 	if not (doc.meta.has_field("is_zero_rated") and doc.meta.has_field("is_exempt")):
 		return
 	kind = "zero" if doc.is_zero_rated else "exempt" if doc.is_exempt else None
+	categories = ["", *frappe.get_all("Tax Category", filters={"disabled": 0}, pluck="name")]
 
 	for templates in _uae_vat_templates().values():
 		wanted = templates.get(kind) if kind else None
@@ -92,5 +107,9 @@ def item_validate(doc, method=None):
 
 		for row in [r for r in doc.get("taxes") or [] if r.item_tax_template in drop]:
 			doc.remove(row)
-		if wanted and not any(r.item_tax_template == wanted for r in doc.get("taxes") or []):
-			doc.append("taxes", {"item_tax_template": wanted})
+		if not wanted:
+			continue
+		have = {r.tax_category or "" for r in doc.get("taxes") or [] if r.item_tax_template == wanted}
+		for category in categories:
+			if category not in have:
+				doc.append("taxes", {"item_tax_template": wanted, "tax_category": category})
