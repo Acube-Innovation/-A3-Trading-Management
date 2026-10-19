@@ -82,6 +82,7 @@ doc_events = {
 		"validate": "a3_trading_management.integrations.uae_vat.sales_invoice_validate",
 	},
 	"Purchase Invoice": {
+		"before_validate": "a3_trading_management.integrations.uae_vat.purchase_invoice_before_validate",
 		"validate": "a3_trading_management.integrations.uae_vat.purchase_invoice_validate",
 	},
 	# Items are numbered from a series while Item Code stays a typeable field.
