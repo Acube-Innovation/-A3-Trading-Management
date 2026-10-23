@@ -1,0 +1,149 @@
+{% extends "templates/workshop_base.html" %}
+{% from "templates/macros/trading.html" import filter_bar, filter_script, call_method_js, stat_row, sup_kit %}
+
+{% block page_content %}
+{#- BOM: the materials and operations of one build. A BOM made here by someone who
+    may not submit one (the Supervisor) is a draft until the manager approves it;
+    no costs are shown to the Supervisor. -#}
+
+{{ stat_row([
+	{"label": "BOMs", "value": boms | length, "sub": "Drafts and approved"},
+	{"label": "Drafts", "value": drafts, "sub": "Waiting for the manager"},
+	{"label": "Approved", "value": approved, "sub": "Usable on work orders"},
+]) }}
+
+<div class="toolbar">
+	<div class="section-title" style="margin:0">BOMs</div>
+	<div class="toolbar__right">
+		<button type="button" class="btn btn--primary btn--sm" onclick="newBom()"><i class="fa-solid fa-plus"></i> New BOM</button>
+	</div>
+</div>
+
+{{ filter_bar("Search BOM or item…", [
+	{"key": "status", "label": "All", "options": ["Draft", "Approved"]}
+]) }}
+
+<div class="card"><div class="card__body" style="overflow-x:auto">
+	{%- if boms %}
+	<table class="table" id="tf-table">
+		<thead><tr><th>BOM</th><th>Builds</th><th class="num">For qty</th><th>Status</th><th>Default</th><th>Action</th></tr></thead>
+		<tbody>
+		{%- for b in boms %}
+			{%- set st = "Approved" if b.docstatus == 1 else "Draft" %}
+			<tr data-hay="{{ (b.name ~ ' ' ~ (b.item or '') ~ ' ' ~ (b.item_name or '')) | lower }}" data-status="{{ st }}">
+				<td><b>{{ b.name }}</b></td>
+				<td>{{ b.item_name }}<div class="muted" style="font-size:11px">{{ b.item }}</div></td>
+				<td class="num">{{ "%g" | format(b.quantity or 1) }}</td>
+				<td><span class="pill {{ 'pill--ok' if b.docstatus == 1 else 'pill--draft' }}">{{ st }}{% if b.docstatus == 1 and not b.is_active %} · inactive{% endif %}</span></td>
+				<td>{{ "Yes" if b.is_default else "—" }}</td>
+				<td><button class="btn btn--outline btn--sm" onclick="viewBom('{{ b.name }}')">View</button></td>
+			</tr>
+		{%- endfor %}
+		</tbody>
+	</table>
+	{%- else %}
+	<div class="empty">No BOMs yet.</div>
+	{%- endif %}
+</div></div>
+
+<div class="modal-overlay" id="bv-modal" role="dialog" aria-modal="true">
+	<div class="modal">
+		<div class="modal__head"><div><h3 id="bv-title">BOM</h3><div class="sub" id="bv-sub"></div></div>
+			<button type="button" class="modal__close" data-sk-close><i class="fa-solid fa-xmark"></i></button></div>
+		<div class="modal__body" id="bv-body"><div class="empty">Loading…</div></div>
+		<div class="modal__foot"><button type="button" class="btn btn--outline" data-sk-close>Close</button></div>
+	</div>
+</div>
+
+<div class="modal-overlay" id="bn-modal" role="dialog" aria-modal="true">
+	<div class="modal" style="max-width:860px">
+		<div class="modal__head"><div><h3>New BOM</h3><div class="sub">The materials and operations for one build. It is saved as a draft; the production manager approves it.</div></div>
+			<button type="button" class="modal__close" data-sk-close><i class="fa-solid fa-xmark"></i></button></div>
+		<div class="modal__body">
+			<div class="form-grid">
+				<div class="field"><label>Item this BOM builds <span class="req">*</span></label><div><input id="bn-item" placeholder="Search item…" autocomplete="off"></div></div>
+				<div class="field"><label>Quantity built</label><input id="bn-qty" type="number" min="1" step="any" value="1"></div>
+			</div>
+			<div class="fieldset-title" style="margin-top:14px">Materials <span class="req">*</span></div>
+			<table class="sk-lines"><thead><tr><th>Material</th><th style="width:120px">Qty</th><th style="width:40px"></th></tr></thead><tbody id="bn-items"></tbody></table>
+			<button type="button" class="btn btn--outline btn--sm" style="margin-top:8px" onclick="addItem()"><i class="fa-solid fa-plus"></i> Add material</button>
+			<div class="fieldset-title" style="margin-top:16px">Operations <span class="muted" style="font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></div>
+			<table class="sk-lines"><thead><tr><th>Operation</th><th style="width:120px">Hours</th><th style="width:40px"></th></tr></thead><tbody id="bn-ops"></tbody></table>
+			<button type="button" class="btn btn--outline btn--sm" style="margin-top:8px" onclick="addOp()"><i class="fa-solid fa-plus"></i> Add operation</button>
+			<div class="sk-err" id="bn-err"></div>
+		</div>
+		<div class="modal__foot">
+			<button type="button" class="btn btn--outline" data-sk-close>Cancel</button>
+			<button type="button" class="btn btn--primary" onclick="saveBom()"><i class="fa-solid fa-check"></i> Save for approval</button>
+		</div>
+	</div>
+</div>
+
+{{ call_method_js() }}
+{{ sup_kit() }}
+{{ filter_script() }}
+<script>
+var API = "a3_trading_management.api.supervisor_portal.";
+var OPS = {{ operations | tojson }};
+function items(trailers) {
+	return function (q) {
+		return tradingCall(API + "search_bom_items", { search: q, trailers: trailers }).then(function (r) {
+			return (r || []).map(function (i) { return { label: i.item_name || i.name, sub: i.name + " · " + (i.stock_uom || ""), value: i.name }; });
+		});
+	};
+}
+SK.picker(document.getElementById("bn-item"), items(1));
+function viewBom(name) {
+	document.getElementById("bv-title").textContent = name;
+	document.getElementById("bv-body").innerHTML = '<div class="empty">Loading…</div>';
+	SK.open("bv-modal");
+	tradingCall(API + "get_bom", { name: name }).then(function (b) {
+		document.getElementById("bv-sub").textContent = b.item_name + " · for " + b.quantity + (b.docstatus ? " · approved" : " · draft");
+		var rows = b.items.map(function (i, n) { return "<tr><td>" + (n + 1) + "</td><td>" + SK.esc(i.item_name) + '<div class="muted" style="font-size:11px">' + SK.esc(i.item_code) + "</div></td><td class=\"num\">" + i.qty + " " + SK.esc(i.uom || "") + "</td></tr>"; }).join("");
+		var ops = b.operations.map(function (o, n) { return "<tr><td>" + (n + 1) + "</td><td>" + SK.esc(o.operation) + "</td><td>" + SK.esc(o.workstation || "—") + '</td><td class="num">' + (Math.round(o.hours * 100) / 100) + " h</td></tr>"; }).join("");
+		document.getElementById("bv-body").innerHTML =
+			'<div class="fieldset-title">Materials</div><table class="table"><thead><tr><th>#</th><th>Material</th><th class="num">Qty</th></tr></thead><tbody>' + rows + "</tbody></table>" +
+			'<div class="fieldset-title" style="margin-top:12px">Operations</div>' + (ops ? '<table class="table"><thead><tr><th>#</th><th>Operation</th><th>Workstation</th><th class="num">Time</th></tr></thead><tbody>' + ops + "</tbody></table>" : '<div class="muted">None</div>');
+	}).catch(function (e) { document.getElementById("bv-body").innerHTML = '<div class="sk-err" style="display:block">' + SK.esc(SK.err(e)) + "</div>"; });
+}
+function addItem() {
+	var tr = document.createElement("tr");
+	tr.innerHTML = '<td><div><input class="bn-i" placeholder="Search material…" autocomplete="off"></div></td><td><input class="bn-q" type="number" min="0" step="any" value="1"></td>' +
+		'<td><button type="button" style="background:none;border:0;cursor:pointer" title="Remove"><i class="fa-solid fa-trash"></i></button></td>';
+	document.getElementById("bn-items").appendChild(tr);
+	SK.picker(tr.querySelector(".bn-i"), items(0));
+	tr.querySelector("button").addEventListener("click", function () { tr.remove(); });
+}
+function addOp() {
+	var tr = document.createElement("tr");
+	tr.innerHTML = '<td><select class="bn-o"><option value="">—</option>' + OPS.map(function (o) { return '<option value="' + SK.esc(o.name) + '">' + SK.esc(o.name) + (o.workstation ? " · " + SK.esc(o.workstation) : "") + "</option>"; }).join("") + "</select></td>" +
+		'<td><input class="bn-h" type="number" min="0" step="0.25"></td><td><button type="button" style="background:none;border:0;cursor:pointer" title="Remove"><i class="fa-solid fa-trash"></i></button></td>';
+	document.getElementById("bn-ops").appendChild(tr);
+	tr.querySelector("button").addEventListener("click", function () { tr.remove(); });
+}
+function newBom() {
+	var it = document.getElementById("bn-item"); it.value = ""; it.dataset.value = "";
+	document.getElementById("bn-items").innerHTML = ""; document.getElementById("bn-ops").innerHTML = "";
+	addItem(); addItem(); addOp();
+	document.getElementById("bn-err").style.display = "none";
+	SK.open("bn-modal");
+}
+function saveBom() {
+	var err = document.getElementById("bn-err"); err.style.display = "none";
+	var item = document.getElementById("bn-item").dataset.value;
+	var mats = Array.prototype.map.call(document.querySelectorAll("#bn-items tr"), function (tr) {
+		return { item_code: tr.querySelector(".bn-i").dataset.value || "", qty: Number(tr.querySelector(".bn-q").value) || 0 };
+	}).filter(function (r) { return r.item_code && r.qty > 0; });
+	var ops = Array.prototype.map.call(document.querySelectorAll("#bn-ops tr"), function (tr) {
+		return { operation: tr.querySelector(".bn-o").value, time_in_mins: (Number(tr.querySelector(".bn-h").value) || 0) * 60 };
+	}).filter(function (o) { return o.operation; });
+	if (!item) { err.textContent = "Pick the item this BOM builds from the list."; err.style.display = "block"; return; }
+	if (!mats.length) { err.textContent = "Add at least one material with a quantity."; err.style.display = "block"; return; }
+	if (ops.some(function (o) { return !o.time_in_mins; })) { err.textContent = "Give every operation its hours."; err.style.display = "block"; return; }
+	tradingCall("a3_trading_management.api.manufacturing.create_bom", {
+		item: item, items: mats, operations: ops, quantity: Number(document.getElementById("bn-qty").value) || 1
+	}).then(function (r) { alert(r.name + (r.submitted ? " created." : " saved as a draft. The production manager approves it.")); location.reload(); })
+	  .catch(function (e) { err.textContent = SK.err(e); err.style.display = "block"; });
+}
+</script>
+{% endblock %}

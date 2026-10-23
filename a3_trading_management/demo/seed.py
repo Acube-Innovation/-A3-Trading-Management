@@ -453,7 +453,7 @@ def _selling_orders(ctx):
 	order("blue_dune", "TRL-CURTAIN-3AX", 1, days=30)
 	order("sandstone", "TRL-TIPPER-2AX", 1)
 	order("oasis", "TRL-CURTAIN-3AX", 1, days=21)
-	order("rashid", "TRL-FLATBED", 1, confirm=False)
+	order("rashid", "TRL-SKELETAL-40", 1, confirm=False)
 	for key, o in orders.items():
 		print(f"  Sales order   {o.name}  {CUSTOMERS[key][0]}: {o.qty} x {o.item}")
 	return orders
@@ -575,8 +575,6 @@ def _selling(ctx, orders):
 
 def _journals(ctx):
 	cash = frappe.db.get_value("Company", ctx.company, "default_cash_account")
-	capital = frappe.db.get_value("Account", {"company": ctx.company, "account_name": "Capital Stock",
-	                                          "is_group": 0}, "name")
 	cc = ctx.cost_center
 
 	def journal(lines, remark, post=True):
@@ -587,16 +585,31 @@ def _journals(ctx):
 			selling.post_journal_entry(je)
 		print(f"  {je}  {'posted' if post else 'awaiting approval'}  {remark}")
 
-	if capital:
-		journal([{"account": cash, "debit": 2500000}, {"account": capital, "credit": 2500000}],
-		        "Owners' capital introduced")
-	journal([{"account": f"Office Rent - {ctx.abbr}", "debit": 18000}, {"account": cash, "credit": 18000}],
+	capital = account(ctx, "Capital Stock", "Share Capital")
+	if capital and not frappe.db.exists("Journal Entry", {"user_remark": CAPITAL_REMARK, "docstatus": 1}):
+		journal([{"account": cash, "debit": 2500000}, {"account": capital, "credit": 2500000}], CAPITAL_REMARK)
+	journal([{"account": account(ctx, "Office Rent"), "debit": 18000}, {"account": cash, "credit": 18000}],
 	        "Workshop and office rent, this month")
-	journal([{"account": f"Utility Expenses - {ctx.abbr}", "debit": 4350}, {"account": cash, "credit": 4350}],
+	journal([{"account": account(ctx, "Utility Expenses", "Water & Electricity"), "debit": 4350},
+	         {"account": cash, "credit": 4350}],
 	        "Electricity and water, fabrication bay")
-	journal([{"account": f"Salary - {ctx.abbr}", "debit": 86000},
-	         {"account": f"Payroll Payable - {ctx.abbr}", "credit": 86000}],
+	journal([{"account": account(ctx, "Salary", "Basic Salary"), "debit": 86000},
+	         {"account": account(ctx, "Payroll Payable", "Accrued - Salaries"), "credit": 86000}],
 	        "Salary accrual, production and office staff", post=False)
+
+
+CAPITAL_REMARK = "Owners' capital introduced"
+
+
+def account(ctx, *names):
+	"""The company's ledger account by name: the standard chart's name first, then
+	the U.A.E chart's (Redlines books on the U.A.E chart)."""
+	for name in names:
+		found = frappe.db.get_value("Account", {"company": ctx.company, "account_name": name, "is_group": 0},
+		                            "name")
+		if found:
+			return found
+	frappe.throw(f"No ledger account named {' or '.join(names)} in {ctx.company}")
 
 
 # ---------------------------------------------------------------------------

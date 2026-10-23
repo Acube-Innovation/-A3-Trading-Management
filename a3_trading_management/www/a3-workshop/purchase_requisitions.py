@@ -17,7 +17,9 @@ def get_context(context):
 	context.requisitions = list_requisitions(search=context.search or None)
 	# Only compliant suppliers are offered for conversion — the block would refuse
 	# the order anyway, so offering the rest would just produce a dead end.
-	context.suppliers = [s for s in list_suppliers() if not s["compliance"]["blocked"]]
+	# (Not for the Supervisor, who does not turn requisitions into orders.)
+	context.suppliers = [] if context.get("supervisor") else [s for s in list_suppliers() if not s["compliance"]["blocked"]]
+	context.default_warehouse = frappe.db.get_single_value("Stock Settings", "default_warehouse")
 	context.page_count = len(context.requisitions)
 	context.page_count_label = "requisitions"
 	return context

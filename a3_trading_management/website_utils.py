@@ -13,6 +13,11 @@ def require_login(context=None):
 		frappe.local.flags.redirect_location = f"/login?redirect-to={redirect_to}"
 		raise frappe.Redirect
 
+	# A Supervisor gets their own pages, without prices.
+	from a3_trading_management.integrations.supervisor import portal_context
+
+	portal_context(context)
+
 	if context is not None:
 		context.csrf_token = _csrf_token()
 	return context

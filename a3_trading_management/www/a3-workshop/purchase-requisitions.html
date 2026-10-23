@@ -47,8 +47,8 @@
 				<td style="white-space:nowrap">
 					{%- if r.docstatus == 0 %}
 					<button class="btn btn--primary btn--sm" onclick="approveReq('{{ r.name }}')">Approve</button>
-					<button class="btn btn--outline btn--sm" onclick="rejectReq('{{ r.name }}')">Reject</button>
-					{%- elif r.docstatus == 1 and (r.per_ordered or 0) < 100 %}
+					<button class="btn btn--outline btn--sm not-sup" onclick="rejectReq('{{ r.name }}')">Reject</button>
+					{%- elif r.docstatus == 1 and (r.per_ordered or 0) < 100 and not (supervisor is defined and supervisor) %}
 					<button class="btn btn--outline btn--sm" onclick="convertReq('{{ r.name }}')">To Order</button>
 					{%- else %}<span class="muted">—</span>{% endif %}
 				</td>
@@ -88,7 +88,7 @@ function newRequisition() {
 	openNewDoc({
 		title: "New Requisition", subtitle: "What the yard needs. Purchase approves it, then turns it into an order.",
 		head: [{ key: "schedule_date", label: "Needed by", type: "date", value: (function(){var d=new Date();d.setDate(d.getDate()+7);return d.toISOString().slice(0,10);})() }],
-		columns: [{ key: "item_code", label: "Item", pick: "item", placeholder: "Search item…" }, { key: "qty", label: "Qty", num: true, value: 1, width: "110px" }, { key: "warehouse", label: "To yard", default: "Stores - A3T" }],
+		columns: [{ key: "item_code", label: "Item", pick: "item", placeholder: "Search item…" }, { key: "qty", label: "Qty", num: true, value: 1, width: "110px" }, { key: "warehouse", label: "To yard", default: {{ (default_warehouse or "") | tojson }} }],
 		validate: function (h, l) { return l.length ? null : "Add at least one item."; },
 		build: function (h, l) { return { items: JSON.stringify(l.map(function (r) { return { item_code: r.item_code, qty: r.qty, warehouse: r.warehouse }; })), schedule_date: h.schedule_date || null }; },
 		method: "a3_trading_management.api.buying.create_requisition"

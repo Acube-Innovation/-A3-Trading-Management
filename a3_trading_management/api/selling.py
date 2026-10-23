@@ -13,6 +13,7 @@ from frappe.utils import flt, nowdate, getdate, date_diff
 
 from a3_trading_management.api._common import (
 	rows, status_counts, submit_document, cancel_document, default_company, ageing_bucket, apply_taxes,
+	set_payment_reference,
 )
 
 
@@ -98,7 +99,7 @@ def list_payments(search=None, payment_type=None, party_type=None, limit=200):
 
 
 @frappe.whitelist()
-def receive_against_invoice(sales_invoice, amount=None, mode_of_payment=None):
+def receive_against_invoice(sales_invoice, amount=None, mode_of_payment=None, reference_no=None, reference_date=None):
 	"""Money in, allocated against the invoice it settles."""
 	frappe.has_permission("Payment Entry", "create", throw=True)
 	from erpnext.accounts.doctype.payment_entry.payment_entry import get_payment_entry
@@ -113,6 +114,7 @@ def receive_against_invoice(sales_invoice, amount=None, mode_of_payment=None):
 			ref.allocated_amount = min(flt(amount), flt(ref.outstanding_amount))
 	if mode_of_payment:
 		pe.mode_of_payment = mode_of_payment
+	set_payment_reference(pe, sales_invoice, reference_no, reference_date)
 	pe.flags.ignore_permissions = True
 	pe.insert(ignore_permissions=True)
 	frappe.db.commit()

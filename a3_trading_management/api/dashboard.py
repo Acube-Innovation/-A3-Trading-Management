@@ -23,13 +23,24 @@ def _currency(company):
 def get_dashboard():
 	if frappe.session.user == "Guest":
 		frappe.throw(_("You must be logged in."), frappe.PermissionError)
-	return {
+	from a3_trading_management.setup.supervisor import is_supervisor_only
+
+	data = {
 		"tiles": get_stat_tiles(),
 		"stages": get_trailers_by_stage(),
 		"work_orders": get_open_work_orders(),
 		"deliveries": get_recent_deliveries(),
 		"low_stock": get_low_stock(),
 	}
+	if is_supervisor_only():
+		# The Supervisor's home has the floor figures without the money.
+		data["tiles"] = [t for t in data["tiles"] if t["label"] not in MONEY_TILES]
+		# Not on their home: deliveries are not theirs; low stock is on Live Stock.
+		data["deliveries"], data["low_stock"] = [], []
+	return data
+
+
+MONEY_TILES = ("Revenue", "Owed to Us", "Owed by Us")
 
 
 def get_stat_tiles():

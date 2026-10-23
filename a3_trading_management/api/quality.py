@@ -10,7 +10,9 @@ Three things wait for an inspection:
 * a draft goods receipt line whose item is ticked "inspection required before
   purchase" (incoming);
 * a draft delivery note line whose item is ticked "inspection required before
-  delivery" (outgoing).
+  delivery" (outgoing);
+* a draft sales invoice line with "update stock" on — the invoice is then the
+  delivery — whose item is ticked the same way (outgoing).
 
 A checklist is a Quality Inspection Template: its parameters are the readings an
 inspector records, and an item carries the template it is inspected against.
@@ -31,9 +33,12 @@ QI = "Quality Inspection"
 WO = "Work Order"
 PR = "Purchase Receipt"
 DN = "Delivery Note"
+SI = "Sales Invoice"
 
-INSPECTION_TYPE = {WO: "In Process", PR: "Incoming", DN: "Outgoing"}
-SOURCE_LABEL = {WO: "Manufacturing", PR: "Goods receipt", DN: "Delivery"}
+INSPECTION_TYPE = {WO: "In Process", PR: "Incoming", DN: "Outgoing", SI: "Outgoing"}
+SOURCE_LABEL = {WO: "Manufacturing", PR: "Goods receipt", DN: "Delivery", SI: "Sales invoice"}
+# Sources whose lines carry their own quality_inspection column.
+LINE_SOURCES = (PR, DN, SI)
 
 
 def _parse(value):
@@ -132,7 +137,7 @@ def _pending_work_orders():
 	return out
 
 
-def _pending_lines(parent_doctype, flag, party_field, qty_field):
+def _pending_lines(parent_doctype, flag, party_field, qty_field, condition=""):
 	child = parent_doctype + " Item"
 	rows = frappe.db.sql(
 		f"""
@@ -143,7 +148,7 @@ def _pending_lines(parent_doctype, flag, party_field, qty_field):
 		join `tabItem` i on i.name = c.item_code
 		left join `tabQuality Inspection` qi
 		       on qi.name = c.quality_inspection and qi.docstatus = 1 and qi.status = 'Rejected'
-		where p.docstatus = 0 and i.{flag} = 1
+		where p.docstatus = 0 and i.{flag} = 1 {condition}
 		  and (ifnull(c.quality_inspection, '') = '' or qi.name is not null)
 		order by p.posting_date asc, p.name asc, c.idx asc
 		""",
@@ -175,6 +180,7 @@ def pending():
 	out = _pending_work_orders()
 	out += _pending_lines(PR, "inspection_required_before_purchase", "supplier_name", "received_qty")
 	out += _pending_lines(DN, "inspection_required_before_delivery", "customer_name", "qty")
+	out += _pending_lines(SI, "inspection_required_before_delivery", "customer_name", "qty", "and p.update_stock = 1")
 	for r in out:
 		r["source"] = SOURCE_LABEL[r["reference_type"]]
 	return out
@@ -372,7 +378,8 @@ def get_inspection_form(reference_type, reference_name, item_code=None, child_ro
 		"child_row": child_row or "",
 		"item_code": item_code,
 		"item_name": item_name,
-		"kind": {WO: _("In-process QC"), PR: _("Incoming inspection"), DN: _("Outgoing inspection")}[reference_type],
+		"kind": {WO: _("In-process QC"), PR: _("Incoming inspection"), DN: _("Outgoing inspection"),
+		         SI: _("Outgoing inspection")}[reference_type],
 		"sample_size": qty,
 		"chassis": chassis,
 		"meta": meta,
@@ -462,7 +469,7 @@ def _make_inspection(reference_type, reference_name, item_code, readings, status
 
 	# ERPNext links the receipt / delivery line only when Stock Settings says
 	# "Stop"; the line must carry it either way or it stays in the waiting list.
-	if child_row and reference_type in (PR, DN):
+	if child_row and reference_type in LINE_SOURCES:
 		frappe.db.set_value(reference_type + " Item", child_row, "quality_inspection", qi.name, update_modified=False)
 	return qi
 
@@ -564,7 +571,7 @@ def cancel_inspection(name):
 		frappe.throw(_("{0} is already delivered to stock; its inspection stands.").format(qi.reference_name))
 	qi.flags.ignore_permissions = True
 	qi.cancel()
-	if qi.reference_type in (PR, DN):
+	if qi.reference_type in LINE_SOURCES:
 		frappe.db.sql(
 			f"update `tab{qi.reference_type} Item` set quality_inspection = '' where quality_inspection = %s",
 			qi.name,

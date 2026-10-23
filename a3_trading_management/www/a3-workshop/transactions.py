@@ -56,11 +56,46 @@ GROUPS = [
 ]
 
 
-def _tabs():
-	"""GROUPS as the page's tabs: one per group, one sub-tab per screen. The
+# The Supervisor's Operations: the floor screens, without buying, selling or accounts.
+SUPERVISOR_GROUPS = [
+	{
+		"title": "Floor",
+		"subtitle": "Stock, material and the build",
+		"tiles": [
+			{"label": "Stock Moves", "route": "/a3-workshop/stock-moves",
+			 "icon": "fa-right-left", "sub": "Move or issue stock"},
+			{"label": "Requisitions", "route": "/a3-workshop/purchase-requisitions",
+			 "icon": "fa-clipboard-check", "sub": "Requests for material"},
+			{"label": "BOMs", "route": "/a3-workshop/boms",
+			 "icon": "fa-sitemap", "sub": "Materials and operations; new ones for approval"},
+		],
+	},
+	{
+		"title": "Sales",
+		"subtitle": "Quotations drafted on the floor, priced by Sales",
+		"tiles": [
+			{"label": "Quotations", "route": "/a3-workshop/quotations",
+			 "icon": "fa-file-lines", "sub": "Draft for Sales to price"},
+		],
+	},
+	{
+		"title": "People",
+		"subtitle": "Overtime and staff requests",
+		"tiles": [
+			{"label": "Overtime", "route": "/a3-workshop/overtime",
+			 "icon": "fa-clock", "sub": "Enter overtime"},
+			{"label": "Staff Requests", "route": "/a3-workshop/staff-requests",
+			 "icon": "fa-user-plus", "sub": "Ask HR for people"},
+		],
+	},
+]
+
+
+def _tabs(groups):
+	"""The groups as the page's tabs: one per group, one sub-tab per screen. The
 	group's footer screen (Suppliers) is the last sub-tab of its group."""
 	out = []
-	for g in GROUPS:
+	for g in groups:
 		pages = [dict(t) for t in g["tiles"]] + ([dict(g["footer"])] if g.get("footer") else [])
 		for t in pages:
 			t["key"] = t["route"].rstrip("/").rsplit("/", 1)[-1]
@@ -75,8 +110,11 @@ def get_context(context):
 	context.subtitle = "Buying, selling and accounts"
 	context.breadcrumb = "Operations"
 
-	context.groups = GROUPS
-	context.tabs = _tabs()
-	context.page_count = sum(len(g["tiles"]) for g in GROUPS)
+	groups = SUPERVISOR_GROUPS if context.get("supervisor") else GROUPS
+	if context.get("supervisor"):
+		context.subtitle = "Stock, requisitions, BOMs, quotations, overtime and staff requests"
+	context.groups = groups
+	context.tabs = _tabs(groups)
+	context.page_count = sum(len(g["tiles"]) for g in groups)
 	context.page_count_label = "screens"
 	return context

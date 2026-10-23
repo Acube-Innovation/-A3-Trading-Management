@@ -310,10 +310,24 @@ def open_request(doctype, name):
 	                           as_dict=True)
 
 
+SUBMIT_ACTION = "Submit for Approval"
+
+
+def can_raise(user=None):
+	"""Whether `user` may send a request to Finance: the workflow's "Submit for
+	Approval" role (Operator), not merely create permission — a System Manager
+	can create the request but the workflow would refuse to send it."""
+	if not frappe.has_permission(REQUEST, "create", user=user):
+		return False
+	allowed = frappe.get_all("Workflow Transition", filters={
+		"parent": "Invoice Deletion Approval", "action": SUBMIT_ACTION}, pluck="allowed")
+	return bool(set(allowed) & set(frappe.get_roles(user)))
+
+
 def portal_context(doctype):
 	"""For the portal invoice lists: may this user raise a request, and which
 	invoices already have one open (invoice -> state)."""
-	can = frappe.has_permission(REQUEST, "create")
+	can = can_raise()
 	rows = frappe.get_all(REQUEST, filters={"invoice_type": doctype, "workflow_state": ["in", OPEN_STATES]},
 	                      fields=["invoice", "workflow_state"], ignore_permissions=True)
 	return can, {r.invoice: r.workflow_state for r in rows}
@@ -335,8 +349,10 @@ def request_deletion(doctype, name, reason):
 
 	_check_type(doctype)
 	frappe.has_permission(doctype, "read", doc=name, throw=True)
-	frappe.has_permission(REQUEST, "create", throw=True)
+	if not can_raise():
+		frappe.throw(_("Only an Operator can request an invoice deletion. Ask your administrator "
+		               "to give you the Operator role."), frappe.PermissionError)
 	req = frappe.get_doc({"doctype": REQUEST, "invoice_type": doctype, "invoice": name, "reason": reason})
 	req.insert()
-	req = apply_workflow(req, "Submit for Approval")
+	req = apply_workflow(req, SUBMIT_ACTION)
 	return {"name": req.name, "workflow_state": req.workflow_state}

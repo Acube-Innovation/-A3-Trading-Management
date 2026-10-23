@@ -419,7 +419,7 @@ def get_stock_board():
 		"payments_due": fmt_money(outstanding, currency=currency),
 		"payments_count": len(payments["invoices"]) + len(payments["to_bill"]),
 	}
-	return {
+	board = {
 		"currency": currency,
 		"company": _company() or "",
 		"movement_days": MOVEMENT_DAYS,
@@ -432,6 +432,18 @@ def get_stock_board():
 		"stock_out": stock_out,
 		"payments": payments,
 	}
+	from a3_trading_management.setup.supervisor import is_supervisor_only
+
+	if is_supervisor_only():
+		# Quantities only: the rows' `value` is money here, and payments are not theirs.
+		for rows in (warehouses, stock, stock_in, stock_out):
+			for r in rows:
+				for key in ("value", "value_raw", "rate"):
+					r.pop(key, None)
+		summary["stock_value"] = summary["payments_due"] = None
+		summary["payments_count"] = 0
+		board["payments"] = {"invoices": [], "to_bill": []}
+	return board
 
 
 # ---------------------------------------------------------------- the one action

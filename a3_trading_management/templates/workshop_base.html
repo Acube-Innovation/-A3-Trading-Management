@@ -237,7 +237,15 @@
 {#- Any page opened with ?embed=1 drops the sidebar and top bar: it is being shown
     inside another portal page (the Operations tabs, the Serial Register pop-up). -#}
 {%- set embed = embed or ((frappe.form_dict or {}).get("embed") and 1) -%}
-<body class="workshop{% if embed %} is-embed{% endif %}">
+{#- A Supervisor-only user (set by require_login) sees no prices: the server leaves
+    them out, and anything marked `.price` is hidden as well. -#}
+{%- set is_sup = supervisor is defined and supervisor -%}
+<body class="workshop{% if embed %} is-embed{% endif %}{% if is_sup %} is-supervisor{% endif %}">
+	{%- if is_sup %}
+	<style>.is-supervisor .price, .is-supervisor .not-sup { display: none !important; }
+</style>
+	<script>window.A3_SUPERVISOR = true;</script>
+	{%- endif %}
 	{%- if embed %}
 	{#- ?embed=1: the page is shown inside a pop-up on another portal page, so the
 	    chrome around it would be a portal inside a portal. -#}
@@ -270,6 +278,24 @@
 		 ]},
 		{"label": "Live Stock", "route": "/a3-workshop/live-stock", "icon": "fa-boxes-stacked"},
 	] -%}
+	{#- The Supervisor gets the same menu as everyone else, pointed at their own
+	    pages: Customers is the view-only look-up, Operations holds the floor screens
+	    (stock moves, requisitions, BOMs, quotations, overtime, staff requests), and
+	    Suppliers is left out. Everything else is a shortcut on their home. -#}
+	{%- if is_sup %}
+	{%- set nav_items = [
+		{"label": "Home", "route": "/a3-workshop", "icon": "fa-gauge-high"},
+		{"label": "Customers", "route": "/a3-workshop/masters#customers", "icon": "fa-users", "children": ["/a3-workshop/masters"]},
+		{"label": "Manufacturing", "route": "/a3-workshop/manufacturing", "icon": "fa-industry"},
+		{"label": "Quality", "route": "/a3-workshop/quality", "icon": "fa-clipboard-check"},
+		{"label": "Serial Register", "route": "/a3-workshop/serial-register", "icon": "fa-barcode"},
+		{"label": "Chassis Plates", "route": "/a3-workshop/chassis-plate-print", "icon": "fa-print"},
+		{"label": "Operations", "route": "/a3-workshop/transactions", "icon": "fa-file-invoice-dollar",
+		 "children": ["/a3-workshop/stock-moves", "/a3-workshop/purchase-requisitions", "/a3-workshop/boms",
+		              "/a3-workshop/quotations", "/a3-workshop/overtime", "/a3-workshop/staff-requests"]},
+		{"label": "Live Stock", "route": "/a3-workshop/live-stock", "icon": "fa-boxes-stacked"},
+	] -%}
+	{%- endif %}
 	{#- `frappe.request` is not exposed in the Jinja sandbox: the namespace returns a
     placeholder *function* for unknown keys, which is truthy, so the old
     `if frappe.request` guard passed and `.path` then raised. The renderer puts the

@@ -3,8 +3,8 @@
 
 {% block page_content %}
 {#- One screen for quality control over ERPNext's own Quality Inspection:
-    what is waiting (a work order at its QC stage, a goods receipt or delivery
-    line whose item needs inspecting), every inspection recorded, and the
+    what is waiting (a work order at its QC stage, a goods receipt, delivery or
+    stock-updating sales invoice line whose item needs inspecting), every inspection recorded, and the
     checklists they are recorded against. A work order moved past QC on the
     Manufacturing screen records its inspection itself, so it lands in the
     Inspections list without anyone coming here. See api/quality.py. -#}
@@ -124,7 +124,7 @@
 <div class="qc-pane" data-pane="pending">
 	<div class="card" style="margin-bottom:14px"><div class="card__body" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
 		<input data-q placeholder="Search work order, item, chassis, supplier or customer…" style="flex:1;min-width:260px">
-		<select data-f="source"><option value="">All sources</option><option>Manufacturing</option><option>Goods receipt</option><option>Delivery</option></select>
+		<select data-f="source"><option value="">All sources</option><option>Manufacturing</option><option>Goods receipt</option><option>Delivery</option><option>Sales invoice</option></select>
 		<span class="muted" data-count style="font-size:12px"></span>
 	</div></div>
 	<div class="card"><div class="card__body" style="overflow-x:auto">
@@ -159,7 +159,7 @@
 <div class="qc-pane" data-pane="done">
 	<div class="card" style="margin-bottom:14px"><div class="card__body" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
 		<input data-q placeholder="Search inspection, work order, item or chassis…" style="flex:1;min-width:260px">
-		<select data-f="source"><option value="">All sources</option><option>Manufacturing</option><option>Goods receipt</option><option>Delivery</option></select>
+		<select data-f="source"><option value="">All sources</option><option>Manufacturing</option><option>Goods receipt</option><option>Delivery</option><option>Sales invoice</option></select>
 		<select data-f="state"><option value="">All results</option><option>Accepted</option><option>Rejected</option></select>
 		<span class="muted" data-count style="font-size:12px"></span>
 	</div></div>
