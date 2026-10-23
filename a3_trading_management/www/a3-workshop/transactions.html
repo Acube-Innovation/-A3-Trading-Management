@@ -110,7 +110,7 @@
 	});
 
 	var h = (location.hash || "").replace("#", "").split("/");
-	show(h[0] || "buying", h[1]);
+	show(h[0] || {{ (tabs[0].key if tabs else "buying") | tojson }}, h[1]);
 })();
 </script>
 {% endblock %}

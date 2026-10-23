@@ -17,4 +17,9 @@ def get_context(context):
 	context.work_orders = data["work_orders"]
 	context.deliveries = data["deliveries"]
 	context.low_stock = data["low_stock"]
+	if context.get("supervisor"):
+		# The Supervisor's home: the Desk workspace's counters and shortcuts.
+		from a3_trading_management.api.supervisor_portal import home_counters
+
+		context.sup_counters = home_counters()
 	return context

@@ -1,0 +1,67 @@
+{% extends "templates/workshop_base.html" %}
+{% from "templates/macros/trading.html" import status_pill, filter_bar, filter_script, call_method_js, stat_row, doc_modals %}
+
+{% block page_content %}
+{#- Quotations without prices: the Supervisor lists what the customer wants;
+    Sales opens the draft on the Desk, adds the rates and submits it. -#}
+
+{{ stat_row([
+	{"label": "Quotations", "value": quotations | length, "sub": "Raised"},
+	{"label": "Drafts", "value": drafts, "sub": "Waiting for Sales to price"},
+	{"label": "Sent", "value": sent, "sub": "Priced and submitted"},
+]) }}
+
+<div class="toolbar">
+	<div class="section-title" style="margin:0">Quotations</div>
+	<div class="toolbar__right">
+		<button type="button" class="btn btn--primary btn--sm" onclick="newQuotation()"><i class="fa-solid fa-plus"></i> New Quotation</button>
+	</div>
+</div>
+
+{{ filter_bar("Search quotation, customer or item…", [
+	{"key": "status", "label": "All statuses", "options": ["Draft", "Open", "Ordered", "Lost", "Expired", "Cancelled"]}
+]) }}
+
+<div class="card"><div class="card__body" style="overflow-x:auto">
+	{%- if quotations %}
+	<table class="table" id="tf-table">
+		<thead><tr><th>Quotation</th><th>Customer</th><th>Date</th><th>Valid Till</th><th>Items</th><th>Status</th></tr></thead>
+		<tbody>
+		{%- for q in quotations %}
+			<tr data-hay="{{ (q.name ~ ' ' ~ (q.customer_name or q.party_name or '') ~ ' ' ~ (q["items"] | map(attribute='item_code') | join(' '))) | lower }}" data-status="{{ q.status }}">
+				<td><b>{{ q.name }}</b></td>
+				<td>{{ q.customer_name or q.party_name }}</td>
+				<td>{{ frappe.utils.formatdate(q.transaction_date, "dd MMM yyyy") }}</td>
+				<td>{{ frappe.utils.formatdate(q.valid_till, "dd MMM yyyy") if q.valid_till else "—" }}</td>
+				<td>{%- for i in q["items"][:3] %}{{ i.item_name or i.item_code }} &times;{{ i.qty | int }}{% if not loop.last %}, {% endif %}{%- endfor %}
+					{%- if q["items"] | length > 3 %} <span class="muted">+{{ (q["items"] | length) - 3 }} more</span>{% endif %}</td>
+				<td>{{ status_pill(q.status, q.docstatus) }}</td>
+			</tr>
+		{%- endfor %}
+		</tbody>
+	</table>
+	{%- else %}
+	<div class="empty">No quotations yet.</div>
+	{%- endif %}
+</div></div>
+
+{{ call_method_js() }}
+{{ doc_modals() }}
+{{ filter_script() }}
+<script>
+function newQuotation() {
+	openNewDoc({
+		title: "New Quotation", subtitle: "What the customer wants and how many. Sales adds the prices and sends it.",
+		head: [
+			{ key: "customer", label: "Customer", party: "Customer", required: true, placeholder: "Search customer…" },
+			{ key: "valid_till", label: "Valid till", type: "date", value: (function () { var d = new Date(); d.setDate(d.getDate() + 30); return d.toISOString().slice(0, 10); })() }
+		],
+		columns: [{ key: "item_code", label: "Item", pick: "item", placeholder: "Search item…" }, { key: "qty", label: "Qty", num: true, value: 1, width: "110px" }],
+		validate: function (h, l) { return !h.customer ? "Choose the customer." : (l.length ? null : "Add at least one item."); },
+		build: function (h, l) { return { customer: h.customer, valid_till: h.valid_till || null, items: JSON.stringify(l.map(function (r) { return { item_code: r.item_code, qty: r.qty }; })) }; },
+		method: "a3_trading_management.api.supervisor_portal.create_quotation",
+		onDone: function (r) { alert(r.name + " saved. Sales adds the prices and sends it."); location.reload(); }
+	});
+}
+</script>
+{% endblock %}

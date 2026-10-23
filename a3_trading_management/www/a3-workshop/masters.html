@@ -1,0 +1,105 @@
+{% extends "templates/workshop_base.html" %}
+{% from "templates/macros/trading.html" import stat_row %}
+
+{% block page_content %}
+{#- Look-up screens for the floor, view only: items with their stock, customers,
+    warehouses, and projected stock per item and warehouse (the portal's Stock
+    Projected Qty). Quantities only; nothing can be changed here. -#}
+<style>
+	.ms-tabs { display:flex; gap:6px; flex-wrap:wrap; margin:4px 0 14px; }
+	.ms-tab { border:1px solid var(--border); background:var(--surface); border-radius:999px; padding:7px 14px; font:inherit; font-weight:600; cursor:pointer; }
+	.ms-tab.is-active { background:var(--red); color:#fff; border-color:var(--red); }
+	.ms-panel { display:none; } .ms-panel.is-active { display:block; }
+	.ms-search { width:100%; font:inherit; padding:8px 10px; border:1px solid var(--border); border-radius:8px; margin-bottom:12px; }
+	.neg { color: var(--red); font-weight:700; }
+</style>
+
+{{ stat_row([
+	{"label": "Items", "value": item_rows | length, "sub": "Stock and non-stock"},
+	{"label": "Customers", "value": customers | length, "sub": "On the books"},
+	{"label": "Warehouses", "value": warehouses | length, "sub": "With their stock"},
+]) }}
+
+<div class="ms-tabs" role="tablist">
+	<button type="button" class="ms-tab is-active" data-tab="items"><i class="fa-solid fa-cube"></i> Items</button>
+	<button type="button" class="ms-tab" data-tab="customers"><i class="fa-solid fa-users"></i> Customers</button>
+	<button type="button" class="ms-tab" data-tab="warehouses"><i class="fa-solid fa-warehouse"></i> Warehouses</button>
+	<button type="button" class="ms-tab" data-tab="projected"><i class="fa-solid fa-chart-line"></i> Projected Stock</button>
+</div>
+
+<div class="card ms-panel is-active" data-tab="items"><div class="card__body" style="overflow-x:auto">
+	<input class="ms-search" placeholder="Search item name or code…">
+	<table class="table"><thead><tr><th>Item</th><th>Group</th><th>Unit</th><th class="num">In stock</th><th class="num">Reserved</th><th class="num">On order</th><th class="num">Projected</th></tr></thead><tbody>
+	{%- for i in item_rows %}
+		<tr data-hay="{{ (i.name ~ ' ' ~ (i.item_name or '') ~ ' ' ~ (i.item_group or '')) | lower }}">
+			<td><b>{{ i.item_name }}</b><div class="muted" style="font-size:11px">{{ i.name }}{% if i.disabled %} · disabled{% endif %}</div></td>
+			<td>{{ i.item_group }}</td><td>{{ i.stock_uom }}</td>
+			<td class="num"><b>{{ "%g" | format(i.actual) }}</b></td><td class="num">{{ "%g" | format(i.reserved) }}</td>
+			<td class="num">{{ "%g" | format(i.ordered) }}</td><td class="num{% if i.projected < 0 %} neg{% endif %}">{{ "%g" | format(i.projected) }}</td>
+		</tr>
+	{%- endfor %}
+	</tbody></table>
+</div></div>
+
+<div class="card ms-panel" data-tab="customers"><div class="card__body" style="overflow-x:auto">
+	<input class="ms-search" placeholder="Search customer…">
+	<table class="table"><thead><tr><th>Customer</th><th>Group</th><th>Territory</th><th>Mobile</th><th>Email</th></tr></thead><tbody>
+	{%- for c in customers %}
+		<tr data-hay="{{ (c.name ~ ' ' ~ (c.customer_name or '') ~ ' ' ~ (c.customer_group or '') ~ ' ' ~ (c.territory or '')) | lower }}">
+			<td><b>{{ c.customer_name }}</b>{% if c.disabled %} <span class="muted">· disabled</span>{% endif %}</td>
+			<td>{{ c.customer_group or "—" }}</td><td>{{ c.territory or "—" }}</td><td>{{ c.mobile_no or "—" }}</td><td>{{ c.email_id or "—" }}</td>
+		</tr>
+	{%- endfor %}
+	</tbody></table>
+</div></div>
+
+<div class="card ms-panel" data-tab="warehouses"><div class="card__body" style="overflow-x:auto">
+	<input class="ms-search" placeholder="Search warehouse…">
+	<table class="table"><thead><tr><th>Warehouse</th><th>Under</th><th class="num">Items in stock</th><th class="num">Total qty</th><th class="num">Projected</th></tr></thead><tbody>
+	{%- for w in warehouses %}
+		<tr data-hay="{{ (w.name ~ ' ' ~ (w.parent_warehouse or '')) | lower }}">
+			<td><b>{{ w.warehouse_name or w.name }}</b><div class="muted" style="font-size:11px">{{ w.name }}</div></td>
+			<td>{{ w.parent_warehouse or "—" }}</td>
+			<td class="num">{{ w["items"] }}</td><td class="num"><b>{{ "%g" | format(w.qty) }}</b></td><td class="num">{{ "%g" | format(w.projected) }}</td>
+		</tr>
+	{%- endfor %}
+	</tbody></table>
+</div></div>
+
+<div class="card ms-panel" data-tab="projected"><div class="card__body" style="overflow-x:auto">
+	<input class="ms-search" placeholder="Search item or warehouse…">
+	<div class="muted" style="font-size:12.5px;margin-bottom:8px">Projected = in stock + planned + requested + ordered &minus; reserved (for orders and for production). Red: will run short.</div>
+	<table class="table"><thead><tr><th>Item</th><th>Warehouse</th><th class="num">In stock</th><th class="num">Planned</th><th class="num">Requested</th><th class="num">Ordered</th><th class="num">Reserved</th><th class="num">For production</th><th class="num">Projected</th><th class="num">Reorder level</th></tr></thead><tbody>
+	{%- for r in projected %}
+		<tr data-hay="{{ (r.item_code ~ ' ' ~ (r.item_name or '') ~ ' ' ~ r.warehouse) | lower }}">
+			<td><b>{{ r.item_name }}</b><div class="muted" style="font-size:11px">{{ r.item_code }}</div></td><td>{{ r.warehouse }}</td>
+			<td class="num"><b>{{ "%g" | format(r.actual_qty) }}</b></td><td class="num">{{ "%g" | format(r.planned_qty) }}</td>
+			<td class="num">{{ "%g" | format(r.indented_qty) }}</td><td class="num">{{ "%g" | format(r.ordered_qty) }}</td>
+			<td class="num">{{ "%g" | format(r.reserved_qty) }}</td><td class="num">{{ "%g" | format(r.reserved_qty_for_production) }}</td>
+			<td class="num{% if r.projected_qty < 0 or (r.reorder_level and r.projected_qty < r.reorder_level) %} neg{% endif %}">{{ "%g" | format(r.projected_qty) }}</td>
+			<td class="num">{{ "%g" | format(r.reorder_level) if r.reorder_level else "—" }}</td>
+		</tr>
+	{%- endfor %}
+	</tbody></table>
+</div></div>
+
+<script>
+(function () {
+	document.querySelectorAll(".ms-tab").forEach(function (t) {
+		t.addEventListener("click", function () {
+			document.querySelectorAll(".ms-tab, .ms-panel").forEach(function (e) { e.classList.toggle("is-active", e.dataset.tab === t.dataset.tab); });
+		});
+	});
+	document.querySelectorAll(".ms-search").forEach(function (inp) {
+		inp.addEventListener("input", function () {
+			var q = inp.value.toLowerCase().trim();
+			inp.closest(".ms-panel").querySelectorAll("tbody tr").forEach(function (tr) { tr.style.display = !q || tr.dataset.hay.indexOf(q) >= 0 ? "" : "none"; });
+		});
+	});
+	// #projected etc. opens that tab (the home shortcut uses it), also when only the hash changes.
+	function fromHash() { var t = (location.hash || "").slice(1); var b = t && document.querySelector('.ms-tab[data-tab="' + t + '"]'); if (b) b.click(); }
+	window.addEventListener("hashchange", fromHash);
+	fromHash();
+})();
+</script>
+{% endblock %}

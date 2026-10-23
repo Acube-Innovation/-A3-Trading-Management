@@ -1,0 +1,122 @@
+{% extends "templates/workshop_base.html" %}
+{% from "templates/macros/trading.html" import status_pill, filter_bar, filter_script, call_method_js, stat_row, sup_kit %}
+
+{% block page_content %}
+{#- Stock Entry without values: move stock between warehouses (Material Transfer)
+    or issue it out (Material Issue). ERPNext values it from the valuation; nothing
+    is priced here. Work order transfers come from the Manufacturing screen. -#}
+
+{{ stat_row([
+	{"label": "Stock Entries", "value": moves | length, "sub": "Latest 100"},
+	{"label": "Drafts", "value": drafts, "sub": "Not yet posted"},
+	{"label": "Warehouses", "value": warehouses | length, "sub": "Open to you"},
+]) }}
+
+<div class="toolbar">
+	<div class="section-title" style="margin:0">Stock Moves</div>
+	<div class="toolbar__right">
+		<button type="button" class="btn btn--outline btn--sm" onclick="newMove('Material Issue')"><i class="fa-solid fa-arrow-up-from-bracket"></i> Issue Stock</button>
+		<button type="button" class="btn btn--primary btn--sm" onclick="newMove('Material Transfer')"><i class="fa-solid fa-right-left"></i> Move Stock</button>
+	</div>
+</div>
+
+{{ filter_bar("Search entry, item or warehouse…", [
+	{"key": "status", "label": "All statuses", "options": ["Draft", "Submitted", "Cancelled"]}
+]) }}
+
+<div class="card"><div class="card__body" style="overflow-x:auto">
+	{%- if moves %}
+	<table class="table" id="tf-table">
+		<thead><tr><th>Entry</th><th>Type</th><th>Date</th><th>Items</th><th>From</th><th>To</th><th>Work Order</th><th>Status</th><th>Action</th></tr></thead>
+		<tbody>
+		{%- for m in moves %}
+			{%- set st = "Submitted" if m.docstatus == 1 else "Cancelled" if m.docstatus == 2 else "Draft" %}
+			<tr data-hay="{{ (m.name ~ ' ' ~ (m["items"] | map(attribute='item_code') | join(' ')) ~ ' ' ~ (m.from_warehouse or '') ~ ' ' ~ (m.to_warehouse or '')) | lower }}" data-status="{{ st }}">
+				<td><b>{{ m.name }}</b></td>
+				<td>{{ m.stock_entry_type or m.purpose }}</td>
+				<td>{{ frappe.utils.formatdate(m.posting_date, "dd MMM yyyy") }}</td>
+				<td>{%- for i in m["items"][:3] %}{{ i.item_code }} &times;{{ "%g" | format(i.qty) }}{% if not loop.last %}, {% endif %}{%- endfor %}
+					{%- if m["items"] | length > 3 %} <span class="muted">+{{ (m["items"] | length) - 3 }} more</span>{% endif %}</td>
+				<td>{{ m.from_warehouse or (m["items"][0].s_warehouse if m["items"] else "") or "—" }}</td>
+				<td>{{ m.to_warehouse or (m["items"][0].t_warehouse if m["items"] else "") or "—" }}</td>
+				<td>{{ m.work_order or "—" }}</td>
+				<td>{{ status_pill(st, m.docstatus) }}</td>
+				<td>{%- if m.docstatus == 0 %}<button class="btn btn--primary btn--sm" onclick="submitMove('{{ m.name }}')">Post</button>{% else %}<span class="muted">—</span>{% endif %}</td>
+			</tr>
+		{%- endfor %}
+		</tbody>
+	</table>
+	{%- else %}
+	<div class="empty">No stock entries yet.</div>
+	{%- endif %}
+</div></div>
+
+<div class="modal-overlay" id="sm-modal" role="dialog" aria-modal="true">
+	<div class="modal">
+		<div class="modal__head">
+			<div><h3 id="sm-title">Move Stock</h3><div class="sub" id="sm-sub"></div></div>
+			<button type="button" class="modal__close" data-sk-close><i class="fa-solid fa-xmark"></i></button>
+		</div>
+		<div class="modal__body">
+			<div class="form-grid">
+				<div class="field"><label>From <span class="req">*</span></label>
+					<select id="sm-from">{%- for w in warehouses %}<option value="{{ w.name }}"{% if w.name == default_warehouse %} selected{% endif %}>{{ w.warehouse_name or w.name }}</option>{% endfor %}</select></div>
+				<div class="field" id="sm-to-field"><label>To <span class="req">*</span></label>
+					<select id="sm-to"><option value="">—</option>{%- for w in warehouses %}<option value="{{ w.name }}">{{ w.warehouse_name or w.name }}</option>{% endfor %}</select></div>
+				<div class="field field--full"><label>Note</label><input id="sm-note" placeholder="Optional, e.g. for which job"></div>
+			</div>
+			<table class="sk-lines"><thead><tr><th>Item</th><th style="width:120px">Qty</th><th style="width:40px"></th></tr></thead><tbody id="sm-lines"></tbody></table>
+			<button type="button" class="btn btn--outline btn--sm" style="margin-top:8px" onclick="addLine()"><i class="fa-solid fa-plus"></i> Add line</button>
+			<div class="sk-err" id="sm-err"></div>
+		</div>
+		<div class="modal__foot">
+			<button type="button" class="btn btn--outline" data-sk-close>Cancel</button>
+			<button type="button" class="btn btn--outline" onclick="saveMove(0)">Save draft</button>
+			<button type="button" class="btn btn--primary" onclick="saveMove(1)"><i class="fa-solid fa-check"></i> Save &amp; Post</button>
+		</div>
+	</div>
+</div>
+
+{{ call_method_js() }}
+{{ sup_kit() }}
+{{ filter_script() }}
+<script>
+var API = "a3_trading_management.api.supervisor_portal.", PURPOSE = "Material Transfer";
+function addLine() {
+	var tr = document.createElement("tr");
+	tr.innerHTML = '<td><div><input class="sm-item" placeholder="Search item…" autocomplete="off"></div></td>' +
+		'<td><input class="sm-qty" type="number" min="0" step="any" value="1"></td>' +
+		'<td><button type="button" class="td-rm" style="background:none;border:0;cursor:pointer" title="Remove"><i class="fa-solid fa-trash"></i></button></td>';
+	document.getElementById("sm-lines").appendChild(tr);
+	SK.picker(tr.querySelector(".sm-item"), SK.items);
+	tr.querySelector("button").addEventListener("click", function () { tr.remove(); });
+}
+function newMove(purpose) {
+	PURPOSE = purpose;
+	var issue = purpose === "Material Issue";
+	document.getElementById("sm-title").textContent = issue ? "Issue Stock" : "Move Stock";
+	document.getElementById("sm-sub").textContent = issue ? "Take stock out of a warehouse for use on the floor." : "Move stock from one warehouse to another.";
+	document.getElementById("sm-to-field").style.display = issue ? "none" : "";
+	document.getElementById("sm-lines").innerHTML = ""; addLine();
+	document.getElementById("sm-err").style.display = "none";
+	SK.open("sm-modal");
+}
+function saveMove(submit) {
+	var err = document.getElementById("sm-err"); err.style.display = "none";
+	var lines = Array.prototype.map.call(document.querySelectorAll("#sm-lines tr"), function (tr) {
+		return { item_code: tr.querySelector(".sm-item").dataset.value || "", qty: tr.querySelector(".sm-qty").value };
+	}).filter(function (l) { return l.item_code && Number(l.qty) > 0; });
+	if (!lines.length) { err.textContent = "Pick at least one item from the list, with a quantity."; err.style.display = "block"; return; }
+	tradingCall(API + "create_stock_move", {
+		purpose: PURPOSE, items: JSON.stringify(lines), from_warehouse: document.getElementById("sm-from").value,
+		to_warehouse: PURPOSE === "Material Transfer" ? document.getElementById("sm-to").value : null,
+		remarks: document.getElementById("sm-note").value || null, submit: submit
+	}).then(function (r) { alert(r.name + (r.docstatus ? " posted." : " saved as draft.")); location.reload(); })
+	  .catch(function (e) { err.textContent = SK.err(e); err.style.display = "block"; });
+}
+function submitMove(name) {
+	if (!confirm("Post " + name + "? Only a manager can reverse it.")) return;
+	tradingAction(API + "submit_stock_move", { name: name }, name + " posted.");
+}
+</script>
+{% endblock %}

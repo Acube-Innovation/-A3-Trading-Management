@@ -1,0 +1,22 @@
+{
+ "color": "#48BB74",
+ "creation": "2026-10-23 10:00:00.000000",
+ "docstatus": 0,
+ "doctype": "Number Card",
+ "document_type": "Employee Overtime",
+ "dynamic_filters_json": "[]",
+ "filters_json": "[[\"Employee Overtime\", \"docstatus\", \"=\", 1, false], [\"Employee Overtime\", \"overtime_date\", \"Timespan\", \"this month\", false]]",
+ "function": "Sum",
+ "idx": 0,
+ "is_public": 1,
+ "is_standard": 1,
+ "label": "Overtime Hours This Month",
+ "modified": "2026-10-23 10:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "A3 Trading Management",
+ "name": "Supervisor Overtime Hours This Month",
+ "owner": "Administrator",
+ "show_percentage_stats": 0,
+ "type": "Document Type",
+ "aggregate_function_based_on": "hours"
+}

@@ -69,8 +69,8 @@ FAILED_FIRST = {
 	"MFG-WO-2026-00025": ({"Air brake leak-down (psi/min)": "4.6"},
 	                      "Air leak at the trailer control valve. Valve re-seated and lines re-tested."),
 }
-# At QC now, failed: shows as Re-inspect.
-REINSPECT = ("MFG-WO-2026-00033",
+# At QC now, failed: shows as Re-inspect. None picks the first work order at QC.
+REINSPECT = (None,
              {"Wheel nut torque (Nm)": "575", "Axle alignment deviation (mm)": "4.5"},
              "Rear axle out of alignment and nut torque low on the left hub. Returned to assembly.")
 
@@ -78,6 +78,16 @@ REINSPECT = ("MFG-WO-2026-00033",
 def _checks(rows):
 	return [{"specification": s, "numeric": n, "min_value": lo, "max_value": hi, "value": v}
 	        for s, n, lo, hi, v in rows]
+
+
+def trailer_checklist():
+	"""The final QC checklist on every trailer model (demo.build needs it before the
+	history months, so it is its own step)."""
+	trailers = frappe.get_all("Item", filters={"custom_is_trailer": 1, "disabled": 0}, pluck="name")
+	quality.save_template(TRAILER_CHECKLIST, json.dumps(_checks(TRAILER_CHECKS)),
+	                      items=json.dumps(trailers), name=TRAILER_CHECKLIST if frappe.db.exists(
+		                      "Quality Inspection Template", TRAILER_CHECKLIST) else None)
+	print(f"  {TRAILER_CHECKLIST}: {len(TRAILER_CHECKS)} checks, {len(trailers)} trailer models")
 
 
 def _reading(rng, p, bad=None):
@@ -114,18 +124,15 @@ def _delivered_on(wo):
 
 
 def run(force=0):
-	if frappe.db.exists("Quality Inspection Template", TRAILER_CHECKLIST) and not int(force):
+	# The incoming checklists are this script's own; the trailer one may come from demo.build.
+	if frappe.db.exists("Quality Inspection Template", next(iter(INCOMING))) and not int(force):
 		print("Quality demo data was loaded before (pass force=1 to add it again). Done.")
 		return
 	frappe.set_user("Administrator")
 	rng = random.Random(28)
 
 	print("Checklists")
-	trailers = frappe.get_all("Item", filters={"custom_is_trailer": 1, "disabled": 0}, pluck="name")
-	quality.save_template(TRAILER_CHECKLIST, json.dumps(_checks(TRAILER_CHECKS)),
-	                      items=json.dumps(trailers), name=TRAILER_CHECKLIST if frappe.db.exists(
-		                      "Quality Inspection Template", TRAILER_CHECKLIST) else None)
-	print(f"  {TRAILER_CHECKLIST}: {len(TRAILER_CHECKS)} checks, {len(trailers)} trailer models")
+	trailer_checklist()
 	for name, spec in INCOMING.items():
 		items = [i for i in spec["items"] if frappe.db.exists("Item", i)]
 		quality.save_template(name, json.dumps(_checks(spec["checks"])), items=json.dumps(items), on_receipt=1,
@@ -165,7 +172,9 @@ def run(force=0):
 
 	print("\nWaiting at QC")
 	wo, bad, why = REINSPECT
-	if frappe.db.get_value("Work Order", wo, "custom_production_stage") == "QC" \
+	wo = wo or frappe.db.get_value("Work Order", {"custom_production_stage": "QC", "docstatus": ["<", 2]},
+	                               "name", order_by="name asc")
+	if wo and frappe.db.get_value("Work Order", wo, "custom_production_stage") == "QC" \
 			and not quality.latest_inspection("Work Order", wo):
 		r = _inspect(rng, "Work Order", wo, TRAILER_CHECKLIST, bad=bad, remarks=why)
 		print(f"  {wo}  {r['name']} Rejected -> Re-inspect")

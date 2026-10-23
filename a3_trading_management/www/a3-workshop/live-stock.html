@@ -71,11 +71,11 @@
 
 <!-- ============ Summary tiles ============ -->
 <div class="tc-stats">
-	<div class="stat-card stat-card--sm"><div class="label">Stock Value</div><div class="value" style="font-size:19px">{{ s.stock_value }}</div><div class="sub">All warehouses</div></div>
+	<div class="stat-card stat-card--sm price"><div class="label">Stock Value</div><div class="value" style="font-size:19px">{{ s.stock_value }}</div><div class="sub">All warehouses</div></div>
 	<div class="stat-card stat-card--sm stat-card--navy"><div class="label">Items In Stock</div><div class="value">{{ s.items_in_stock }}</div><div class="sub">{{ s.warehouses }} warehouse{{ "" if s.warehouses == 1 else "s" }}</div></div>
 	<div class="stat-card stat-card--sm"><div class="label">Low Stock Alerts</div><div class="value">{{ s.low_stock }}</div><div class="sub">{{ s.out_of_stock }} critical</div></div>
 	<div class="stat-card stat-card--sm stat-card--purple"><div class="label">Open Requisitions</div><div class="value">{{ s.open_requisitions }}</div><div class="sub">Material Requests</div></div>
-	<div class="stat-card stat-card--sm stat-card--navy"><div class="label">Payments Missing</div><div class="value" style="font-size:19px">{{ s.payments_due }}</div><div class="sub">{{ s.payments_count }} document{{ "" if s.payments_count == 1 else "s" }}</div></div>
+	<div class="stat-card stat-card--sm stat-card--navy price"><div class="label">Payments Missing</div><div class="value" style="font-size:19px">{{ s.payments_due }}</div><div class="sub">{{ s.payments_count }} document{{ "" if s.payments_count == 1 else "s" }}</div></div>
 </div>
 
 <!-- ============ Tabs ============ -->
@@ -91,7 +91,7 @@
 		("stock-out", "fa-arrow-up", "Stock Out", board.stock_out | length, False),
 		("payments", "fa-file-invoice-dollar", "Payment Missing", pay_count, True),
 	] %}
-	<button type="button" class="ls-tab{% if loop.first %} is-active{% endif %}" role="tab" data-tab="{{ key }}">
+	<button type="button" class="ls-tab{% if loop.first %} is-active{% endif %}{% if key == 'payments' %} price{% endif %}" role="tab" data-tab="{{ key }}">
 		<i class="fa-solid {{ icon }}"></i> {{ label }}
 		<span class="ls-tab__n{% if alert and n %} is-alert{% endif %}">{{ n }}</span></button>
 	{%- endfor %}
@@ -156,7 +156,7 @@
 	<div class="card__body">
 		{{ filter_bar("warehouses", "Search warehouse…") }}
 		<div class="ls-scroll"><table class="table ls-pg" id="ls-wh-table">
-			<thead><tr><th>Warehouse</th><th>Items In Stock</th><th>Total Qty</th><th>Reserved</th><th>Incoming (Ordered)</th><th>Requisitioned</th><th>Stock Value</th><th>Low</th><th>Out / Short</th></tr></thead>
+			<thead><tr><th>Warehouse</th><th>Items In Stock</th><th>Total Qty</th><th>Reserved</th><th>Incoming (Ordered)</th><th>Requisitioned</th><th class="price">Stock Value</th><th>Low</th><th>Out / Short</th></tr></thead>
 			<tbody>
 				{%- for w in board.warehouses %}
 				<tr data-row data-s="{{ w.warehouse | lower }}">
@@ -166,7 +166,7 @@
 					<td>{{ w.reserved }}</td>
 					<td>{{ w.ordered }}</td>
 					<td>{{ w.requested }}</td>
-					<td style="font-weight:600">{{ w.value }}</td>
+					<td class="price" style="font-weight:600">{{ w.value }}</td>
 					<td>{% if w.low %}{{ badge(w.low, "badge--pending") }}{% else %}<span class="muted">0</span>{% endif %}</td>
 					<td>{% if w.out %}{{ badge(w.out, "badge--danger") }}{% else %}<span class="muted">0</span>{% endif %}</td>
 				</tr>
@@ -184,7 +184,7 @@
 	<div class="card__body">
 		{{ filter_bar("stock", "Search item or code…", [("wh", "All warehouses", wh_names, "eq"), ("st", "All statuses", stock_statuses, "eq")]) }}
 		<div class="ls-scroll"><table class="table ls-pg" id="ls-stock-table">
-			<thead><tr><th>Item</th><th>Warehouse</th><th>In Stock</th><th>Reserved</th><th>On Order</th><th>Requisitioned</th><th>Projected</th><th>Reorder Lvl</th><th>Valuation</th><th>Stock Value</th><th>Status</th></tr></thead>
+			<thead><tr><th>Item</th><th>Warehouse</th><th>In Stock</th><th>Reserved</th><th>On Order</th><th>Requisitioned</th><th>Projected</th><th>Reorder Lvl</th><th class="price">Valuation</th><th class="price">Stock Value</th><th>Status</th></tr></thead>
 			<tbody>
 				{%- for r in board.stock %}
 				<tr data-row data-s="{{ (r.item_name ~ ' ' ~ r.item_code)|lower }}" data-wh="{{ r.warehouse }}" data-st="{{ r.status }}">
@@ -196,8 +196,8 @@
 					<td>{{ r.requested }}</td>
 					<td style="color:{{ 'var(--red)' if r.projected_raw < 0 else 'var(--text)' }}">{{ r.projected }}</td>
 					<td>{{ r.reorder_level or "—" }}</td>
-					<td>{{ r.rate }}</td>
-					<td>{{ r.value }}</td>
+					<td class="price">{{ r.rate }}</td>
+					<td class="price">{{ r.value }}</td>
 					<td>{{ badge(r.status, r.variant) }}</td>
 				</tr>
 				{%- else %}
@@ -282,7 +282,7 @@
 	<div class="card__body">
 		{{ filter_bar(key, "Search item or voucher…", [("wh", "All warehouses", rows | map(attribute="warehouse") | unique | sort, "eq"), ("vt", "All voucher types", rows | map(attribute="voucher_type") | unique | sort, "eq")]) }}
 		<div class="ls-scroll"><table class="table ls-pg" id="ls-{{ key }}-table">
-			<thead><tr><th>Date</th><th>Item</th><th>Warehouse</th><th>Qty</th><th>Value</th><th>Voucher</th></tr></thead>
+			<thead><tr><th>Date</th><th>Item</th><th>Warehouse</th><th>Qty</th><th class="price">Value</th><th>Voucher</th></tr></thead>
 			<tbody>
 				{%- for r in rows %}
 				<tr data-row data-s="{{ (r.item_name ~ ' ' ~ r.voucher_no ~ ' ' ~ r.date) | lower }}" data-wh="{{ r.warehouse }}" data-vt="{{ r.voucher_type }}">
@@ -290,7 +290,7 @@
 					<td><div style="font-weight:600">{{ r.item_name }}</div></td>
 					<td>{{ r.warehouse }}</td>
 					<td style="font-weight:700;color:{{ colour }}">{{ sign }}{{ r.qty }} {{ r.uom }}</td>
-					<td>{{ r.value }}</td>
+					<td class="price">{{ r.value }}</td>
 					<td><a href="{{ r.voucher_url }}" target="_blank" rel="noopener" title="{{ r.voucher_type }}">{{ r.voucher_no }}</a></td>
 				</tr>
 				{%- else %}
@@ -304,7 +304,7 @@
 {%- endfor %}
 
 <!-- ============ 9. Payment missing ============ -->
-<div class="card ls-panel" data-tab="payments"><div class="card__head"><h3>Payment Missing</h3><span class="muted">Unpaid purchases &amp; unbilled receipts</span></div>
+<div class="card ls-panel price" data-tab="payments"><div class="card__head"><h3>Payment Missing</h3><span class="muted">Unpaid purchases &amp; unbilled receipts</span></div>
 	<div class="card__body">
 		{{ filter_bar("payments", "Search document or supplier…", [("sup", "All suppliers", suppliers, "eq")]) }}
 		<div class="group-head">{{ badge("Unpaid Purchase Invoices", "badge--danger") }}</div>

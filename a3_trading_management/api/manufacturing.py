@@ -519,9 +519,10 @@ def create_operation(name, workstation=None):
 def create_bom(item, items, operations=None, quantity=1):
     """Create and submit a BOM from the pop-up: the parts list for `quantity` units
     of `item`, and optionally the operations with minutes. It becomes the item's
-    default BOM, so the work order form picks it straight up."""
+    default BOM, so the work order form picks it straight up. Someone who may not
+    submit a BOM (the Supervisor) gets a draft instead, for the manager to approve."""
     frappe.has_permission("BOM", "create", throw=True)
-    frappe.has_permission("BOM", "submit", throw=True)
+    can_submit = frappe.has_permission("BOM", "submit")
     if not item or not frappe.db.exists("Item", item):
         frappe.throw(_("Choose the item this BOM builds"))
     rows = items if isinstance(items, list) else json.loads(items or "[]")
@@ -548,7 +549,7 @@ def create_bom(item, items, operations=None, quantity=1):
     bom.currency = _company_currency(bom.company)
     bom.rm_cost_as_per = "Valuation Rate"
     bom.is_active = 1
-    bom.is_default = 1
+    bom.is_default = 1 if can_submit else 0
     bom.with_operations = 1 if ops else 0
     for r in rows:
         bom.append("items", {"item_code": r["item_code"], "qty": flt(r["qty"])})
@@ -562,9 +563,10 @@ def create_bom(item, items, operations=None, quantity=1):
             "custom_labour": _labour(o.get("labour")),
         })
     bom.insert()
-    bom.submit()
+    if can_submit:
+        bom.submit()
     frappe.db.commit()
-    return {"name": bom.name, "total_cost": _money(bom.total_cost, bom.currency)}
+    return {"name": bom.name, "submitted": bool(can_submit), "total_cost": _money(bom.total_cost, bom.currency)}
 
 
 # ---------------------------------------------------------------------------
@@ -867,16 +869,19 @@ def get_dashboard():
 
     on_time_pct = int(round(on_time_hits / on_time_total * 100)) if on_time_total else 100
 
-    return {
-        "cards": [
+    from a3_trading_management.setup.supervisor import is_supervisor_only
+
+    cards = [
             {"key": "open", "label": "Open Work Orders", "value": open_wo},
             {"key": "prod", "label": "In Production", "value": in_prod},
             {"key": "ready", "label": "Ready for Delivery", "value": ready},
             {"key": "delivered", "label": "Delivered (MTD)", "value": delivered_mtd},
             {"key": "wip", "label": "WIP Value", "value": _money(wip_value, currency)},
             {"key": "ontime", "label": "On-time %", "value": "{0}%".format(on_time_pct)},
-        ]
-    }
+    ]
+    if is_supervisor_only():
+        cards = [c for c in cards if c["key"] != "wip"]  # money
+    return {"cards": cards}
 
 
 @frappe.whitelist()
@@ -1034,8 +1039,20 @@ def update_work_order_tables(name, required_items=None, operations=None):
 
     _ensure_editable_setting()
 
+    # A Supervisor's screen has no rates, so what it sends back is not a rate: keep
+    # the row's rate, or for a new row the item's valuation / workstation's hour rate.
+    from a3_trading_management.setup.supervisor import is_supervisor_only
+
+    keep_rates = is_supervisor_only()
+    old_rates = {r.item_code: r.rate for r in wo.required_items}
+    old_hour_rates = {(r.operation, r.workstation): r.hour_rate for r in wo.operations}
+
     if required_items is not None:
         rows = required_items if isinstance(required_items, list) else json.loads(required_items)
+        if keep_rates:
+            for r in rows:
+                code = (r.get("item_code") or "").strip()
+                r["rate"] = old_rates.get(code) if code in old_rates else frappe.db.get_value("Item", code, "valuation_rate")
         wo.set("required_items", [])
         for r in rows:
             item_code = (r.get("item_code") or "").strip()
@@ -1065,13 +1082,18 @@ def update_work_order_tables(name, required_items=None, operations=None):
             op = _ensure_operation(r.get("operation"))
             if not op:
                 continue
+            workstation = _ensure_workstation(r.get("workstation"))
+            hour_rate = flt(r.get("hour_rate"))
+            if keep_rates:
+                hour_rate = flt(old_hour_rates.get((op, workstation))
+                                or frappe.db.get_value("Workstation", workstation, "hour_rate"))
             wo.append(
                 "operations",
                 {
                     "operation": op,
-                    "workstation": _ensure_workstation(r.get("workstation")),
+                    "workstation": workstation,
                     "time_in_mins": flt(r.get("time_in_mins")),
-                    "hour_rate": flt(r.get("hour_rate")),
+                    "hour_rate": hour_rate,
                     "custom_labour": _labour(r.get("labour")),
                 },
             )

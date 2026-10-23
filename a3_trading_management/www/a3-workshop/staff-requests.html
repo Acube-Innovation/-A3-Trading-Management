@@ -1,0 +1,92 @@
+{% extends "templates/workshop_base.html" %}
+{% from "templates/macros/trading.html" import filter_bar, filter_script, call_method_js, stat_row, sup_kit %}
+
+{% block page_content %}
+{#- Job Requisition: the Supervisor asks for people; HR approves it and sets the
+    pay on the Desk. Only HR moves a request out of Pending. -#}
+
+{{ stat_row([
+	{"label": "Requests", "value": requests | length, "sub": "Raised"},
+	{"label": "Pending", "value": pending, "sub": "Waiting for HR"},
+	{"label": "Approved", "value": approved, "sub": "Open & Approved"},
+]) }}
+
+<div class="toolbar">
+	<div class="section-title" style="margin:0">Staff Requests</div>
+	<div class="toolbar__right">
+		<button type="button" class="btn btn--primary btn--sm" onclick="newRequest()"><i class="fa-solid fa-plus"></i> New Request</button>
+	</div>
+</div>
+
+{{ filter_bar("Search role or reason…", [
+	{"key": "status", "label": "All statuses", "options": ["Pending", "Open & Approved", "Rejected", "Filled", "On Hold", "Cancelled"]}
+]) }}
+
+<div class="card"><div class="card__body" style="overflow-x:auto">
+	{%- if requests %}
+	<table class="table" id="tf-table">
+		<thead><tr><th>Request</th><th>Role</th><th class="num">People</th><th>Raised</th><th>Needed By</th><th>Requested By</th><th>Reason</th><th>Status</th></tr></thead>
+		<tbody>
+		{%- for r in requests %}
+			<tr data-hay="{{ (r.name ~ ' ' ~ (r.designation or '') ~ ' ' ~ (r.reason_for_requesting or '')) | lower }}" data-status="{{ r.status }}">
+				<td><b>{{ r.name }}</b></td>
+				<td>{{ r.designation }}</td>
+				<td class="num">{{ r.no_of_positions }}</td>
+				<td>{{ frappe.utils.formatdate(r.posting_date, "dd MMM yyyy") }}</td>
+				<td>{{ frappe.utils.formatdate(r.expected_by, "dd MMM yyyy") if r.expected_by else "—" }}</td>
+				<td>{{ r.requested_by_name or "—" }}</td>
+				<td>{{ r.reason_for_requesting or "—" }}</td>
+				<td><span class="pill {{ 'pill--ok' if r.status == 'Open & Approved' else 'pill--warn' if r.status == 'Pending' else 'pill--bad' if r.status in ('Rejected', 'Cancelled') else 'pill--muted' }}">{{ r.status }}</span></td>
+			</tr>
+		{%- endfor %}
+		</tbody>
+	</table>
+	{%- else %}
+	<div class="empty">No staff requests yet.</div>
+	{%- endif %}
+</div></div>
+
+<div class="modal-overlay" id="sr-modal" role="dialog" aria-modal="true">
+	<div class="modal">
+		<div class="modal__head">
+			<div><h3>New Staff Request</h3><div class="sub">It goes to HR as Pending. HR approves it and sets the pay.</div></div>
+			<button type="button" class="modal__close" data-sk-close><i class="fa-solid fa-xmark"></i></button>
+		</div>
+		<div class="modal__body">
+			<div class="form-grid">
+				<div class="field"><label>Role needed <span class="req">*</span></label>
+					<select id="sr-designation"><option value="">—</option>
+					{%- for d in designations %}<option value="{{ d }}">{{ d }}</option>{% endfor %}</select></div>
+				<div class="field"><label>How many <span class="req">*</span></label><input id="sr-count" type="number" min="1" step="1" value="1"></div>
+				<div class="field"><label>Needed by</label><input id="sr-by" type="date" value="{{ default_by }}"></div>
+				<div class="field field--full"><label>What the job is <span class="req">*</span></label><textarea id="sr-desc" rows="2" placeholder="e.g. Welders for the tipper line"></textarea></div>
+				<div class="field field--full"><label>Why</label><textarea id="sr-reason" rows="2" placeholder="e.g. Orders for March"></textarea></div>
+			</div>
+			<div class="sk-err" id="sr-err"></div>
+		</div>
+		<div class="modal__foot">
+			<button type="button" class="btn btn--outline" data-sk-close>Cancel</button>
+			<button type="button" class="btn btn--primary" onclick="saveRequest()"><i class="fa-solid fa-check"></i> Send to HR</button>
+		</div>
+	</div>
+</div>
+
+{{ call_method_js() }}
+{{ sup_kit() }}
+{{ filter_script() }}
+<script>
+var API = "a3_trading_management.api.supervisor_portal.";
+function newRequest() { document.getElementById("sr-err").style.display = "none"; SK.open("sr-modal"); }
+function saveRequest() {
+	var err = document.getElementById("sr-err"); err.style.display = "none";
+	var d = document.getElementById("sr-designation").value, n = document.getElementById("sr-count").value;
+	var desc = document.getElementById("sr-desc").value.trim();
+	if (!d || !(Number(n) > 0) || !desc) { err.textContent = "Choose the role, how many, and what the job is."; err.style.display = "block"; return; }
+	tradingCall(API + "create_staff_request", {
+		designation: d, no_of_positions: n, description: desc,
+		reason: document.getElementById("sr-reason").value.trim() || null, expected_by: document.getElementById("sr-by").value || null
+	}).then(function (r) { alert(r.name + " sent to HR."); location.reload(); })
+	  .catch(function (e) { err.textContent = SK.err(e); err.style.display = "block"; });
+}
+</script>
+{% endblock %}

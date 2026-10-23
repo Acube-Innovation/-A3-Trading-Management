@@ -1,0 +1,21 @@
+{
+ "color": "#449CF0",
+ "creation": "2026-10-23 10:00:00.000000",
+ "docstatus": 0,
+ "doctype": "Number Card",
+ "document_type": "Work Order",
+ "dynamic_filters_json": "[]",
+ "filters_json": "[[\"Work Order\", \"docstatus\", \"=\", 1, false], [\"Work Order\", \"status\", \"in\", [\"Not Started\", \"In Process\"], false]]",
+ "function": "Count",
+ "idx": 0,
+ "is_public": 1,
+ "is_standard": 1,
+ "label": "Open Work Orders",
+ "modified": "2026-10-23 10:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "A3 Trading Management",
+ "name": "Supervisor Open Work Orders",
+ "owner": "Administrator",
+ "show_percentage_stats": 0,
+ "type": "Document Type"
+}

@@ -108,6 +108,58 @@ function tradingAction(method, args, okMsg) {
 </script>
 {%- endmacro -%}
 
+{#- Small helpers for the Supervisor's own screens (overtime, staff requests, stock
+    moves): open/close a .modal-overlay, a search-as-you-type picker, and a readable
+    error from a failed call. Needs call_method_js(). -#}
+{%- macro sup_kit() -%}
+<style>
+	.sk-ac { position:relative; }
+	.sk-ac__list { position:absolute; left:0; right:0; top:100%; z-index:30; background:var(--surface); border:1px solid var(--border); border-radius:8px; box-shadow:var(--shadow-md); max-height:220px; overflow:auto; display:none; }
+	.sk-ac__item { padding:7px 10px; cursor:pointer; font-size:13px; }
+	.sk-ac__item:hover { background:var(--bg); }
+	.sk-ac__item small { display:block; color:var(--muted); }
+	.sk-err { color:#b3261e; font-size:13px; margin-top:8px; display:none; }
+	.sk-lines { width:100%; border-collapse:collapse; font-size:13.5px; margin-top:6px; }
+	.sk-lines th { text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); padding:6px 8px; border-bottom:1px solid var(--border); }
+	.sk-lines td { padding:6px 8px; border-bottom:1px solid var(--border); }
+	.sk-lines input { width:100%; font:inherit; padding:5px 7px; border:1px solid var(--border); border-radius:6px; }
+</style>
+<script>
+window.SK = {
+	open: function (id) { document.getElementById(id).classList.add("is-open"); document.body.style.overflow = "hidden"; },
+	close: function (id) { document.getElementById(id).classList.remove("is-open"); document.body.style.overflow = ""; },
+	esc: function (s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); },
+	err: function (e) { var m = (e && e.message) || String(e); try { var a = JSON.parse(m); if (a.length) m = JSON.parse(a[0]).message || m; } catch (x) {} return m.replace(/<[^>]+>/g, ""); },
+	// source(q) -> Promise of [{label, sub, value}]; the picked value lands in input.dataset.value
+	picker: function (input, source, onPick) {
+		var wrap = input.parentNode; wrap.classList.add("sk-ac");
+		var list = document.createElement("div"); list.className = "sk-ac__list"; wrap.appendChild(list);
+		var items = [], timer = null;
+		function render() {
+			list.innerHTML = items.map(function (it, i) { return '<div class="sk-ac__item" data-i="' + i + '">' + SK.esc(it.label) + (it.sub ? "<small>" + SK.esc(it.sub) + "</small>" : "") + "</div>"; }).join("");
+			list.style.display = items.length ? "block" : "none";
+		}
+		function load() { source(input.value).then(function (r) { items = r || []; render(); }); }
+		input.addEventListener("input", function () { input.dataset.value = ""; clearTimeout(timer); timer = setTimeout(load, 150); });
+		input.addEventListener("focus", load);
+		input.addEventListener("blur", function () { setTimeout(function () { list.style.display = "none"; }, 150); });
+		list.addEventListener("mousedown", function (e) {
+			var el = e.target.closest("[data-i]"); if (!el) return;
+			var it = items[+el.dataset.i]; input.value = it.label; input.dataset.value = it.value;
+			list.style.display = "none"; e.preventDefault(); if (onPick) onPick(it);
+		});
+	},
+	items: function (q) {
+		return tradingCall("a3_trading_management.api._common.search_items", { search: q })
+			.then(function (r) { return (r || []).map(function (i) { return { label: i.item_name || i.name, sub: i.name + " · " + (i.stock_uom || ""), value: i.name }; }); });
+	}
+};
+document.addEventListener("click", function (e) {
+	var c = e.target.closest("[data-sk-close]"); if (c) SK.close(c.closest(".modal-overlay").id);
+});
+</script>
+{%- endmacro -%}
+
 {#- Portal side of the invoice deletion workflow: shows what a deletion would do,
     asks for a reason and raises an Invoice Deletion Request. Nothing is deleted
     here -- Finance and then the Owner approve it in the Desk. Needs call_method_js(). -#}

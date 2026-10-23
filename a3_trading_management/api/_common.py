@@ -106,6 +106,20 @@ def apply_taxes(doc):
 	doc.calculate_taxes_and_totals()
 
 
+def set_payment_reference(pe, against, reference_no=None, reference_date=None):
+	"""Payment Entry refuses a bank-side payment without a reference number and date.
+	Use the ones given, else the invoice it settles and today, so drafting a payment
+	works whichever default account (cash or bank) the company has."""
+	if reference_no:
+		pe.reference_no = reference_no
+	if reference_date:
+		pe.reference_date = reference_date
+	account = pe.paid_from if pe.payment_type == "Pay" else pe.paid_to
+	if account and frappe.db.get_value("Account", account, "account_type") == "Bank":
+		pe.reference_no = pe.reference_no or against
+		pe.reference_date = pe.reference_date or pe.posting_date or frappe.utils.nowdate()
+
+
 def default_company():
 	return (
 		frappe.defaults.get_user_default("Company")

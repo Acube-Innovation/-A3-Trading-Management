@@ -54,7 +54,7 @@
 	<div class="stat-card stat-card--sm stat-card--navy"><div class="label">In Production</div><div class="value" id="s-prod">—</div></div>
 	<div class="stat-card stat-card--sm stat-card--purple"><div class="label">Ready for Delivery</div><div class="value" id="s-ready">—</div></div>
 	<div class="stat-card stat-card--sm"><div class="label">Delivered (MTD)</div><div class="value" id="s-delivered">—</div></div>
-	<div class="stat-card stat-card--sm stat-card--navy"><div class="label">WIP Value</div><div class="value" id="s-wip">—</div></div>
+	<div class="stat-card stat-card--sm stat-card--navy price"><div class="label">WIP Value</div><div class="value" id="s-wip">—</div></div>
 	<div class="stat-card stat-card--sm stat-card--purple"><div class="label">On-time %</div><div class="value" id="s-ontime">—</div></div>
 </div>
 
@@ -102,7 +102,7 @@
 			<form class="form-grid" id="wo-form" autocomplete="off">
 				<div class="field field--full" style="position:relative">
 					<label>Item to be Manufactured <span class="req">*</span></label>
-					<input id="wo-item-input" placeholder="Search an item, or type a new name to create it…">
+					<input id="wo-item-input" placeholder="Search an item…">
 					<input type="hidden" name="wo_item_code">
 					<div class="mfg-mini-label" id="wo-item-desc"></div>
 				</div>
@@ -135,7 +135,7 @@
 					<label>Specification / notes for the floor</label>
 					<textarea name="wo_spec" id="wo-spec" rows="2" placeholder="Colour, axles, options — anything the fabrication bay must know. Prints on the traveler."></textarea>
 				</div>
-				<div class="field field--full" id="wo-bom-preview" style="display:none">
+				<div class="field field--full price" id="wo-bom-preview" style="display:none">
 					<div class="totals" style="margin-top:0"></div>
 				</div>
 				<div class="field field--full" id="wo-material" style="display:none"></div>
@@ -168,19 +168,19 @@
 			</div>
 			<div class="fieldset-title" style="margin-top:14px">Raw materials <span class="req">*</span></div>
 			<table class="mfg-table mfg-etable">
-				<thead><tr><th class="sl">#</th><th>Material</th><th style="width:90px">Qty</th><th style="width:70px">Unit</th><th style="width:100px">Rate</th><th style="width:120px">Amount</th><th style="width:40px"></th></tr></thead>
+				<thead><tr><th class="sl">#</th><th>Material</th><th style="width:90px">Qty</th><th style="width:70px">Unit</th><th class="price" style="width:100px">Rate</th><th class="price" style="width:120px">Amount</th><th style="width:40px"></th></tr></thead>
 				<tbody id="bom-rm"></tbody>
 			</table>
 			<button type="button" class="btn btn--sm mfg-btn-red mfg-addrow" id="bom-rm-add"><i class="fa-solid fa-plus"></i> Add material</button>
 
-			<div class="fieldset-title" style="margin-top:18px">Operations <span class="muted" style="font-weight:400;text-transform:none;letter-spacing:0">(optional — gives the labour cost)</span></div>
+			<div class="fieldset-title" style="margin-top:18px">Operations <span class="muted price" style="font-weight:400;text-transform:none;letter-spacing:0">(optional — gives the labour cost)</span></div>
 			<table class="mfg-table mfg-etable">
-				<thead><tr><th class="sl">#</th><th>Operation</th><th>Workstation</th><th>Labour</th><th style="width:90px">Hrs</th><th style="width:100px">Rate / hr</th><th style="width:120px">Cost</th><th style="width:40px"></th></tr></thead>
+				<thead><tr><th class="sl">#</th><th>Operation</th><th>Workstation</th><th>Labour</th><th style="width:90px">Hrs</th><th class="price" style="width:100px">Rate / hr</th><th class="price" style="width:120px">Cost</th><th style="width:40px"></th></tr></thead>
 				<tbody id="bom-ops"></tbody>
 			</table>
 			<button type="button" class="btn btn--sm mfg-btn-red mfg-addrow" id="bom-op-add"><i class="fa-solid fa-plus"></i> Add operation</button>
 
-			<div class="totals" id="bom-totals" style="margin-top:14px"></div>
+			<div class="totals price" id="bom-totals" style="margin-top:14px"></div>
 		</div>
 		<div class="modal__foot">
 			<button type="button" class="btn btn--outline" data-close>Cancel</button>
@@ -217,7 +217,7 @@
 				<div class="field field--full">
 					<label class="check"><input type="checkbox" id="item-trailer"> Is a Trailer <span class="muted" style="font-weight:400">— gets a chassis number when built</span></label>
 				</div>
-				<div class="field field--full">
+				<div class="field field--full price">
 					<label id="item-rate-label">Selling price</label>
 					<input type="number" name="rate" id="item-rate" min="0" step="any" placeholder="0.00">
 				</div>
@@ -255,7 +255,7 @@
 					<label>Trade / designation <span class="muted" style="font-weight:400">— optional, e.g. Welder, Painter</span></label>
 					<input id="master-desig">
 				</div>
-				<div class="field field--full" id="master-rate-field">
+				<div class="field field--full price" id="master-rate-field">
 					<label>Rate per hour</label>
 					<input type="number" id="master-rate" min="0" step="any" placeholder="0.00">
 				</div>
@@ -274,6 +274,9 @@
 (function () {
 	var API = "a3_trading_management.api.manufacturing.";
 	var CURRENCY = "AED";
+	// Supervisor: no rates or costs (the server leaves them out), and no new masters.
+	var SUP = !!window.A3_SUPERVISOR;
+	var PRICE = SUP ? ' class="price"' : "", PCLS = SUP ? " price" : "";
 	var current = null, search = "", detail = null;
 	var editRM = [], editOps = [];   // in-memory editable table state for the current draft WO
 	var LABOUR = [];                 // active employees, for the Labour dropdowns (loaded at boot)
@@ -293,7 +296,7 @@
 				return '<option value="' + esc(e.name) + '"' + (e.name === current ? " selected" : "") + '>' + esc(e.employee_name || e.name) + (e.designation ? " · " + esc(e.designation) : "") + '</option>';
 			}).join("") +
 			(current && !known ? '<option value="' + esc(current) + '" selected>' + esc(current) + '</option>' : '') +
-			'<option value="__new__">+ Add new labour…</option></select>';
+			(SUP ? '' : '<option value="__new__">+ Add new labour…</option>') + '</select>';
 	}
 	function loadLabour() {
 		return callMethod(API + "list_labour", {}).then(function (rows) { LABOUR = rows || []; }).catch(function () { LABOUR = []; });
@@ -370,11 +373,11 @@
 				'<td class="sl">' + (i + 1) + '</td>' +
 				'<td style="position:relative;min-width:150px"><input class="cell-inp rm-item-ac" data-i="' + i + '" value="' + esc(r.item_name || r.item_code || "") + '" placeholder="Search item…" autocomplete="off"></td>' +
 				'<td style="width:90px"><input class="cell-inp" type="number" step="any" data-rm="qty" data-i="' + i + '" value="' + (r.qty || 0) + '"></td>' +
-				'<td style="width:110px"><input class="cell-inp" type="number" step="any" data-rm="rate" data-i="' + i + '" value="' + (r.rate || 0) + '"></td>' +
-				'<td style="width:110px" data-rm-amt="' + i + '">' + money((r.qty || 0) * (r.rate || 0)) + '</td>' +
+				'<td' + PRICE + ' style="width:110px"><input class="cell-inp" type="number" step="any" data-rm="rate" data-i="' + i + '" value="' + (r.rate || 0) + '"></td>' +
+				'<td' + PRICE + ' style="width:110px" data-rm-amt="' + i + '">' + money((r.qty || 0) * (r.rate || 0)) + '</td>' +
 				'<td style="width:34px"><button type="button" class="mfg-row-x" data-rm-x="' + i + '" title="Remove row"><i class="fa-solid fa-trash"></i></button></td></tr>';
 		}).join("");
-		return '<table class="table mfg-etable mfg-table"><thead><tr><th class="sl">#</th><th>Item</th><th>Qty</th><th>Rate</th><th>Amount</th><th></th></tr></thead><tbody>' +
+		return '<table class="table mfg-etable mfg-table"><thead><tr><th class="sl">#</th><th>Item</th><th>Qty</th><th' + PRICE + '>Rate</th><th' + PRICE + '>Amount</th><th></th></tr></thead><tbody>' +
 			(body || '<tr><td colspan="6" class="muted">No materials — add a row below.</td></tr>') + '</tbody></table>' +
 			'<button type="button" class="btn btn--sm mfg-addrow mfg-btn-red" data-rm-add><i class="fa-solid fa-plus"></i> Add material row</button>';
 	}
@@ -396,11 +399,11 @@
 				'<td style="min-width:170px">' + labourSelect('data-op-labour="' + i + '"', r.labour) +
 					(r.labour_from_bom ? '<div class="muted" style="font-size:10.5px;margin-top:2px">from BOM</div>' : '') + '</td>' +
 				'<td style="width:90px"><input class="cell-inp" type="number" step="0.25" min="0" data-op-hrs="' + i + '" value="' + toHrs(r.time_in_mins) + '"></td>' +
-				'<td style="width:110px"><input class="cell-inp" type="number" step="any" data-op="hour_rate" data-i="' + i + '" value="' + (r.hour_rate || 0) + '"></td>' +
-				'<td style="width:110px" data-op-amt="' + i + '">' + money(opAmount(r)) + '</td>' +
+				'<td' + PRICE + ' style="width:110px"><input class="cell-inp" type="number" step="any" data-op="hour_rate" data-i="' + i + '" value="' + (r.hour_rate || 0) + '"></td>' +
+				'<td' + PRICE + ' style="width:110px" data-op-amt="' + i + '">' + money(opAmount(r)) + '</td>' +
 				'<td style="width:34px"><button type="button" class="mfg-row-x" data-op-x="' + i + '" title="Remove row"><i class="fa-solid fa-trash"></i></button></td></tr>';
 		}).join("");
-		return '<table class="table mfg-etable mfg-table"><thead><tr><th class="sl">#</th><th>Operation</th><th>Workstation</th><th>Labour</th><th>Hrs</th><th>Rate / hr</th><th>Amount</th><th></th></tr></thead><tbody>' +
+		return '<table class="table mfg-etable mfg-table"><thead><tr><th class="sl">#</th><th>Operation</th><th>Workstation</th><th>Labour</th><th>Hrs</th><th' + PRICE + '>Rate / hr</th><th' + PRICE + '>Amount</th><th></th></tr></thead><tbody>' +
 			(body || '<tr><td colspan="8" class="muted">No operations — add a row below.</td></tr>') + '</tbody>' +
 			'</table>' +
 			'<button type="button" class="btn btn--sm mfg-addrow mfg-btn-red" data-op-add><i class="fa-solid fa-plus"></i> Add operation row</button>';
@@ -447,8 +450,10 @@
 		}
 
 		var rmSection = o.editable ? rmTableHtml()
+			: SUP ? roTable(["Item", "Qty"], (o.required_items || []).map(function (r) { return [esc(r.item_name), r.qty + " " + esc(r.uom || "")]; }))
 			: roTable(["Item", "Qty", "Rate", "Amount"], (o.required_items || []).map(function (r) { return [esc(r.item_name), r.qty + " " + esc(r.uom || ""), r.rate_fmt, r.amount_fmt]; }));
 		var opSection = o.editable ? opTableHtml()
+			: SUP ? roTable(["Operation", "Workstation", "Labour", "Hrs"], (o.operations || []).map(function (r) { return [esc(r.operation), esc(r.workstation || "—"), esc(r.labour_name || r.labour || "—"), toHrs(r.time_in_mins)]; }))
 			: roTable(["Operation", "Workstation", "Labour", "Hrs", "Rate / hr", "Cost"], (o.operations || []).map(function (r) { return [esc(r.operation), esc(r.workstation || "—"), esc(r.labour_name || r.labour || "—"), toHrs(r.time_in_mins), r.hour_rate_fmt, r.operating_cost_fmt]; }));
 		opSection += labourSummary(o.editable ? editOps : o.operations);
 
@@ -472,10 +477,10 @@
 			'<div class="fieldset-title">BOM — Raw Materials' + (o.editable ? ' <span class="muted" style="font-weight:400">(editable)</span>' : '') + '</div>' + rmSection +
 			'<div class="fieldset-title">BOM — Operations' + (o.editable ? ' <span class="muted" style="font-weight:400">(editable)</span>' : '') + '</div>' + opSection +
 			saveBtn +
-			'<div class="fieldset-title">Costing</div>' +
+			(o.costing ? '<div class="fieldset-title">Costing</div>' +
 			kv([["Raw Material Cost", o.costing.raw_material], ["Operating Cost", o.costing.operating], ["Additional Cost", o.costing.additional]]) +
 			'<div class="totals"><div class="row-between"><span class="muted">Total Production Cost</span><span>' + o.costing.total + '</span></div>' +
-			'<div class="row-between grand"><span>Cost per Unit</span><span>' + o.costing.per_unit + '</span></div></div>' +
+			'<div class="row-between grand"><span>Cost per Unit</span><span>' + o.costing.per_unit + '</span></div></div>' : '') +
 			'<div class="fieldset-title">Finished Goods & Delivery</div>' +
 			kv([
 				["Produced", o.produced_qty + " / " + o.qty],
@@ -693,7 +698,7 @@
 	// The "create" row an item autocomplete ends with once something is typed.
 	function withCreate(rows, q, label) {
 		var exact = rows.some(function (r) { return (r.label || "").toLowerCase() === q.toLowerCase() || (r.value || "").toLowerCase() === q.toLowerCase(); });
-		if (q && !exact) rows.push({ create: true, label: "+ " + label + " “" + q + "”", sub: "Opens a form to create it", value: q });
+		if (q && !exact && !SUP) rows.push({ create: true, label: "+ " + label + " “" + q + "”", sub: "Opens a form to create it", value: q });
 		return rows;
 	}
 
@@ -890,7 +895,7 @@
 			return callMethod(API + "search_operations", { search: q, limit: 10 }).then(function (rows) {
 				return withCreate((rows || []).map(function (o) {
 					return { label: o.name, value: o.name, workstation: o.workstation, hour_rate: o.hour_rate,
-						sub: o.workstation ? o.workstation + " · " + money(o.hour_rate) + " / hr" : "no default workstation" };
+						sub: o.workstation ? o.workstation + (SUP ? "" : " · " + money(o.hour_rate) + " / hr") : "no default workstation" };
 				}), q, "Create operation");
 			});
 		}, function (it) {
@@ -901,7 +906,7 @@
 	function attachWsAC(input, onPick, allowCreate) {
 		attachAC(input, function (q) {
 			return callMethod(API + "search_workstations", { search: q, limit: 10 }).then(function (rows) {
-				var list = (rows || []).map(function (w) { return { label: w.name, value: w.name, hour_rate: w.hour_rate, sub: money(w.hour_rate) + " / hr" }; });
+				var list = (rows || []).map(function (w) { return { label: w.name, value: w.name, hour_rate: w.hour_rate, sub: SUP ? "" : money(w.hour_rate) + " / hr" }; });
 				return allowCreate === false ? list : withCreate(list, q, "Create workstation");
 			});
 		}, function (it) {
@@ -987,8 +992,8 @@
 				'<td><input class="cell-inp bom-rm-ac" data-i="' + i + '" value="' + esc(r.item_name || "") + '" placeholder="Search a material, or type a new one…"></td>' +
 				'<td><input class="cell-inp" type="number" min="0" step="any" data-rm-qty="' + i + '" value="' + esc(r.qty || "") + '"></td>' +
 				'<td class="muted">' + esc(r.uom || "") + '</td>' +
-				'<td class="num">' + (r.item_code ? (Number(r.rate) || 0).toFixed(2) : "") + '</td>' +
-				'<td class="num" data-rm-amt="' + i + '">' + (r.item_code ? money((Number(r.rate) || 0) * (Number(r.qty) || 0)) : "") + '</td>' +
+				'<td class="num' + PCLS + '">' + (r.item_code ? (Number(r.rate) || 0).toFixed(2) : "") + '</td>' +
+				'<td class="num' + PCLS + '" data-rm-amt="' + i + '">' + (r.item_code ? money((Number(r.rate) || 0) * (Number(r.qty) || 0)) : "") + '</td>' +
 				'<td><button type="button" class="mfg-row-x" data-rm-del="' + i + '"><i class="fa-solid fa-trash"></i></button></td></tr>';
 		}).join("");
 		document.getElementById("bom-ops").innerHTML = bomOps.map(function (o, i) {
@@ -997,8 +1002,8 @@
 				'<td><input class="cell-inp" data-op-ws="' + i + '" value="' + esc(o.workstation || "") + '" placeholder="Workstation"></td>' +
 				'<td>' + labourSelect('data-op-lab="' + i + '"', o.labour) + '</td>' +
 				'<td><input class="cell-inp" type="number" min="0" step="0.25" data-op-min="' + i + '" value="' + (o.time_in_mins ? toHrs(o.time_in_mins) : "") + '"></td>' +
-				'<td class="num">' + (o.workstation ? rateOf(o).toFixed(2) : "") + '</td>' +
-				'<td class="num" data-op-cost="' + i + '">' + (o.workstation ? money(rateOf(o) * (Number(o.time_in_mins) || 0) / 60) : "") + '</td>' +
+				'<td class="num' + PCLS + '">' + (o.workstation ? rateOf(o).toFixed(2) : "") + '</td>' +
+				'<td class="num' + PCLS + '" data-op-cost="' + i + '">' + (o.workstation ? money(rateOf(o) * (Number(o.time_in_mins) || 0) / 60) : "") + '</td>' +
 				'<td><button type="button" class="mfg-row-x" data-op-del="' + i + '"><i class="fa-solid fa-trash"></i></button></td></tr>';
 		}).join("");
 		wireBom();
@@ -1108,6 +1113,8 @@
 		}).then(function (r) {
 			closeBomModal();
 			masters = null;   // a typed operation or workstation may now exist
+			// Saved as a draft (the Supervisor): the manager submits it before it can be used.
+			if (!r.submitted) { alert("BOM " + r.name + " is saved as a draft. The production manager approves it; then it can be used on a work order."); return; }
 			if (document.querySelector('[name=wo_item_code]').value === bomItem) loadBoms(bomItem, false, r.name);
 		}).catch(function (e) { alert("Could not create the BOM: " + e.message); })
 			.then(function () { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-check"></i> Create BOM'; });

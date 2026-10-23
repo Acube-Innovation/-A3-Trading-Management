@@ -1,0 +1,111 @@
+{% extends "templates/workshop_base.html" %}
+{% from "templates/macros/trading.html" import status_pill, filter_bar, filter_script, call_method_js, stat_row, sup_kit %}
+
+{% block page_content %}
+{#- Employee Overtime: hours past the shift, entered by the Supervisor. Submitted
+    entries are final; only HR can cancel one (on the Desk). -#}
+
+{{ stat_row([
+	{"label": "Entries This Month", "value": month_entries, "sub": "Submitted"},
+	{"label": "Hours This Month", "value": "%.2f" | format(month_hours), "sub": "Submitted"},
+	{"label": "Drafts", "value": drafts, "sub": "Not yet submitted"},
+]) }}
+
+<div class="toolbar">
+	<div class="section-title" style="margin:0">Overtime</div>
+	<div class="toolbar__right">
+		<button type="button" class="btn btn--primary btn--sm" onclick="newOvertime()"><i class="fa-solid fa-plus"></i> New Overtime</button>
+	</div>
+</div>
+
+{{ filter_bar("Search employee, work order or reason…", [
+	{"key": "status", "label": "All statuses", "options": ["Draft", "Submitted"]}
+]) }}
+
+<div class="card"><div class="card__body" style="overflow-x:auto">
+	{%- if entries %}
+	<table class="table" id="tf-table">
+		<thead><tr><th>Entry</th><th>Employee</th><th>Date</th><th>From – To</th><th class="num">Hours</th><th>Work Order</th><th>Reason</th><th>Status</th><th>Action</th></tr></thead>
+		<tbody>
+		{%- for e in entries %}
+			<tr data-hay="{{ (e.name ~ ' ' ~ (e.employee_name or '') ~ ' ' ~ (e.work_order or '') ~ ' ' ~ (e.reason or '')) | lower }}" data-status="{{ 'Submitted' if e.docstatus == 1 else 'Draft' }}">
+				<td><b>{{ e.name }}</b></td>
+				<td>{{ e.employee_name }}<div class="muted" style="font-size:11px">{{ e.employee }}</div></td>
+				<td>{{ frappe.utils.formatdate(e.overtime_date, "dd MMM yyyy") }}</td>
+				<td>{{ (e.from_time | string)[:5] if e.from_time else "—" }} – {{ (e.to_time | string)[:5] if e.to_time else "—" }}</td>
+				<td class="num"><b>{{ "%.2f" | format(e.hours or 0) }}</b></td>
+				<td>{{ e.work_order or "—" }}</td>
+				<td>{{ e.reason }}</td>
+				<td>{{ status_pill("Submitted" if e.docstatus == 1 else "Draft", e.docstatus) }}</td>
+				<td>{%- if e.docstatus == 0 %}<button class="btn btn--primary btn--sm" onclick="submitOt('{{ e.name }}')">Submit</button>{% else %}<span class="muted">—</span>{% endif %}</td>
+			</tr>
+		{%- endfor %}
+		</tbody>
+	</table>
+	{%- else %}
+	<div class="empty">No overtime entered yet.</div>
+	{%- endif %}
+</div></div>
+
+<div class="modal-overlay" id="ot-modal" role="dialog" aria-modal="true">
+	<div class="modal">
+		<div class="modal__head">
+			<div><h3>New Overtime</h3><div class="sub">Give the From and To times, or just the hours. A shift past midnight counts into the next day.</div></div>
+			<button type="button" class="modal__close" data-sk-close><i class="fa-solid fa-xmark"></i></button>
+		</div>
+		<div class="modal__body">
+			<div class="form-grid">
+				<div class="field field--full"><label>Employee <span class="req">*</span></label><div><input id="ot-employee" placeholder="Search employee…" autocomplete="off"></div></div>
+				<div class="field"><label>Date <span class="req">*</span></label><input id="ot-date" type="date" value="{{ today }}"></div>
+				<div class="field"><label>Work order</label>
+					<select id="ot-wo"><option value="">—</option>
+					{%- for w in work_orders %}<option value="{{ w.name }}">{{ w.name }} · {{ w.item_name }}</option>{% endfor %}</select></div>
+				<div class="field"><label>From</label><input id="ot-from" type="time"></div>
+				<div class="field"><label>To</label><input id="ot-to" type="time"></div>
+				<div class="field"><label>Hours <span class="muted" style="font-weight:400">— if no times</span></label><input id="ot-hours" type="number" min="0" step="0.25"></div>
+				<div class="field field--full"><label>Reason <span class="req">*</span></label><textarea id="ot-reason" rows="2" placeholder="What the extra time was for"></textarea></div>
+			</div>
+			<div class="sk-err" id="ot-err"></div>
+		</div>
+		<div class="modal__foot">
+			<button type="button" class="btn btn--outline" data-sk-close>Cancel</button>
+			<button type="button" class="btn btn--outline" onclick="saveOt(0)">Save draft</button>
+			<button type="button" class="btn btn--primary" onclick="saveOt(1)"><i class="fa-solid fa-check"></i> Save &amp; Submit</button>
+		</div>
+	</div>
+</div>
+
+{{ call_method_js() }}
+{{ sup_kit() }}
+{{ filter_script() }}
+<script>
+var API = "a3_trading_management.api.supervisor_portal.";
+SK.picker(document.getElementById("ot-employee"), function (q) {
+	return tradingCall(API + "search_employees", { search: q }).then(function (r) {
+		return (r || []).map(function (e) { return { label: e.employee_name, sub: e.name + (e.designation ? " · " + e.designation : ""), value: e.name }; });
+	});
+});
+function newOvertime() {
+	["ot-employee", "ot-from", "ot-to", "ot-hours", "ot-reason"].forEach(function (id) { var el = document.getElementById(id); el.value = ""; el.dataset.value = ""; });
+	document.getElementById("ot-err").style.display = "none";
+	SK.open("ot-modal");
+}
+function saveOt(submit) {
+	var err = document.getElementById("ot-err"); err.style.display = "none";
+	var emp = document.getElementById("ot-employee").dataset.value;
+	var reason = document.getElementById("ot-reason").value.trim();
+	if (!emp) { err.textContent = "Pick the employee from the list."; err.style.display = "block"; return; }
+	if (!reason) { err.textContent = "Give the reason."; err.style.display = "block"; return; }
+	tradingCall(API + "create_overtime", {
+		employee: emp, reason: reason, overtime_date: document.getElementById("ot-date").value,
+		from_time: document.getElementById("ot-from").value || null, to_time: document.getElementById("ot-to").value || null,
+		hours: document.getElementById("ot-hours").value || 0, work_order: document.getElementById("ot-wo").value || null, submit: submit
+	}).then(function (r) { alert(r.name + ": " + r.hours + " hours " + (r.docstatus ? "submitted." : "saved as draft.")); location.reload(); })
+	  .catch(function (e) { err.textContent = SK.err(e); err.style.display = "block"; });
+}
+function submitOt(name) {
+	if (!confirm("Submit " + name + "? It cannot be changed afterwards.")) return;
+	tradingAction(API + "submit_overtime", { name: name }, name + " submitted.");
+}
+</script>
+{% endblock %}

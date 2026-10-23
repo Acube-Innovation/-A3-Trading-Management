@@ -165,6 +165,7 @@ def after_install():
 	setup_quality_inspection_reference()
 	setup_default_checklists()
 	setup_deletion_workflow()
+	setup_supervisor()
 
 
 def after_migrate():
@@ -173,6 +174,7 @@ def after_migrate():
 	setup_quality_inspection_reference()
 	setup_default_checklists()
 	setup_deletion_workflow()
+	setup_supervisor()
 
 
 # Two ready-made checklists, the first of them the default, so a new item is
@@ -209,6 +211,13 @@ DEFAULT_CHECKLISTS = [
 def setup_deletion_workflow():
 	"""Operator -> Finance -> Owner approval for deleting a posted invoice."""
 	from a3_trading_management.setup.deletion_workflow import setup
+
+	setup()
+
+
+def setup_supervisor():
+	"""Supervisor role: production access with every price hidden."""
+	from a3_trading_management.setup.supervisor import setup
 
 	setup()
 

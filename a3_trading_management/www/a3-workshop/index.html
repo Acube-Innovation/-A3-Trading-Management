@@ -19,7 +19,7 @@
 	.hm-prog i { display: block; height: 100%; background: var(--red); }
 </style>
 <div class="dashboard-actions" style="display:flex; justify-content:flex-end; margin-bottom:4px">
-	<a class="btn btn--icon btn--navy" href="/app/home" title="Go to Desk">
+	<a class="btn btn--icon btn--navy" href="{{ '/app/supervisor' if (supervisor is defined and supervisor) else '/app/home' }}" title="Go to Desk">
 		<i class="fa-solid fa-table-columns"></i>
 	</a>
 </div>
@@ -29,11 +29,57 @@
 	<div class="hi">Welcome back, {{ fullname.split(" ")[0] }}</div>
 </div>
 
+{%- if supervisor is defined and supervisor and sup_counters is defined %}
+<style>
+	.sh-counters { display:grid; grid-template-columns:repeat(auto-fill, minmax(190px, 1fr)); gap:12px; }
+	.sh-counter { display:block; background:var(--surface); border:1px solid var(--border); border-left:4px solid var(--red); border-radius:var(--radius-sm, 10px); padding:12px 14px; color:inherit; text-decoration:none; }
+	.sh-counter:hover { box-shadow:var(--shadow-md); }
+	.sh-counter .l { font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); font-weight:700; }
+	.sh-counter .v { font-size:24px; font-weight:800; margin:4px 0 2px; }
+	.sh-counter .s { font-size:12px; color:var(--muted); }
+	.sh-short { display:grid; grid-template-columns:repeat(auto-fill, minmax(210px, 1fr)); gap:10px; margin-top:12px; }
+	.sh-short a { display:flex; gap:10px; align-items:center; background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:11px 13px; color:inherit; text-decoration:none; font-weight:600; }
+	.sh-short a:hover { border-color:var(--red); }
+	.sh-short i { color:var(--red); width:18px; text-align:center; }
+	.sh-short small { display:block; font-weight:400; color:var(--muted); font-size:11.5px; }
+</style>
+<div class="section-title" style="margin-top:6px">Your floor today</div>
+<div class="sh-counters">
+	{%- for c in sup_counters %}
+	<a class="sh-counter" href="{{ c.route }}"><div class="l">{{ c.label }}</div><div class="v">{{ c.value }}</div><div class="s">{{ c.sub }}</div></a>
+	{%- endfor %}
+</div>
+<div class="section-title" style="margin-top:18px">Your shortcuts</div>
+<div class="sh-short">
+	{%- for icon, label, route, sub in [
+		("fa-industry", "Work Orders", "/a3-workshop/manufacturing", "Create, update production stages"),
+		("fa-sitemap", "BOMs", "/a3-workshop/boms", "Materials and operations"),
+		("fa-clipboard-check", "Quality", "/a3-workshop/quality", "Checklists and inspections"),
+		("fa-right-left", "Stock Moves", "/a3-workshop/stock-moves", "Move or issue stock"),
+		("fa-clipboard-list", "Material Requests", "/a3-workshop/purchase-requisitions", "Ask for material"),
+		("fa-boxes-stacked", "Live Stock", "/a3-workshop/live-stock", "Quantities in every warehouse"),
+		("fa-chart-line", "Projected Stock", "/a3-workshop/masters#projected", "Stock Projected Qty"),
+		("fa-book", "Items & Customers", "/a3-workshop/masters", "Look up, view only"),
+		("fa-file-lines", "Quotations", "/a3-workshop/quotations", "Draft for Sales to price"),
+		("fa-clock", "Overtime", "/a3-workshop/overtime", "Enter overtime"),
+		("fa-user-plus", "Staff Requests", "/a3-workshop/staff-requests", "Ask HR for people"),
+	] %}
+	<a href="{{ route }}"><i class="fa-solid {{ icon }}"></i><span>{{ label }}<small>{{ sub }}</small></span></a>
+	{%- endfor %}
+</div>
+<div class="section-title" style="margin-top:18px">On the floor</div>
 <div class="stat-grid">
 	{%- for t in tiles %}
 	{{ statcard(t.label, t.value, "", t.sub) }}
 	{%- endfor %}
 </div>
+{%- else %}
+<div class="stat-grid">
+	{%- for t in tiles %}
+	{{ statcard(t.label, t.value, "", t.sub) }}
+	{%- endfor %}
+</div>
+{%- endif %}
 
 <div class="page-grid-2" style="margin-top:18px">
 	<div class="card">
@@ -84,16 +130,18 @@
 	</div>
 </div>
 
+{#- Deliveries and low stock are not the Supervisor's (Live Stock has the low stock). -#}
+{%- if not (supervisor is defined and supervisor) %}
 <div class="page-grid-2" style="margin-top:18px">
 	<div class="card">
 		<div class="card__head"><h3>Recent Deliveries</h3><a class="btn btn--outline btn--sm" href="/a3-workshop/delivery-notes">Delivery Notes</a></div>
 		<div class="card__body" style="padding:0">
 			{%- if deliveries %}
 			<table class="table">
-				<thead><tr><th>Note</th><th>Customer</th><th>Chassis</th><th>Date</th><th class="num">Total</th></tr></thead>
+				<thead><tr><th>Note</th><th>Customer</th><th>Chassis</th><th>Date</th><th class="num price">Total</th></tr></thead>
 				<tbody>
 					{%- for d in deliveries %}
-					<tr><td>{{ d.name }}</td><td>{{ d.customer }}</td><td>{{ d.chassis }}</td><td>{{ d.date }}</td><td class="num">{{ d.total }}</td></tr>
+					<tr><td>{{ d.name }}</td><td>{{ d.customer }}</td><td>{{ d.chassis }}</td><td>{{ d.date }}</td><td class="num price">{{ d.total }}</td></tr>
 					{%- endfor %}
 				</tbody>
 			</table>
@@ -121,4 +169,5 @@
 		</div>
 	</div>
 </div>
+{%- endif %}
 {% endblock %}

@@ -13,6 +13,7 @@ from frappe.utils import flt, getdate, nowdate, date_diff
 
 from a3_trading_management.api._common import (
 	rows, status_counts, submit_document, cancel_document, default_company, ageing_bucket, apply_taxes,
+	set_payment_reference,
 )
 
 # The three papers a supplier must keep current, and the field holding each expiry.
@@ -441,7 +442,7 @@ def supplier_outstanding():
 
 
 @frappe.whitelist()
-def pay_supplier_invoice(purchase_invoice, amount=None, mode_of_payment=None):
+def pay_supplier_invoice(purchase_invoice, amount=None, mode_of_payment=None, reference_no=None, reference_date=None):
 	"""Pay against a bill, allocating a part payment when less than the total."""
 	frappe.has_permission("Payment Entry", "create", throw=True)
 	from erpnext.accounts.doctype.payment_entry.payment_entry import get_payment_entry
@@ -466,6 +467,7 @@ def pay_supplier_invoice(purchase_invoice, amount=None, mode_of_payment=None):
 			ref.allocated_amount = min(flt(amount), flt(ref.outstanding_amount))
 	if mode_of_payment:
 		pe.mode_of_payment = mode_of_payment
+	set_payment_reference(pe, purchase_invoice, reference_no, reference_date)
 	pe.flags.ignore_permissions = True
 	pe.insert(ignore_permissions=True)
 	frappe.db.commit()

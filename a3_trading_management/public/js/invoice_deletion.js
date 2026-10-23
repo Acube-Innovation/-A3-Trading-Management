@@ -59,7 +59,8 @@
 					[`<a href="/app/invoice-deletion-request/${req.name}">${req.name}</a>`, req.workflow_state]), "orange", true);
 			}
 		});
-		if (frappe.user.has_role("Operator") || frappe.user.has_role("System Manager")) {
+		// Only the workflow's "Submit for Approval" role can send a request to Finance.
+		if (frappe.user.has_role("Operator")) {
 			frm.add_custom_button(__("Request Deletion"), () => open_dialog(frm));
 		}
 	}

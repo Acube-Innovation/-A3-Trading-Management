@@ -32,6 +32,16 @@ doctype_js = {
 	"Purchase Invoice": ["public/js/invoice_deletion.js", "public/js/invoice_rounding.js"],
 }
 
+# Supervisor-only users get part of the portal API, with prices taken out of every
+# answer. The auth hook runs on every request once the user is known.
+auth_hooks = ["a3_trading_management.integrations.supervisor.block_portal_api"]
+after_request = ["a3_trading_management.integrations.supervisor.scrub_portal_response"]
+# The Item form's stock levels carry valuation rates; dropped for a Supervisor.
+override_whitelisted_methods = {
+	"erpnext.stock.dashboard.item_dashboard.get_data":
+		"a3_trading_management.integrations.supervisor.item_dashboard_data",
+}
+
 # Portal
 # ------
 home_page = "a3-workshop"
@@ -114,5 +124,14 @@ doc_events = {
 	# Task 23: a dispatched trailer has left the yard and has a new owner.
 	"Delivery Note": {
 		"on_submit": "a3_trading_management.api.selling.mark_delivered",
+	},
+	# A Supervisor's own Employee record must not limit them to themselves.
+	"Employee": {
+		"before_validate": "a3_trading_management.integrations.supervisor.employee_before_validate",
+	},
+	# Supervisor staff request: raised by the Supervisor, approved by HR.
+	"Job Requisition": {
+		"before_validate": "a3_trading_management.integrations.supervisor.job_requisition_before_validate",
+		"validate": "a3_trading_management.integrations.supervisor.job_requisition_validate",
 	},
 }
