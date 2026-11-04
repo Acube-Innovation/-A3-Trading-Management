@@ -175,6 +175,7 @@ def after_migrate():
 	setup_default_checklists()
 	setup_deletion_workflow()
 	setup_supervisor()
+	setup_letter_head()
 
 
 # Two ready-made checklists, the first of them the default, so a new item is
@@ -218,6 +219,13 @@ def setup_deletion_workflow():
 def setup_supervisor():
 	"""Supervisor role: production access with every price hidden."""
 	from a3_trading_management.setup.supervisor import setup
+
+	setup()
+
+
+def setup_letter_head():
+	"""The Redlines letter head every printed page carries."""
+	from a3_trading_management.setup.letter_head import setup
 
 	setup()
 
