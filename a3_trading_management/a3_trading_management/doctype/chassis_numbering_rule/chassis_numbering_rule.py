@@ -11,6 +11,8 @@ until `confirmed_by_redlines` is ticked, and it takes the row lock before readin
 same chassis number.
 """
 
+import re
+
 import frappe
 from frappe import _
 from frappe.model.document import Document
@@ -92,6 +94,25 @@ class ChassisNumberingRule(Document):
 		number = self.format_number(current)
 		frappe.db.set_value("Chassis Numbering Rule", None, "next_number", int(current) + 1)
 		return number
+
+	def advance_past(self, chassis):
+		"""A chassis number typed in by hand (a plate made before the trailer was
+		entered): if it is one of this rule's numbers at or beyond the counter,
+		move the counter past it so `issue_next()` never hands it out again."""
+		frappe.db.sql(
+			"select value from `tabSingles` where doctype=%s and field='next_number' for update",
+			self.doctype,
+		)
+		current = int(frappe.db.get_single_value("Chassis Numbering Rule", "next_number") or 1)
+		digits = re.search(r"(\d+)$", chassis or "")
+		if not digits:
+			return
+		body = digits.group(1)
+		if (self.check_digit_method or "None") != "None":
+			body = body[:-1]
+		number = int(body[-(self.sequence_length or 5):] or 0)
+		if number >= current and self.format_number(number) == chassis:
+			frappe.db.set_value("Chassis Numbering Rule", None, "next_number", number + 1)
 
 
 def get_rule():
