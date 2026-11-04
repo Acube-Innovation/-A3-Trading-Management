@@ -36,6 +36,8 @@ class ChassisNumberingRule(Document):
 		if self.include_year:
 			year = getdate(nowdate()).year
 			parts.append(str(year) if self.year_format == "YYYY" else f"{year % 100:02d}")
+		if (self.get("text_after_year") or "").strip():
+			parts.append(self.text_after_year.strip())
 
 		body = str(int(number)).zfill(self.sequence_length or 5)
 		check = self._check_digit(("".join(parts) + body) if parts else body)

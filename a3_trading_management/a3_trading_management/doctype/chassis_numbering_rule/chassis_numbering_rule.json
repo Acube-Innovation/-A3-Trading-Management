@@ -10,6 +10,7 @@
   "prefix",
   "include_year",
   "year_format",
+  "text_after_year",
   "separator",
   "column_break_format",
   "sequence_length",
@@ -33,7 +34,7 @@
   },
   {"fieldname": "format_sb", "fieldtype": "Section Break", "label": "Format"},
   {
-   "description": "Leading text, e.g. A3. Left blank the number is digits only.",
+   "description": "Leading text, e.g. RLI. Left blank the number is digits only.",
    "fieldname": "prefix",
    "fieldtype": "Data",
    "label": "Prefix"
@@ -46,6 +47,12 @@
    "fieldtype": "Select",
    "label": "Year Format",
    "options": "YY\nYYYY"
+  },
+  {
+   "description": "Fixed text placed after the year, e.g. TR for RLI2026TR00100.",
+   "fieldname": "text_after_year",
+   "fieldtype": "Data",
+   "label": "Text After Year"
   },
   {
    "default": "-",
@@ -88,7 +95,7 @@
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-09-16 17:00:00.000000",
+ "modified": "2026-11-04 18:00:00.000000",
  "modified_by": "Administrator",
  "module": "A3 Trading Management",
  "name": "Chassis Numbering Rule",

@@ -18,7 +18,7 @@ CONTENT = f"""<table style="width:100%;border-collapse:collapse;border:0">
 		</td>
 		<td style="vertical-align:middle;text-align:right;padding:0;border:0;font-family:{FONT}">
 			<div style="font-size:24px;font-weight:700;letter-spacing:.5px;line-height:1.15">
-				<span style="color:#FF0066">RED</span><span style="color:#00268A"> LINES INTERNATIONAL TRADING LLC</span>
+				<span style="color:#FF0066">RED</span><span style="color:#00268A">LINES INTERNATIONAL TRADING LLC</span>
 			</div>
 			<div style="font-size:14px;font-weight:700;color:#1F497D;margin-top:3px">G4, Bank Street Building, Burjuman, Dubai, UAE</div>
 		</td>
