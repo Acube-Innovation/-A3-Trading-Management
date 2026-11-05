@@ -17,13 +17,13 @@
 {%- if material_request %}
 <div class="card" style="margin-bottom:14px;border-left:4px solid var(--navy)"><div class="card__body" style="display:flex;justify-content:space-between;align-items:center;gap:12px">
 	<span>Orders made from requisition <b>{{ material_request }}</b></span>
-	<a class="btn btn--outline btn--sm" href="/a3-workshop/purchase-orders">Show all orders</a>
+	<a class="btn btn--outline btn--sm" href="/a3-trading/purchase-orders">Show all orders</a>
 </div></div>
 {%- endif %}
 <div class="toolbar">
 	<div class="section-title" style="margin:0">Purchase Orders</div>
 	<div class="toolbar__right">
-		<a class="btn btn--outline btn--sm" href="/a3-workshop/goods-receipt">
+		<a class="btn btn--outline btn--sm" href="/a3-trading/goods-receipt">
 			<i class="fa-solid fa-dolly"></i> Goods Receipt</a>
 		<button type="button" class="btn btn--primary btn--sm" onclick="newPurchaseOrder()">
 			<i class="fa-solid fa-plus"></i> New Order</a>
@@ -49,7 +49,7 @@
 				data-status="{{ o.status or '' }}">
 				<td><b>{{ o.name }}</b></td>
 				<td>{{ o.supplier_name or o.supplier }}</td>
-				<td>{%- for mr in o.material_requests %}<a href="/a3-workshop/goods-receipt?material_request={{ mr | urlencode }}" title="Receipts for this requisition">{{ mr }}</a>{% if not loop.last %}<br>{% endif %}{% else %}<span class="muted">direct</span>{% endfor %}</td>
+				<td>{%- for mr in o.material_requests %}<a href="/a3-trading/goods-receipt?material_request={{ mr | urlencode }}" title="Receipts for this requisition">{{ mr }}</a>{% if not loop.last %}<br>{% endif %}{% else %}<span class="muted">direct</span>{% endfor %}</td>
 				<td>{{ frappe.utils.formatdate(o.transaction_date, "dd MMM yyyy") }}</td>
 				<td>{{ frappe.utils.formatdate(o.schedule_date, "dd MMM yyyy") if o.schedule_date else "—" }}</td>
 				<td class="num">{{ frappe.utils.fmt_money(o.grand_total, currency=o.currency) }}</td>
@@ -81,7 +81,7 @@ function submitPO(name) {
 function receivePO(name) {
 	if (!confirm("Create a goods receipt against " + name + "?")) return;
 	tradingCall("a3_trading_management.api.buying.receive_against_order", { purchase_order: name })
-		.then(function (r) { window.location.href = "/a3-workshop/goods-receipt"; })
+		.then(function (r) { window.location.href = "/a3-trading/goods-receipt"; })
 		.catch(function (e) { alert("Could not receive: " + ((e && e.message) || e)); });
 }
 </script>

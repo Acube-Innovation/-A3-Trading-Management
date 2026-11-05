@@ -17,13 +17,13 @@
 {%- if material_request or purchase_order %}
 <div class="card" style="margin-bottom:14px;border-left:4px solid var(--navy)"><div class="card__body" style="display:flex;justify-content:space-between;align-items:center;gap:12px">
 	<span>Showing {% if material_request %}requisition <b>{{ material_request }}</b>{% else %}order <b>{{ purchase_order }}</b>{% endif %} only — orders awaiting receipt and receipts against it</span>
-	<a class="btn btn--outline btn--sm" href="/a3-workshop/goods-receipt">Show all</a>
+	<a class="btn btn--outline btn--sm" href="/a3-trading/goods-receipt">Show all</a>
 </div></div>
 {%- endif %}
 <div class="toolbar">
 	<div class="section-title" style="margin:0">Goods Receipt</div>
 	<div class="toolbar__right">
-		<a class="btn btn--outline btn--sm" href="/a3-workshop/purchase-orders">
+		<a class="btn btn--outline btn--sm" href="/a3-trading/purchase-orders">
 			<i class="fa-solid fa-file-contract"></i> Purchase Orders</a>
 	</div>
 </div>
@@ -39,7 +39,7 @@
 				<tr>
 					<td><b>{{ o.name }}</b></td>
 					<td>{{ o.supplier_name or o.supplier }}</td>
-					<td>{%- for mr in o.material_requests %}<a href="/a3-workshop/purchase-orders?material_request={{ mr | urlencode }}">{{ mr }}</a>{% if not loop.last %}<br>{% endif %}{% else %}<span class="muted">direct</span>{% endfor %}</td>
+					<td>{%- for mr in o.material_requests %}<a href="/a3-trading/purchase-orders?material_request={{ mr | urlencode }}">{{ mr }}</a>{% if not loop.last %}<br>{% endif %}{% else %}<span class="muted">direct</span>{% endfor %}</td>
 					<td>{{ frappe.utils.formatdate(o.schedule_date, "dd MMM yyyy") if o.schedule_date else "—" }}</td>
 					<td class="num">{{ "%.0f%%" | format(o.per_received or 0) }}</td>
 					<td><button class="btn btn--primary btn--sm" onclick="startReceipt('{{ o.name }}')">Receive</button></td>
@@ -70,7 +70,7 @@
 				data-status="{{ r.status or '' }}">
 				<td><b>{{ r.name }}</b></td>
 				<td>{{ r.supplier_name or r.supplier }}</td>
-				<td>{%- for po in r.purchase_orders %}<div>{{ po }}</div>{% endfor %}{%- for mr in r.material_requests %}<div><a href="/a3-workshop/purchase-orders?material_request={{ mr | urlencode }}" style="font-size:12px">{{ mr }}</a></div>{% endfor %}{% if not r.purchase_orders and not r.material_requests %}<span class="muted">direct</span>{% endif %}</td>
+				<td>{%- for po in r.purchase_orders %}<div>{{ po }}</div>{% endfor %}{%- for mr in r.material_requests %}<div><a href="/a3-trading/purchase-orders?material_request={{ mr | urlencode }}" style="font-size:12px">{{ mr }}</a></div>{% endfor %}{% if not r.purchase_orders and not r.material_requests %}<span class="muted">direct</span>{% endif %}</td>
 				<td>{{ frappe.utils.formatdate(r.posting_date, "dd MMM yyyy") }}</td>
 				<td>{%- for i in r["items"][:2] %}{{ i.item_code }}{% if i.serial_no %}
 						<span class="muted" style="font-size:11px">(serialised)</span>{% endif %}{% if not loop.last %}, {% endif %}{%- endfor %}
@@ -109,7 +109,7 @@ function submitGR(name) {
 function billGR(name) {
 	if (!confirm("Raise a purchase invoice against " + name + "?")) return;
 	tradingCall("a3_trading_management.api.buying.bill_against", { purchase_receipt: name })
-		.then(function () { window.location.href = "/a3-workshop/purchase-invoices"; })
+		.then(function () { window.location.href = "/a3-trading/purchase-invoices"; })
 		.catch(function (e) { alert("Could not bill: " + ((e && e.message) || e)); });
 }
 </script>

@@ -19,7 +19,7 @@
 <div class="toolbar">
 	<div class="section-title" style="margin:0">Serial &amp; Chassis Register</div>
 	<div class="toolbar__right">
-		<a class="btn btn--outline btn--sm" href="/a3-workshop/chassis-plate-print">
+		<a class="btn btn--outline btn--sm" href="/a3-trading/chassis-plate-print">
 			<i class="fa-solid fa-print"></i> Chassis Plate Print</a>
 	</div>
 </div>
@@ -55,7 +55,7 @@
 					<td><b>{{ r.chassis_number or "—" }}</b></td>
 					<td>{{ r.serial_no }}</td>
 					<td>{{ r.trailer_type or "—" }}</td>
-					<td>{%- if r.work_order %}<a href="/a3-workshop/manufacturing?wo={{ r.work_order | urlencode }}" data-wo="{{ r.work_order }}">{{ r.work_order }}</a>{% else %}—{% endif %}</td>
+					<td>{%- if r.work_order %}<a href="/a3-trading/manufacturing?wo={{ r.work_order | urlencode }}" data-wo="{{ r.work_order }}">{{ r.work_order }}</a>{% else %}—{% endif %}</td>
 					<td>{{ r.production_stage or "—" }}</td>
 					<td>{{ r.status }}</td>
 					<td>{{ r.warehouse or "—" }}</td>
@@ -123,8 +123,8 @@
 	var modal = document.getElementById("wo-modal"), frame = document.getElementById("wo-frame");
 	function open(wo) {
 		document.getElementById("wo-modal-title").textContent = wo;
-		document.getElementById("wo-modal-full").href = "/a3-workshop/manufacturing?wo=" + encodeURIComponent(wo);
-		frame.src = "/a3-workshop/manufacturing?wo=" + encodeURIComponent(wo) + "&embed=1";
+		document.getElementById("wo-modal-full").href = "/a3-trading/manufacturing?wo=" + encodeURIComponent(wo);
+		frame.src = "/a3-trading/manufacturing?wo=" + encodeURIComponent(wo) + "&embed=1";
 		modal.classList.add("is-open"); document.body.style.overflow = "hidden";
 	}
 	function close() { modal.classList.remove("is-open"); document.body.style.overflow = ""; frame.src = "about:blank"; }

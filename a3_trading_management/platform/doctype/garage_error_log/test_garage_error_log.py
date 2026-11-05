@@ -64,11 +64,11 @@ class TestGarageErrorLog(FrappeTestCase):
 	def test_repeat_collapses_onto_the_open_row(self):
 		first = log_client_error(
 			error="ZZ repeated fault", error_type="TypeError",
-			page_url="http://x/a3-workshop/vehicles?q=1", source_file="v.js", line_no=7,
+			page_url="http://x/a3-trading/vehicles?q=1", source_file="v.js", line_no=7,
 		)
 		second = log_client_error(
 			error="ZZ repeated fault", error_type="TypeError",
-			page_url="http://x/a3-workshop/vehicles?q=2", source_file="v.js", line_no=7,
+			page_url="http://x/a3-trading/vehicles?q=2", source_file="v.js", line_no=7,
 		)
 		self.assertEqual(first["name"], second["name"])
 		self.assertEqual(second["occurrences"], 2)
@@ -84,11 +84,11 @@ class TestGarageErrorLog(FrappeTestCase):
 	def test_intake_derives_route_and_browser(self):
 		res = log_client_error(
 			error="ZZ derived fields",
-			page_url="http://127.0.0.1:8000/a3-workshop/front-office?customer=ACME#tab",
+			page_url="http://127.0.0.1:8000/a3-trading/front-office?customer=ACME#tab",
 			user_agent=UA_SAFARI,
 		)
 		doc = frappe.get_doc("Garage Error Log", res["name"])
-		self.assertEqual(doc.page_route, "/a3-workshop/front-office")
+		self.assertEqual(doc.page_route, "/a3-trading/front-office")
 		self.assertEqual(doc.browser, "Safari")
 
 	def test_intake_never_raises_on_bad_input(self):

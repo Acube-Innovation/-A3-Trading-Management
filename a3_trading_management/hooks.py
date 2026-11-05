@@ -44,21 +44,24 @@ override_whitelisted_methods = {
 
 # Portal
 # ------
-home_page = "a3-workshop"
+home_page = "a3-trading"
 # The vehicle register and the workshop-service screens are not part of this
 # product; old links land on the portal home.
 website_redirects = [
-	{"source": r"/a3-workshop/vehicles", "target": "/a3-workshop"},
-	{"source": r"/a3-workshop/vehicle-entry", "target": "/a3-workshop"},
-	{"source": r"/a3-workshop/vehicle-history(-detail|-handover|-print)?", "target": "/a3-workshop"},
-	{"source": r"/a3-workshop/job-cards", "target": "/a3-workshop"},
-	{"source": r"/a3-workshop/job-card(/.*)?", "target": "/a3-workshop"},
-	{"source": r"/a3-workshop/front-office", "target": "/a3-workshop/customers"},
-	{"source": r"/a3-workshop/daily-planner", "target": "/a3-workshop"},
-	{"source": r"/a3-workshop/telecalling", "target": "/a3-workshop"},
-	{"source": r"/a3-workshop/complaints", "target": "/a3-workshop"},
-	{"source": r"/a3-workshop/technician-board", "target": "/a3-workshop"},
-	{"source": r"/a3-workshop/tool-declaration", "target": "/a3-workshop"},
+	# The portal moved from /a3-workshop to /a3-trading: old links and bookmarks
+	# land on the same page under the new address.
+	{"source": r"/a3-workshop(/.*)?", "target": r"/a3-trading\1"},
+	{"source": r"/a3-trading/vehicles", "target": "/a3-trading"},
+	{"source": r"/a3-trading/vehicle-entry", "target": "/a3-trading"},
+	{"source": r"/a3-trading/vehicle-history(-detail|-handover|-print)?", "target": "/a3-trading"},
+	{"source": r"/a3-trading/job-cards", "target": "/a3-trading"},
+	{"source": r"/a3-trading/job-card(/.*)?", "target": "/a3-trading"},
+	{"source": r"/a3-trading/front-office", "target": "/a3-trading/customers"},
+	{"source": r"/a3-trading/daily-planner", "target": "/a3-trading"},
+	{"source": r"/a3-trading/telecalling", "target": "/a3-trading"},
+	{"source": r"/a3-trading/complaints", "target": "/a3-trading"},
+	{"source": r"/a3-trading/technician-board", "target": "/a3-trading"},
+	{"source": r"/a3-trading/tool-declaration", "target": "/a3-trading"},
 ]
 
 # Fixtures
@@ -92,8 +95,14 @@ doc_events = {
 		"validate": "a3_trading_management.integrations.uae_vat.sales_invoice_validate",
 	},
 	"Purchase Invoice": {
-		"before_validate": "a3_trading_management.integrations.uae_vat.purchase_invoice_before_validate",
+		"before_validate": [
+			"a3_trading_management.integrations.uae_vat.purchase_invoice_before_validate",
+			# Cut material (wire, rod): one row, one batch per piece received.
+			"a3_trading_management.api.cut_material.split_receipt_rows",
+		],
 		"validate": "a3_trading_management.integrations.uae_vat.purchase_invoice_validate",
+		# A bill with no supplier invoice no, a repeated one, or stock that was never received.
+		"before_submit": "a3_trading_management.integrations.uae_vat.purchase_invoice_before_submit",
 	},
 	# Items are numbered from a series while Item Code stays a typeable field.
 	"Item": {
@@ -112,13 +121,20 @@ doc_events = {
 		"on_update_after_submit": "a3_trading_management.serial_control.sync_stage",
 		"on_cancel": "a3_trading_management.serial_control.on_work_order_cancel",
 	},
+	"Purchase Receipt": {
+		"before_validate": "a3_trading_management.api.cut_material.split_receipt_rows",
+	},
 	# Task 14: a purchase order cannot go to a supplier whose papers have lapsed.
 	"Purchase Order": {
 		"validate": "a3_trading_management.api.buying.block_non_compliant_supplier",
 	},
 	# Task 9: the Manufacture entry is when the trailer really enters stock.
 	"Stock Entry": {
-		"before_validate": "a3_trading_management.serial_control.set_stock_entry_type",
+		"before_validate": [
+			"a3_trading_management.serial_control.set_stock_entry_type",
+			# Cut material: take the shortest piece long enough when none is chosen.
+			"a3_trading_management.api.cut_material.apply_best_fit",
+		],
 		"on_submit": "a3_trading_management.serial_control.on_manufacture_entry",
 	},
 	# Task 23: a dispatched trailer has left the yard and has a new owner.

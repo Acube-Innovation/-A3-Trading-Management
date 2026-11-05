@@ -111,8 +111,8 @@ AUTOMATIC_ROLES = ("Administrator", "Guest", "All", "Desk User")
 
 
 def setup():
-	if not frappe.db.exists("DocType", "Job Requisition"):
-		return  # Frappe HR is not installed; staff requests and overtime need it
+	# Runs with or without Frappe HR: every doctype below is skipped when the site
+	# does not have it (staff requests need Frappe HR; the rest does not).
 	ensure_role()
 	p = plan()
 	for doctype, fieldname in p["unrequire"]:

@@ -137,7 +137,7 @@ a3_trading_management/
   fixtures/                custom fields (Supplier compliance, Work Order stage, Customer CRM,
                            Employee signature), property setters, one client script,
                            the Sales Order print format, two roles
-  www/a3-workshop/         the portal: home, customers, manufacturing, serial register,
+  www/a3-trading/         the portal: home, customers, manufacturing, serial register,
                            chassis plates, suppliers, transactions + 9 screens, live stock,
                            the work-order traveler print
   templates/               the portal shell, macros, print base;  public/scss/  the stylesheet

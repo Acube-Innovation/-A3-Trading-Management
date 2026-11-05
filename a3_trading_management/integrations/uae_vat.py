@@ -8,6 +8,7 @@ or in code therefore never reached the report.
 """
 
 import frappe
+from frappe import _
 from frappe.utils import flt
 
 
@@ -64,6 +65,47 @@ def purchase_invoice_validate(doc, method=None):
 	copied = doc.get("is_return") and current > 0
 	if not current or was_auto or copied:
 		doc.recoverable_standard_rated_expenses = purchase_vat(doc)
+
+
+def purchase_invoice_before_submit(doc, method=None):
+	"""Refuse a bill that would put a wrong figure in box 9 (or the stock ledger).
+
+	Box 9 counts every posted bill carrying recoverable VAT, so a test or duplicate
+	bill goes straight into the return. ACC-PINV-2026-00010 was one: no supplier
+	invoice number, and a stock item billed without a receipt or Update Stock, which
+	debited Stock Received But Not Billed for goods that never arrived.
+	"""
+	if doc.get("is_return"):
+		return
+
+	if _is_uae(doc.company) and not doc.get("reverse_charge") == "Y":
+		missing = [label for field, label in (("bill_no", _("Supplier Invoice No")),
+			("bill_date", _("Supplier Invoice Date"))) if not doc.get(field)]
+		if missing:
+			frappe.throw(_("Enter the {0} from the supplier's tax invoice before posting {1}. "
+				"Input VAT can only be claimed against a supplier tax invoice.").format(
+				_(" and ").join(missing), doc.name), title=_("Supplier Invoice Missing"))
+
+	if doc.get("bill_no"):
+		duplicate = frappe.db.get_value("Purchase Invoice", {
+			"supplier": doc.supplier, "bill_no": doc.bill_no.strip(), "docstatus": 1,
+			"is_return": 0, "name": ("!=", doc.name),
+		})
+		if duplicate:
+			frappe.throw(_("Supplier invoice {0} from {1} is already posted as {2}. "
+				"Posting it again would claim its VAT twice.").format(
+				frappe.bold(doc.bill_no), doc.supplier, frappe.bold(duplicate)),
+				title=_("Duplicate Supplier Invoice"))
+
+	if not doc.get("update_stock"):
+		unreceived = [row.item_code for row in doc.items
+			if not (row.get("purchase_receipt") or row.get("purchase_order")) and row.item_code
+			and frappe.get_cached_value("Item", row.item_code, "is_stock_item")]
+		if unreceived:
+			frappe.throw(_("{0}: stock item(s) {1} are not linked to a Purchase Receipt or Order. "
+				"Tick Update Stock to receive them on this invoice, or bill against the receipt.").format(
+				doc.name, ", ".join(frappe.bold(i) for i in unreceived)),
+				title=_("Goods Not Received"))
 
 
 def _uae_vat_templates():

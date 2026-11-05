@@ -22,4 +22,5 @@ def get_context(context):
 		from a3_trading_management.api.supervisor_portal import home_counters
 
 		context.sup_counters = home_counters()
+		context.has_hr = bool(frappe.db.exists("DocType", "Job Requisition"))
 	return context

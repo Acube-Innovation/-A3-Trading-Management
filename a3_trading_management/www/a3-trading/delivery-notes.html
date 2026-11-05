@@ -22,7 +22,7 @@
 <div class="toolbar">
 	<div class="section-title" style="margin:0">Delivery Notes</div>
 	<div class="toolbar__right">
-		<a class="btn btn--outline btn--sm" href="/a3-workshop/awaiting-dispatch">
+		<a class="btn btn--outline btn--sm" href="/a3-trading/awaiting-dispatch">
 			<i class="fa-solid fa-hourglass-half"></i> Awaiting Dispatch</a>
 	</div>
 </div>
@@ -57,7 +57,7 @@
 		{%- endfor %}
 		</tbody>
 	</table>
-	{%- else %}<div class="empty">Nothing dispatched yet. Dispatch an order from <a href="/a3-workshop/awaiting-dispatch">Awaiting Dispatch</a>.</div>{% endif %}
+	{%- else %}<div class="empty">Nothing dispatched yet. Dispatch an order from <a href="/a3-trading/awaiting-dispatch">Awaiting Dispatch</a>.</div>{% endif %}
 </div></div>
 
 {{ filter_script() }}
@@ -68,7 +68,7 @@ function invoice(dn) {
 	tradingCall("a3_trading_management.api.selling.invoice_delivery", { delivery_note: dn })
 		.then(function () {
 			alert("Sales invoice created, carrying the serial and chassis number. It is on the Sales Invoices screen.");
-			location.href = "/a3-workshop/sales-invoices";
+			location.href = "/a3-trading/sales-invoices";
 		})
 		.catch(function (err) { alert("Could not complete that: " + ((err && err.message) || err)); });
 }

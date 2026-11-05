@@ -3,7 +3,7 @@
 
 {% from "templates/macros/trading.html" import doc_modals, call_method_js %}
 {% block page_content %}
-{#- Whole board arrives from the page controller (www/a3-workshop/live_stock.py ->
+{#- Whole board arrives from the page controller (www/a3-trading/live_stock.py ->
     a3_trading_management.api.live_stock.get_stock_board). Read-only review page; the only
     action — "Request Selected" on the low-stock board — reuses the existing
     a3_trading_management.api.live_stock.create_material_request endpoint.
@@ -140,7 +140,7 @@
 					<td>{{ u.trailer_type or "—" }}</td>
 					<td>{{ wh }}</td>
 					<td>{{ u.production_stage or "—" }}</td>
-					<td><a class="btn btn--outline btn--sm" href="/a3-workshop/serial-register?q={{ u.chassis_number | urlencode }}">Open</a></td>
+					<td><a class="btn btn--outline btn--sm" href="/a3-trading/serial-register?q={{ u.chassis_number | urlencode }}">Open</a></td>
 				</tr>
 			{%- else %}
 				<tr><td colspan="5" class="empty">No finished trailers in stock. They appear here once a work order reaches Delivery.</td></tr>

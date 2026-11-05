@@ -19,7 +19,7 @@
 <div class="toolbar">
 	<div class="section-title" style="margin:0">Awaiting Dispatch</div>
 	<div class="toolbar__right">
-		<a class="btn btn--outline btn--sm" href="/a3-workshop/sales-orders">
+		<a class="btn btn--outline btn--sm" href="/a3-trading/sales-orders">
 			<i class="fa-solid fa-cart-shopping"></i> Sales Orders</a>
 	</div>
 </div>
@@ -65,7 +65,7 @@ function dispatch(so, serials) {
 		.then(function (r) {
 			var dn = r && (r.delivery_note || r.name);
 			alert("Delivery note " + (dn || "") + " created. It is on the Delivery Notes screen to submit and invoice.");
-			location.href = "/a3-workshop/delivery-notes";
+			location.href = "/a3-trading/delivery-notes";
 		})
 		.catch(function (err) { alert("Could not complete that: " + ((err && err.message) || err)); });
 }

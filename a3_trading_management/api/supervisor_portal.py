@@ -193,7 +193,7 @@ def submit_stock_move(name):
 @frappe.whitelist()
 def list_boms(limit=200):
 	return rows("BOM", ["name", "item", "item_name", "quantity", "is_active", "is_default", "docstatus", "owner",
-	                    "modified"], filters={"docstatus": ["<", 2]}, limit=limit, order_by="modified desc")
+	                    "modified", "total_cost"], filters={"docstatus": ["<", 2]}, limit=limit, order_by="modified desc")
 
 
 @frappe.whitelist()
@@ -292,22 +292,36 @@ def projected_stock(warehouse=None):
 
 
 def home_counters():
-	"""The Desk workspace's counters and a few more, for the portal home."""
+	"""The Desk workspace's counters and a few more, for the portal home. A counter
+	whose doctype is not on the site (Frappe HR not installed, migrate not run yet)
+	is left out rather than breaking the page."""
+	try:
+		return _home_counters()
+	except Exception:
+		frappe.log_error(title="Supervisor home counters", message=frappe.get_traceback())
+		frappe.db.rollback()
+		return []
+
+
+def _home_counters():
 	from frappe.utils import get_first_day
 
 	month_start = get_first_day(nowdate())
-	return [
+	cards = [
 		{"label": "Open Work Orders", "value": frappe.db.count("Work Order", {"docstatus": 1, "status": ["in", ["Not Started", "In Process"]]}),
-		 "sub": "Not started or in process", "route": "/a3-workshop/manufacturing"},
+		 "sub": "Not started or in process", "route": "/a3-trading/manufacturing"},
 		{"label": "Pending Material Requests", "value": frappe.db.count("Material Request", {"docstatus": 1, "status": ["in", ["Pending", "Partially Ordered"]]}),
-		 "sub": "Waiting for Purchase", "route": "/a3-workshop/purchase-requisitions"},
+		 "sub": "Waiting for Purchase", "route": "/a3-trading/purchase-requisitions"},
 		{"label": "Overtime This Month", "value": "{:.2f} h".format(flt(frappe.db.sql(
 			"select coalesce(sum(hours), 0) from `tabEmployee Overtime` where docstatus = 1 and overtime_date >= %s",
-			month_start)[0][0])), "sub": "Submitted hours", "route": "/a3-workshop/overtime"},
-		{"label": "Staff Requests Pending", "value": frappe.db.count("Job Requisition", {"status": "Pending"}),
-		 "sub": "Waiting for HR", "route": "/a3-workshop/staff-requests"},
+			month_start)[0][0])), "sub": "Submitted hours", "route": "/a3-trading/overtime"},
+		# Staff requests need Frappe HR.
+		*([{"label": "Staff Requests Pending", "value": frappe.db.count("Job Requisition", {"status": "Pending"}),
+		    "sub": "Waiting for HR", "route": "/a3-trading/staff-requests"}]
+		  if frappe.db.exists("DocType", "Job Requisition") else []),
 		{"label": "Draft BOMs", "value": frappe.db.count("BOM", {"docstatus": 0}), "sub": "Waiting for the manager",
-		 "route": "/a3-workshop/boms"},
+		 "route": "/a3-trading/boms"},
 		{"label": "Draft Quotations", "value": frappe.db.count("Quotation", {"docstatus": 0}), "sub": "Waiting for Sales",
-		 "route": "/a3-workshop/quotations"},
+		 "route": "/a3-trading/quotations"},
 	]
+	return cards

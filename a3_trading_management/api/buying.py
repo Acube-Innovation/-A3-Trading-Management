@@ -342,8 +342,9 @@ def list_purchase_invoices(search=None, status=None, limit=200):
 	return rows(
 		"Purchase Invoice",
 		["name", "supplier", "supplier_name", "posting_date", "due_date", "status",
-		 "docstatus", "grand_total", "outstanding_amount", "currency", "custom_approval_hold"],
-		filters=filters, search=search, search_fields=["name", "supplier", "supplier_name"],
+		 "docstatus", "grand_total", "outstanding_amount", "currency", "custom_approval_hold",
+		 "bill_no", "bill_date"],
+		filters=filters, search=search, search_fields=["name", "supplier", "supplier_name", "bill_no"],
 		limit=limit,
 	)
 
@@ -389,10 +390,19 @@ def set_invoice_hold(name, hold=1, reason=None):
 
 
 @frappe.whitelist()
-def approve_purchase_invoice(name):
-	"""Approval is what posts the bill — refused while it is on hold."""
+def approve_purchase_invoice(name, bill_no=None, bill_date=None):
+	"""Approval is what posts the bill — refused while it is on hold. The supplier's
+	invoice no and date come in here, as a bill raised from a receipt has neither."""
 	if frappe.db.get_value("Purchase Invoice", name, "custom_approval_hold"):
 		frappe.throw(_("{0} is on hold. Release the hold before approving it.").format(name))
+	if bill_no or bill_date:
+		frappe.has_permission("Purchase Invoice", "write", doc=name, throw=True)
+		doc = frappe.get_doc("Purchase Invoice", name)
+		if bill_no:
+			doc.bill_no = bill_no.strip()
+		if bill_date:
+			doc.bill_date = getdate(bill_date)
+		doc.save()
 	return submit_document("Purchase Invoice", name)
 
 

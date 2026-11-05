@@ -1,5 +1,6 @@
-"""Printable Work Order traveler for the fabrication floor (?workorder=<name>):
-stages, materials, operations and the stage history."""
+"""Printable sheets on the letter head: the Work Order traveler for the fabrication
+floor (?workorder=<name>: stages, materials, operations, stage history) and the
+Quality Inspection report (?qi=<name>)."""
 
 import frappe
 from frappe.utils import flt, formatdate, format_datetime, now_datetime
@@ -24,6 +25,8 @@ def get_context(context):
 	context.printed_by = frappe.db.get_value("User", frappe.session.user, "full_name") or frappe.session.user
 	if fd.get("workorder"):
 		_workorder(context, fd.get("workorder").strip())
+	elif fd.get("qi"):
+		_quality_inspection(context, fd.get("qi").strip())
 	else:
 		context.mode = "none"
 		context.title = "Print"
@@ -70,3 +73,15 @@ def _workorder(context, name):
 			for h in (doc.get("custom_stage_history") or [])
 		],
 	}
+
+
+def _quality_inspection(context, name):
+	from a3_trading_management.api.quality import get_inspection
+
+	if not frappe.db.exists("Quality Inspection", name):
+		context.mode = "none"
+		context.title = "Print"
+		return
+	context.mode = "qi"
+	context.title = f"Quality Inspection {name}"
+	context.qi = get_inspection(name)

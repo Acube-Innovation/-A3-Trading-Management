@@ -43,7 +43,7 @@
 					{%- if r["items"] | length > 3 %} <span class="muted">+{{ (r["items"] | length) - 3 }} more</span>{% endif %}</td>
 				<td>{{ status_pill(r.status, r.docstatus) }}</td>
 				<td class="num">{{ "%.0f%%" | format(r.per_ordered or 0) }}
-					{%- for po in r.purchase_orders %}<div><a href="/a3-workshop/purchase-orders?material_request={{ r.name | urlencode }}" style="font-size:12px">{{ po }}</a></div>{% endfor %}</td>
+					{%- for po in r.purchase_orders %}<div><a href="/a3-trading/purchase-orders?material_request={{ r.name | urlencode }}" style="font-size:12px">{{ po }}</a></div>{% endfor %}</td>
 				<td style="white-space:nowrap">
 					{%- if r.docstatus == 0 %}
 					<button class="btn btn--primary btn--sm" onclick="approveReq('{{ r.name }}')">Approve</button>

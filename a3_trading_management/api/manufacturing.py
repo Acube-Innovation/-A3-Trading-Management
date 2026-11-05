@@ -1,7 +1,7 @@
 """Manufacturing facade (a3_trading_management.api.manufacturing.*).
 
 Backs the Workshop Manufacturing page (a3_trading_management
-www/a3-workshop/manufacturing.html and its mirror in a3_workshop_management).
+www/a3-trading/manufacturing.html and its mirror in a3_workshop_management).
 
 The page produces stock by manufacturing an Item: pick an Item that has an
 active BOM, its default BOM auto-loads, a Work Order is created (kept in Draft),
@@ -521,16 +521,20 @@ def create_bom(item, items, operations=None, quantity=1):
     of `item`, and optionally the operations with minutes. It becomes the item's
     default BOM, so the work order form picks it straight up. Someone who may not
     submit a BOM (the Supervisor) gets a draft instead, for the manager to approve."""
-    frappe.has_permission("BOM", "create", throw=True)
-    can_submit = frappe.has_permission("BOM", "submit")
-    if not item or not frappe.db.exists("Item", item):
-        frappe.throw(_("Choose the item this BOM builds"))
+    return save_bom(item, items, operations, quantity, submit=1, set_default=1)
+
+
+def _bom_material_rows(item, items):
     rows = items if isinstance(items, list) else json.loads(items or "[]")
     rows = [r for r in rows if (r.get("item_code") or "").strip() and flt(r.get("qty")) > 0]
     if not rows:
         frappe.throw(_("Add at least one raw material with a quantity"))
     if any(r["item_code"] == item for r in rows):
         frappe.throw(_("{0} cannot be a raw material of its own BOM").format(item))
+    return rows
+
+
+def _bom_operation_rows(operations):
     ops = operations if isinstance(operations, list) else json.loads(operations or "[]")
     ops = [o for o in ops if (o.get("operation") or "").strip()]
     for o in ops:
@@ -541,18 +545,56 @@ def create_bom(item, items, operations=None, quantity=1):
             "Operation", o["operation"].strip(), "workstation"
         ):
             frappe.throw(_("Choose a workstation for operation {0}").format(o["operation"]))
+    return ops
 
-    bom = frappe.new_doc("BOM")
+
+def _conversion_factor(item_code, uom):
+    """Stock units in one `uom` of the item (1 for its stock UOM)."""
+    from erpnext.stock.get_item_details import get_conversion_factor
+
+    return flt(get_conversion_factor(item_code, uom).get("conversion_factor")) or 1
+
+
+@frappe.whitelist()
+def save_bom(item, items, operations=None, quantity=1, name=None, submit=0, set_default=1):
+    """Create a BOM, or rewrite a draft one (`name`), from the BOM form.
+
+    Material rows are {item_code, qty, uom}: a row in another unit than the item's
+    stock UOM (2 Meter of an item kept in Meter, or bought in Roll) is costed through
+    the item's UOM conversion. With `submit`, someone allowed to submit a BOM gets it
+    submitted (and made the item's default with `set_default`); anyone else gets a
+    draft for the manager. A submitted BOM is never rewritten: copy it instead."""
+    can_submit = frappe.has_permission("BOM", "submit")
+    if not item or not frappe.db.exists("Item", item):
+        frappe.throw(_("Choose the item this BOM builds"))
+    rows = _bom_material_rows(item, items)
+    ops = _bom_operation_rows(operations)
+
+    if name:
+        bom = frappe.get_doc("BOM", name)
+        bom.check_permission("write")
+        if bom.docstatus != 0:
+            frappe.throw(_("{0} is approved and cannot be changed. Copy it to make a new version.").format(name))
+        bom.set("items", [])
+        bom.set("operations", [])
+    else:
+        frappe.has_permission("BOM", "create", throw=True)
+        bom = frappe.new_doc("BOM")
+        bom.company = _current_company()
+        bom.currency = _company_currency(bom.company)
+        bom.rm_cost_as_per = "Valuation Rate"
+        bom.is_active = 1
     bom.item = item
-    bom.company = _current_company()
     bom.quantity = flt(quantity) or 1
-    bom.currency = _company_currency(bom.company)
-    bom.rm_cost_as_per = "Valuation Rate"
-    bom.is_active = 1
-    bom.is_default = 1 if can_submit else 0
+    bom.is_default = 1 if (can_submit and cint(submit) and cint(set_default)) else 0
     bom.with_operations = 1 if ops else 0
     for r in rows:
-        bom.append("items", {"item_code": r["item_code"], "qty": flt(r["qty"])})
+        stock_uom = frappe.get_cached_value("Item", r["item_code"], "stock_uom")
+        uom = (r.get("uom") or "").strip() or stock_uom
+        bom.append("items", {
+            "item_code": r["item_code"], "qty": flt(r["qty"]), "uom": uom,
+            "conversion_factor": 1 if uom == stock_uom else _conversion_factor(r["item_code"], uom),
+        })
     for o in ops:
         operation = _ensure_operation(o["operation"])
         workstation = _ensure_workstation(
@@ -562,11 +604,82 @@ def create_bom(item, items, operations=None, quantity=1):
             "operation": operation, "workstation": workstation, "time_in_mins": flt(o["time_in_mins"]),
             "custom_labour": _labour(o.get("labour")),
         })
-    bom.insert()
-    if can_submit:
+    bom.save()
+    if can_submit and cint(submit):
         bom.submit()
     frappe.db.commit()
-    return {"name": bom.name, "submitted": bool(can_submit), "total_cost": _money(bom.total_cost, bom.currency)}
+    return {"name": bom.name, "submitted": bom.docstatus == 1, "total_cost": _money(bom.total_cost, bom.currency)}
+
+
+@frappe.whitelist()
+def get_bom_form(name):
+    """Everything the BOM form shows: header, materials with unit and cost,
+    operations with time and cost, and the cost totals."""
+    bom = frappe.get_doc("BOM", name)
+    bom.check_permission("read")
+    cur = bom.currency or _company_currency(bom.company)
+    return {
+        "name": bom.name, "item": bom.item, "item_name": bom.item_name, "quantity": flt(bom.quantity),
+        "docstatus": bom.docstatus, "is_default": bom.is_default, "is_active": bom.is_active,
+        "can_submit": bool(frappe.has_permission("BOM", "submit")),
+        "items": [{
+            "item_code": i.item_code, "item_name": i.item_name, "qty": flt(i.qty), "uom": i.uom,
+            "stock_uom": i.stock_uom, "conversion_factor": flt(i.conversion_factor) or 1,
+            "rate": flt(i.rate), "amount": flt(i.amount),
+        } for i in bom.items],
+        "operations": [{
+            "operation": o.operation, "workstation": o.workstation, "time_in_mins": flt(o.time_in_mins),
+            "hour_rate": flt(o.hour_rate), "operating_cost": flt(o.operating_cost), "labour": o.get("custom_labour"),
+        } for o in bom.operations],
+        "raw_material_cost": flt(bom.raw_material_cost), "operating_cost": flt(bom.operating_cost),
+        "total_cost": flt(bom.total_cost), "currency": cur,
+    }
+
+
+@frappe.whitelist()
+def get_item_uoms(item):
+    """The units a material can be entered in on a BOM line (its stock UOM first,
+    then its UOM conversions), with the valuation rate per stock unit the BOM
+    costs it at."""
+    from erpnext.manufacturing.doctype.bom.bom import get_valuation_rate
+
+    frappe.has_permission("Item", "read", throw=True)
+    stock_uom = frappe.db.get_value("Item", item, "stock_uom")
+    uoms = [{"uom": stock_uom, "conversion_factor": 1}]
+    for d in frappe.get_all("UOM Conversion Detail", filters={"parent": item, "parenttype": "Item"},
+                            fields=["uom", "conversion_factor"], order_by="idx"):
+        if d.uom != stock_uom:
+            uoms.append({"uom": d.uom, "conversion_factor": flt(d.conversion_factor)})
+    return {
+        "stock_uom": stock_uom, "uoms": uoms,
+        "valuation_rate": get_valuation_rate({"item_code": item, "company": _current_company()}),
+    }
+
+
+@frappe.whitelist()
+def submit_bom(name, set_default=1):
+    """The manager approves a draft BOM, by default making it the item's BOM."""
+    bom = frappe.get_doc("BOM", name)
+    bom.check_permission("submit")
+    bom.is_default = cint(set_default)
+    bom.submit()
+    frappe.db.commit()
+    return {"name": bom.name, "is_default": bom.is_default}
+
+
+@frappe.whitelist()
+def set_default_bom(name):
+    """Make an approved BOM the one new work orders for its item use. ERPNext
+    clears the flag on the item's other BOMs and updates the item's default."""
+    bom = frappe.get_doc("BOM", name)
+    bom.check_permission("submit")
+    if bom.docstatus != 1:
+        frappe.throw(_("Approve {0} before making it the default").format(name))
+    bom.is_active = 1
+    bom.is_default = 1
+    bom.save()
+    frappe.db.commit()
+    return {"name": bom.name}
 
 
 # ---------------------------------------------------------------------------

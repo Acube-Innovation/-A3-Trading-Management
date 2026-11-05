@@ -738,6 +738,6 @@ def _duplicate_bill(ctx):
 
 
 def _finish():
-	frappe.db.set_single_value("Website Settings", "home_page", "a3-workshop")
+	frappe.db.set_single_value("Website Settings", "home_page", "a3-trading")
 	frappe.clear_cache()
 	frappe.db.commit()

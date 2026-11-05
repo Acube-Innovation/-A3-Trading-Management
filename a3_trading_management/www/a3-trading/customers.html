@@ -13,7 +13,7 @@
 	<span class="filter-count">· {{ "{:,}".format(total_customers) }} in total</span>
 	<div class="filter-bar__group">
 		{%- if search %}
-		<a class="btn btn--outline btn--sm" href="/a3-workshop/customers"><i class="fa-solid fa-xmark"></i> Clear</a>
+		<a class="btn btn--outline btn--sm" href="/a3-trading/customers"><i class="fa-solid fa-xmark"></i> Clear</a>
 		{%- endif %}
 		<button type="button" class="btn btn--primary" data-add-customer><i class="fa-solid fa-plus"></i> Add Customer</button>
 	</div>
@@ -42,7 +42,7 @@
 	<div class="empty">
 		<div style="font-weight:700;color:var(--text)">No loaded customer matches these filters</div>
 		<div style="margin-top:6px">All {{ "{:,}".format(total_customers) }} customers are loaded on this page — try widening the filters.</div>
-		<button type="button" class="btn btn--outline btn--sm" style="margin-top:16px" onclick="location.href='/a3-workshop/customers'">
+		<button type="button" class="btn btn--outline btn--sm" style="margin-top:16px" onclick="location.href='/a3-trading/customers'">
 			<i class="fa-solid fa-rotate-left"></i> Clear all filters
 		</button>
 	</div>
@@ -51,7 +51,7 @@
 <div class="card"><div class="card__body">
 	<div class="empty">
 		{%- if search %}
-		No customers match "{{ search }}". <a href="/a3-workshop/customers" style="color:var(--red);font-weight:600">Clear the search</a>.
+		No customers match "{{ search }}". <a href="/a3-trading/customers" style="color:var(--red);font-weight:600">Clear the search</a>.
 		{%- else %}
 		<div style="font-weight:700;color:var(--text)">No customers yet</div>
 		<div style="margin-top:6px">Customers appear here as soon as the first one is registered.</div>
@@ -129,7 +129,7 @@
 			email_id: document.getElementById("cu-email").value,
 			tax_id: document.getElementById("cu-trn").value
 		}).then(function (r) {
-			location.href = "/a3-workshop/customers?q=" + encodeURIComponent(r.customer_name);
+			location.href = "/a3-trading/customers?q=" + encodeURIComponent(r.customer_name);
 		}).catch(function (e) {
 			err.textContent = e.message; err.style.display = "block";
 			btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-check"></i> Save Customer';

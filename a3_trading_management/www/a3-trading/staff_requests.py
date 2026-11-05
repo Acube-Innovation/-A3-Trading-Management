@@ -1,3 +1,4 @@
+import frappe
 from frappe.utils import add_days, nowdate
 
 from a3_trading_management.website_utils import require_login
@@ -7,6 +8,10 @@ no_cache = 1
 
 def get_context(context):
 	require_login(context)
+	if not frappe.db.exists("DocType", "Job Requisition"):
+		# Staff requests are Frappe HR's Job Requisition; without it, go home.
+		frappe.local.flags.redirect_location = "/a3-trading"
+		raise frappe.Redirect
 	context.title = "Staff Requests"
 	context.page_icon = "fa-user-plus"
 	context.subtitle = "People the floor needs; HR approves and sets the pay"

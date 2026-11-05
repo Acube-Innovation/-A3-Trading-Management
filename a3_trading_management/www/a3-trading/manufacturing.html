@@ -148,48 +148,7 @@
 	</div>
 </div>
 
-<!-- New BOM pop-up (opens over the New Work Order modal) -->
-<div class="modal-overlay" id="bom-modal" role="dialog" aria-modal="true">
-	<div class="modal" style="max-width:900px">
-		<div class="modal__head">
-			<div><h3>New BOM</h3><div class="sub" id="bom-sub">The parts list and operations for one build</div></div>
-			<button type="button" class="modal__close" data-close><i class="fa-solid fa-xmark"></i></button>
-		</div>
-		<div class="modal__body">
-			<div class="form-grid">
-				<div class="field">
-					<label>Item this BOM builds</label>
-					<input id="bom-item-label" disabled>
-				</div>
-				<div class="field">
-					<label>Quantity built by this BOM</label>
-					<input type="number" id="bom-qty" value="1" min="1" step="any">
-				</div>
-			</div>
-			<div class="fieldset-title" style="margin-top:14px">Raw materials <span class="req">*</span></div>
-			<table class="mfg-table mfg-etable">
-				<thead><tr><th class="sl">#</th><th>Material</th><th style="width:90px">Qty</th><th style="width:70px">Unit</th><th class="price" style="width:100px">Rate</th><th class="price" style="width:120px">Amount</th><th style="width:40px"></th></tr></thead>
-				<tbody id="bom-rm"></tbody>
-			</table>
-			<button type="button" class="btn btn--sm mfg-btn-red mfg-addrow" id="bom-rm-add"><i class="fa-solid fa-plus"></i> Add material</button>
-
-			<div class="fieldset-title" style="margin-top:18px">Operations <span class="muted price" style="font-weight:400;text-transform:none;letter-spacing:0">(optional — gives the labour cost)</span></div>
-			<table class="mfg-table mfg-etable">
-				<thead><tr><th class="sl">#</th><th>Operation</th><th>Workstation</th><th>Labour</th><th style="width:90px">Hrs</th><th class="price" style="width:100px">Rate / hr</th><th class="price" style="width:120px">Cost</th><th style="width:40px"></th></tr></thead>
-				<tbody id="bom-ops"></tbody>
-			</table>
-			<button type="button" class="btn btn--sm mfg-btn-red mfg-addrow" id="bom-op-add"><i class="fa-solid fa-plus"></i> Add operation</button>
-
-			<div class="totals price" id="bom-totals" style="margin-top:14px"></div>
-		</div>
-		<div class="modal__foot">
-			<button type="button" class="btn btn--outline" data-close>Cancel</button>
-			<button type="button" class="btn btn--primary" id="bom-create"><i class="fa-solid fa-check"></i> Create BOM</button>
-		</div>
-	</div>
-</div>
-
-<!-- New Item pop-up (opens over either modal above) -->
+<!-- New Item pop-up (opens over the New Work Order modal) -->
 <div class="modal-overlay" id="item-modal" role="dialog" aria-modal="true">
 	<div class="modal modal--sm">
 		<div class="modal__head">
@@ -469,7 +428,7 @@
 			'<div class="row-between" style="margin-bottom:14px"><div><div style="font-weight:800;font-size:16px">' + esc(o.item_name) + '</div>' +
 			'<div class="muted">Qty ' + o.qty + ' · ' + esc(o.bom || "") + '</div></div>' +
 			'<div style="display:flex;gap:8px;align-items:center">' +
-			'<a class="btn btn--outline btn--sm" href="/a3-workshop/workshop-print?workorder=' + encodeURIComponent(o.name) + '" target="_blank" rel="noopener" title="Print Traveler"><i class="fa-solid fa-print"></i> Print</a>' +
+			'<a class="btn btn--outline btn--sm" href="/a3-trading/workshop-print?workorder=' + encodeURIComponent(o.name) + '" target="_blank" rel="noopener" title="Print Traveler"><i class="fa-solid fa-print"></i> Print</a>' +
 			'<span class="badge ' + o.badge + '">' + esc(o.status) + '</span></div></div>' +
 			stepperHtml(o) +
 			'<div class="fieldset-title">Work Order</div>' +
@@ -488,7 +447,7 @@
 				["Delivery Status", o.stage === "Delivery" ? "Delivered — in stock" : (o.stage === "QC" ? "Ready for delivery" : "In production")],
 				["Quality Inspection", o.quality ? o.quality.name + " · " + o.quality.status : (o.stage === "QC" ? "Waiting — passed when moved to Delivery" : "—")]
 			]) +
-			(o.stage === "QC" && o.quality && o.quality.status === "Rejected" ? '<div class="mfg-warn"><i class="fa-solid fa-triangle-exclamation"></i> Failed QC. Re-inspect it on the <a href="/a3-workshop/quality">Quality</a> screen before delivery.</div>' : '') +
+			(o.stage === "QC" && o.quality && o.quality.status === "Rejected" ? '<div class="mfg-warn"><i class="fa-solid fa-triangle-exclamation"></i> Failed QC. Re-inspect it on the <a href="/a3-trading/quality">Quality</a> screen before delivery.</div>' : '') +
 			(o.stock_warning ? '<div class="mfg-warn"><i class="fa-solid fa-triangle-exclamation"></i> Stock not posted: ' + esc(o.stock_warning) + '</div>' : '') +
 			actionArea(o) +
 			'<div class="fieldset-title">Stage History</div>' + history;
@@ -686,12 +645,11 @@
 	document.getElementById("new-wo").addEventListener("click", openModal);
 	modal.querySelectorAll("[data-close]").forEach(function (b) { b.addEventListener("click", closeModal); });
 	modal.addEventListener("click", function (e) { if (e.target === modal) closeModal(); });
-	// Escape closes only the top pop-up: New Item sits over New BOM, which sits over the work order.
+	// Escape closes only the top pop-up: New Item sits over the work order.
 	document.addEventListener("keydown", function (e) {
 		if (e.key !== "Escape") return;
 		if (masterModal.classList.contains("is-open")) closeMasterModal();
 		else if (itemModal.classList.contains("is-open")) closeItemModal();
-		else if (bomModal.classList.contains("is-open")) closeBomModal();
 		else closeModal();
 	});
 
@@ -782,13 +740,19 @@
 			document.getElementById("wo-bom-new").style.display = "";
 			document.getElementById("wo-bom-none").style.display = boms.length ? "none" : "block";
 			previewBom(); checkMaterial();
-			if (!boms.length && offerNew) openBomModal(item);
+			if (!boms.length && offerNew) openBomScreen(item);
 		});
+	}
+	// A new BOM is made on the BOMs screen's full form, which comes back to this
+	// New Work Order with the item and its new BOM picked.
+	function openBomScreen(item) {
+		location.href = "/a3-trading/boms?new_bom=" + encodeURIComponent(item) +
+			"&return=" + encodeURIComponent("/a3-trading/manufacturing?new_wo=" + encodeURIComponent(item));
 	}
 	function newBomForCurrentItem(e) {
 		e.preventDefault();
 		var item = document.querySelector('[name=wo_item_code]').value;
-		if (item) openBomModal(item);
+		if (item) openBomScreen(item);
 	}
 	document.getElementById("wo-bom-new").addEventListener("click", newBomForCurrentItem);
 	document.querySelector("#wo-bom-none [data-new-bom]").addEventListener("click", newBomForCurrentItem);
@@ -814,7 +778,7 @@
 		var item = document.querySelector('[name=wo_item_code]').value;
 		var bom = document.getElementById("wo-bom").value;
 		if (!item) { alert("Pick an item to manufacture."); return; }
-		if (!bom) { openBomModal(item); return; }
+		if (!bom) { openBomScreen(item); return; }
 		var btn = this; btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Creating…';
 		callMethod(API + "create_work_order", {
 			item: item, bom: bom,
@@ -962,164 +926,6 @@
 			.then(function () { btn.disabled = false; });
 	});
 
-	// ---- New BOM pop-up ------------------------------------------------
-	var bomModal = document.getElementById("bom-modal");
-	var bomItem = null, bomRM = [], bomOps = [];
-	function openBomModal(item) {
-		loadMasters().then(function (m) {
-			bomItem = item;
-			bomRM = [{}]; bomOps = [{}];
-			document.getElementById("bom-qty").value = 1;
-			document.getElementById("bom-item-label").value = (document.getElementById("wo-item-input").value || item) + " (" + item + ")";
-			document.getElementById("bom-sub").textContent = "Parts list and operations for " + item;
-			renderBom();
-			bomModal.classList.add("is-open");
-		}).catch(function (e) { alert(e.message); });
-	}
-	function closeBomModal() { bomModal.classList.remove("is-open"); }
-	bomModal.querySelectorAll("[data-close]").forEach(function (b) { b.addEventListener("click", closeBomModal); });
-	bomModal.addEventListener("click", function (e) { if (e.target === bomModal) closeBomModal(); });
-
-	// A row picked from the list carries its rate; a typed-in workstation is looked up.
-	function rateOf(o) { return o.hour_rate != null ? Number(o.hour_rate) || 0 : hourRate(o.workstation); }
-	function hourRate(ws) {
-		var w = ((masters && masters.workstations) || []).filter(function (x) { return x.name === ws; })[0];
-		return w ? Number(w.hour_rate) || 0 : 0;
-	}
-	function renderBom() {
-		document.getElementById("bom-rm").innerHTML = bomRM.map(function (r, i) {
-			return '<tr><td class="sl">' + (i + 1) + '</td>' +
-				'<td><input class="cell-inp bom-rm-ac" data-i="' + i + '" value="' + esc(r.item_name || "") + '" placeholder="Search a material, or type a new one…"></td>' +
-				'<td><input class="cell-inp" type="number" min="0" step="any" data-rm-qty="' + i + '" value="' + esc(r.qty || "") + '"></td>' +
-				'<td class="muted">' + esc(r.uom || "") + '</td>' +
-				'<td class="num' + PCLS + '">' + (r.item_code ? (Number(r.rate) || 0).toFixed(2) : "") + '</td>' +
-				'<td class="num' + PCLS + '" data-rm-amt="' + i + '">' + (r.item_code ? money((Number(r.rate) || 0) * (Number(r.qty) || 0)) : "") + '</td>' +
-				'<td><button type="button" class="mfg-row-x" data-rm-del="' + i + '"><i class="fa-solid fa-trash"></i></button></td></tr>';
-		}).join("");
-		document.getElementById("bom-ops").innerHTML = bomOps.map(function (o, i) {
-			return '<tr><td class="sl">' + (i + 1) + '</td>' +
-				'<td><input class="cell-inp" data-op-name="' + i + '" value="' + esc(o.operation || "") + '" placeholder="e.g. Welding & Fabrication"></td>' +
-				'<td><input class="cell-inp" data-op-ws="' + i + '" value="' + esc(o.workstation || "") + '" placeholder="Workstation"></td>' +
-				'<td>' + labourSelect('data-op-lab="' + i + '"', o.labour) + '</td>' +
-				'<td><input class="cell-inp" type="number" min="0" step="0.25" data-op-min="' + i + '" value="' + (o.time_in_mins ? toHrs(o.time_in_mins) : "") + '"></td>' +
-				'<td class="num' + PCLS + '">' + (o.workstation ? rateOf(o).toFixed(2) : "") + '</td>' +
-				'<td class="num' + PCLS + '" data-op-cost="' + i + '">' + (o.workstation ? money(rateOf(o) * (Number(o.time_in_mins) || 0) / 60) : "") + '</td>' +
-				'<td><button type="button" class="mfg-row-x" data-op-del="' + i + '"><i class="fa-solid fa-trash"></i></button></td></tr>';
-		}).join("");
-		wireBom();
-		bomTotals();
-	}
-	function bomTotals() {
-		var rm = bomRM.reduce(function (s, r) { return s + (Number(r.rate) || 0) * (Number(r.qty) || 0); }, 0);
-		var op = bomOps.reduce(function (s, o) { return s + rateOf(o) * (Number(o.time_in_mins) || 0) / 60; }, 0);
-		var qty = Number(document.getElementById("bom-qty").value) || 1;
-		document.getElementById("bom-totals").innerHTML =
-			'<div class="row-between"><span class="muted">Raw material</span><span>' + money(rm) + '</span></div>' +
-			'<div class="row-between"><span class="muted">Operating</span><span>' + money(op) + '</span></div>' +
-			'<div class="row-between grand"><span>Est. cost' + (qty !== 1 ? ' for ' + qty : ' per unit') + '</span><span>' + money(rm + op) + '</span></div>';
-	}
-	function wireBom() {
-		var body = document.getElementById("bom-rm");
-		body.querySelectorAll(".bom-rm-ac").forEach(function (inp) {
-			var i = +inp.dataset.i;
-			attachAC(inp, function (q) {
-				return callMethod(API + "search_raw_items", { search: q, limit: 10 }).then(function (rows) {
-					return withCreate((rows || []).filter(function (it) { return it.name !== bomItem; }).map(function (it) {
-						return { label: it.item_name || it.name, sub: it.name + " · " + (it.stock_uom || ""), value: it.name, uom: it.stock_uom, rate: it.valuation_rate };
-					}), q, "Create new material");
-				});
-			}, function (it) {
-				if (it.create) {
-					openItemModal({ name: it.value, trailer: false }, function (created) {
-						bomRM[i] = { item_code: created.name, item_name: created.item_name, uom: created.stock_uom, rate: created.valuation_rate, qty: bomRM[i].qty || 1 };
-						renderBom();
-					});
-					return;
-				}
-				bomRM[i] = { item_code: it.value, item_name: it.label, uom: it.uom, rate: it.rate, qty: bomRM[i].qty || 1 };
-				renderBom();
-			});
-		});
-		body.querySelectorAll("[data-rm-qty]").forEach(function (inp) {
-			inp.addEventListener("input", function () {
-				var i = +inp.dataset.rmQty, r = bomRM[i]; r.qty = inp.value;
-				var cell = body.querySelector('[data-rm-amt="' + i + '"]');
-				if (cell && r.item_code) cell.textContent = money((Number(r.rate) || 0) * (Number(r.qty) || 0));
-				bomTotals();
-			});
-		});
-		body.querySelectorAll("[data-rm-del]").forEach(function (b) {
-			b.addEventListener("click", function () { bomRM.splice(+b.dataset.rmDel, 1); if (!bomRM.length) bomRM.push({}); renderBom(); });
-		});
-		var ops = document.getElementById("bom-ops");
-		ops.querySelectorAll("[data-op-name]").forEach(function (inp) {
-			var o = bomOps[+inp.dataset.opName];
-			attachOpAC(inp, function (it) {
-				o.operation = it.value;
-				if (it.workstation && !o.workstation) { o.workstation = it.workstation; o.hour_rate = it.hour_rate; }
-				renderBom();
-			});
-			// Typed rather than picked: kept as typed, and created on save.
-			inp.addEventListener("change", function () { o.operation = inp.value.trim(); });
-		});
-		ops.querySelectorAll("[data-op-ws]").forEach(function (inp) {
-			var o = bomOps[+inp.dataset.opWs];
-			attachWsAC(inp, function (it) { o.workstation = it.value; o.hour_rate = it.hour_rate; renderBom(); });
-			inp.addEventListener("change", function () {
-				var v = inp.value.trim();
-				if (v !== o.workstation) { o.workstation = v; o.hour_rate = null; }
-			});
-		});
-		ops.querySelectorAll("[data-op-lab]").forEach(function (sel) {
-			var o = bomOps[+sel.dataset.opLab];
-			sel.addEventListener("change", function () {
-				if (sel.value === "__new__") {
-					sel.value = o.labour || "";
-					openMasterModal("labour", "", function (it) { o.labour = it.value; o.labour_name = it.label; renderBom(); });
-					return;
-				}
-				o.labour = sel.value; o.labour_name = labourName(sel.value);
-			});
-		});
-		ops.querySelectorAll("[data-op-min]").forEach(function (inp) {
-			inp.addEventListener("input", function () {
-				var i = +inp.dataset.opMin, o = bomOps[i]; o.time_in_mins = Math.round((parseFloat(inp.value) || 0) * 60 * 100) / 100;
-				var cell = ops.querySelector('[data-op-cost="' + i + '"]');
-				if (cell && o.workstation) cell.textContent = money(rateOf(o) * (Number(o.time_in_mins) || 0) / 60);
-				bomTotals();
-			});
-		});
-		ops.querySelectorAll("[data-op-del]").forEach(function (b) {
-			b.addEventListener("click", function () { bomOps.splice(+b.dataset.opDel, 1); if (!bomOps.length) bomOps.push({}); renderBom(); });
-		});
-	}
-	document.getElementById("bom-rm-add").addEventListener("click", function () { bomRM.push({}); renderBom(); });
-	document.getElementById("bom-op-add").addEventListener("click", function () { bomOps.push({}); renderBom(); });
-	document.getElementById("bom-qty").addEventListener("input", bomTotals);
-
-	document.getElementById("bom-create").addEventListener("click", function () {
-		var items = bomRM.filter(function (r) { return r.item_code && Number(r.qty) > 0; })
-			.map(function (r) { return { item_code: r.item_code, qty: Number(r.qty) }; });
-		if (!items.length) { alert("Add at least one raw material with a quantity."); return; }
-		var operations = bomOps.filter(function (o) { return o.operation; })
-			.map(function (o) { return { operation: o.operation, workstation: o.workstation || null, labour: o.labour || null, time_in_mins: Number(o.time_in_mins) || 0 }; });
-		if (operations.some(function (o) { return !o.time_in_mins; })) { alert("Give every operation its time in hours."); return; }
-		var noWs = operations.filter(function (o) { return !o.workstation; })[0];
-		if (noWs) { alert("Choose a workstation for " + noWs.operation + "."); return; }
-		var btn = this; btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Creating…';
-		callMethod(API + "create_bom", {
-			item: bomItem, items: items, operations: operations,
-			quantity: Number(document.getElementById("bom-qty").value) || 1
-		}).then(function (r) {
-			closeBomModal();
-			masters = null;   // a typed operation or workstation may now exist
-			// Saved as a draft (the Supervisor): the manager submits it before it can be used.
-			if (!r.submitted) { alert("BOM " + r.name + " is saved as a draft. The production manager approves it; then it can be used on a work order."); return; }
-			if (document.querySelector('[name=wo_item_code]').value === bomItem) loadBoms(bomItem, false, r.name);
-		}).catch(function (e) { alert("Could not create the BOM: " + e.message); })
-			.then(function () { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-check"></i> Create BOM'; });
-	});
-
 	// ---- list selection ------------------------------------------------
 	listEl.addEventListener("click", function (e) {
 		var row = e.target.closest("[data-id]");
@@ -1150,8 +956,24 @@
 		if (o.default_fg_warehouse) fg.value = o.default_fg_warehouse;
 	}).then(function () {
 		// Opened from Home or the Serial Register with ?wo=<name>: land on that order.
-		var want = new URLSearchParams(location.search).get("wo");
+		var params = new URLSearchParams(location.search), want = params.get("wo"), back = params.get("new_wo");
 		if (want) { current = want; return refresh(true).then(function () { return select(want); }); }
+		// Back from the BOMs screen: reopen New Work Order on that item and its new BOM.
+		if (back) {
+			openModal();
+			woItemInput.value = params.get("item_name") || back;
+			document.querySelector('[name=wo_item_code]').value = back;
+			var made = params.get("bom"), approved = params.get("bom_status") === "approved";
+			document.getElementById("wo-item-desc").innerHTML = esc(back) + (made
+				? ' · <span style="color:' + (approved ? '#15803d' : '#8a6100') + ';font-weight:600">' +
+				  (approved ? '<i class="fa-solid fa-circle-check"></i> BOM ' + esc(made) + ' created and selected'
+				            : '<i class="fa-solid fa-hourglass-half"></i> BOM ' + esc(made) + ' saved as a draft; it can be used once approved') + '</span>'
+				: '');
+			// Clean address, so a reload does not reopen the pop-up.
+			history.replaceState(null, "", location.pathname);
+			loadBoms(back, false, made);
+			loadSalesOrders(back);
+		}
 		return refresh();
 	});
 })();

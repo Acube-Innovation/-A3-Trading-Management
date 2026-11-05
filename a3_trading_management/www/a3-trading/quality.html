@@ -637,6 +637,7 @@
 				(rows ? '<table class="qc-lines"><thead><tr><th>Check</th><th>Acceptance</th><th>Reading</th><th>Result</th></tr></thead><tbody>' + rows + "</tbody></table>" : "") +
 				(d.remarks ? '<div style="margin-top:12px"><div class="qc-sub" style="text-transform:uppercase;letter-spacing:.06em">Remarks</div>' + esc(d.remarks) + "</div>" : "") +
 				'<div class="qc-err" id="qv-err"></div>';
+			$("qv-foot").insertAdjacentHTML("beforeend", '<a class="btn btn--primary" target="_blank" rel="noopener" href="/a3-trading/workshop-print?qi=' + encodeURIComponent(d.name) + '"><i class="fa-solid fa-print"></i> Print</a>');
 			if (d.docstatus === 1) {
 				$("qv-foot").insertAdjacentHTML("afterbegin", '<button type="button" class="btn btn--outline" id="qv-cancel" style="margin-right:auto"><i class="fa-solid fa-ban"></i> Cancel inspection</button>');
 				$("qv-cancel").addEventListener("click", function () {

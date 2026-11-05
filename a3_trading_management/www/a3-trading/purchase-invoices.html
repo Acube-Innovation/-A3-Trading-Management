@@ -16,7 +16,7 @@
 <div class="toolbar">
 	<div class="section-title" style="margin:0">Purchase Invoices</div>
 	<div class="toolbar__right">
-		<a class="btn btn--outline btn--sm" href="/a3-workshop/supplier-payments">
+		<a class="btn btn--outline btn--sm" href="/a3-trading/supplier-payments">
 			<i class="fa-solid fa-money-bill-transfer"></i> Payments</a>
 	</div>
 </div>
@@ -51,7 +51,7 @@
 						{%- if i.custom_approval_hold %}
 						<button class="btn btn--outline btn--sm" onclick="setHold('{{ i.name }}', 0)">Release</button>
 						{%- else %}
-						<button class="btn btn--primary btn--sm" onclick="approveInv('{{ i.name }}')">Approve</button>
+						<button class="btn btn--primary btn--sm" onclick="approveInv('{{ i.name }}', '{{ (i.bill_no or '') | e }}', '{{ i.bill_date or '' }}')">Approve</button>
 						<button class="btn btn--outline btn--sm" onclick="setHold('{{ i.name }}', 1)">Hold</button>
 						{%- endif %}
 					{%- elif i.docstatus == 1 and (i.outstanding_amount or 0) > 0 %}
@@ -78,9 +78,15 @@
 {{ call_method_js() }}
 {{ deletion_request_js() }}
 <script>
-function approveInv(name) {
+function approveInv(name, billNo, billDate) {
+	// Input VAT is claimed against the supplier's tax invoice, so posting needs its no and date.
+	billNo = prompt("Approve " + name + " — supplier's invoice no (as printed on their tax invoice):", billNo || "");
+	if (billNo === null) return;
+	billDate = prompt("Supplier's invoice date (YYYY-MM-DD):", billDate || "");
+	if (billDate === null) return;
 	if (!confirm("Approve " + name + "? This posts it to the ledger.")) return;
-	tradingAction("a3_trading_management.api.buying.approve_purchase_invoice", { name: name }, "Invoice approved and posted.");
+	tradingAction("a3_trading_management.api.buying.approve_purchase_invoice",
+		{ name: name, bill_no: billNo, bill_date: billDate }, "Invoice approved and posted.");
 }
 function setHold(name, hold) {
 	var reason = hold ? prompt("Put " + name + " on hold — reason?") : "";

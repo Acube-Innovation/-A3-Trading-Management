@@ -176,6 +176,7 @@ def after_migrate():
 	setup_deletion_workflow()
 	setup_supervisor()
 	setup_letter_head()
+	setup_scrap_warehouse()
 
 
 # Two ready-made checklists, the first of them the default, so a new item is
@@ -221,6 +222,13 @@ def setup_supervisor():
 	from a3_trading_management.setup.supervisor import setup
 
 	setup()
+
+
+def setup_scrap_warehouse():
+	"""Where offcuts of cut material go, still at their value."""
+	from a3_trading_management.api.cut_material import ensure_scrap_warehouse
+
+	ensure_scrap_warehouse()
 
 
 def setup_letter_head():

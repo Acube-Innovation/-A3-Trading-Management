@@ -22,7 +22,7 @@ from frappe import _
 from a3_trading_management.setup.supervisor import is_supervisor_only
 
 PORTAL_API = "a3_trading_management.api."
-PORTAL_HOME = "/a3-workshop"
+PORTAL_HOME = "/a3-trading"
 HR_ROLES = ("HR Manager", "HR User", "System Manager")
 
 PORTAL_PAGES = {
@@ -40,6 +40,9 @@ PORTAL_API_ALLOWED = {
 	"_common": {"search_items", "search_party", "list_warehouses", "get_document"},
 	"buying": {"list_requisitions", "create_requisition", "approve_requisition"},
 	"live_stock": {"get_stock_board", "create_material_request"},
+	"repack": {"create_repack", "repack_from_bom"},
+	# Not scrap_offcut: taking stock out of use is a manager's call.
+	"cut_material": {"list_pieces"},
 	# cancel_inspection is a reversal: the Supervisor never cancels.
 	"quality": {"get_board", "get_template_parameters", "get_inspection_form", "record_inspection",
 	            "get_inspection", "search_parameters", "add_parameter", "search_items", "save_template",
@@ -48,7 +51,8 @@ PORTAL_API_ALLOWED = {
 	# the Supervisor cannot create on the Desk either.
 	"manufacturing": {"list_labour", "search_labour", "get_work_order_options", "search_items",
 	                  "search_raw_items", "get_item_boms", "get_bom_detail", "get_master_options",
-	                  "search_operations", "search_workstations", "create_bom", "check_material",
+	                  "search_operations", "search_workstations", "create_bom", "save_bom", "get_bom_form",
+	                  "get_item_uoms", "check_material",
 	                  "request_shortfall", "open_sales_orders_for_item", "create_work_order",
 	                  "list_work_orders", "get_dashboard", "get_work_order", "update_work_order_tables",
 	                  "advance_stage"},

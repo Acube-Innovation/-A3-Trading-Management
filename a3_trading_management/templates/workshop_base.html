@@ -259,24 +259,26 @@
 	    while the user is on any of the pages it leads to. A Jinja comment cannot
 	    live inside the list expression itself. -#}
 	{%- set nav_items = [
-		{"label": "Home", "route": "/a3-workshop", "icon": "fa-gauge-high"},
-		{"label": "Customers", "route": "/a3-workshop/customers", "icon": "fa-users"},
-		{"label": "Manufacturing", "route": "/a3-workshop/manufacturing", "icon": "fa-industry"},
-		{"label": "Quality", "route": "/a3-workshop/quality", "icon": "fa-clipboard-check"},
-		{"label": "Serial Register", "route": "/a3-workshop/serial-register", "icon": "fa-barcode"},
-		{"label": "Chassis Plates", "route": "/a3-workshop/chassis-plate-print", "icon": "fa-print"},
-		{"label": "Suppliers", "route": "/a3-workshop/suppliers", "icon": "fa-truck-field"},
-		{"label": "Operations", "route": "/a3-workshop/transactions", "icon": "fa-file-invoice-dollar",
+		{"label": "Home", "route": "/a3-trading", "icon": "fa-gauge-high"},
+		{"label": "Customers", "route": "/a3-trading/customers", "icon": "fa-users"},
+		{"label": "Manufacturing", "route": "/a3-trading/manufacturing", "icon": "fa-industry"},
+		{"label": "BOMs", "route": "/a3-trading/boms", "icon": "fa-sitemap"},
+		{"label": "Quality", "route": "/a3-trading/quality", "icon": "fa-clipboard-check"},
+		{"label": "Serial Register", "route": "/a3-trading/serial-register", "icon": "fa-barcode"},
+		{"label": "Chassis Plates", "route": "/a3-trading/chassis-plate-print", "icon": "fa-print"},
+		{"label": "Suppliers", "route": "/a3-trading/suppliers", "icon": "fa-truck-field"},
+		{"label": "Operations", "route": "/a3-trading/transactions", "icon": "fa-file-invoice-dollar",
 		 "children": [
-			"/a3-workshop/purchase-requisitions", "/a3-workshop/purchase-orders",
-			"/a3-workshop/goods-receipt", "/a3-workshop/purchase-invoices",
-			"/a3-workshop/supplier-payments", "/a3-workshop/sales-orders",
-			"/a3-workshop/delivery-invoice", "/a3-workshop/awaiting-dispatch",
-			"/a3-workshop/delivery-notes", "/a3-workshop/sales-invoices",
-			"/a3-workshop/payments-receipts",
-			"/a3-workshop/journal-entries",
+			"/a3-trading/purchase-requisitions", "/a3-trading/purchase-orders",
+			"/a3-trading/goods-receipt", "/a3-trading/purchase-invoices",
+			"/a3-trading/supplier-payments", "/a3-trading/sales-orders",
+			"/a3-trading/delivery-invoice", "/a3-trading/awaiting-dispatch",
+			"/a3-trading/delivery-notes", "/a3-trading/sales-invoices",
+			"/a3-trading/payments-receipts",
+			"/a3-trading/journal-entries",
 		 ]},
-		{"label": "Live Stock", "route": "/a3-workshop/live-stock", "icon": "fa-boxes-stacked"},
+		{"label": "Live Stock", "route": "/a3-trading/live-stock", "icon": "fa-boxes-stacked"},
+		{"label": "Stock Moves", "route": "/a3-trading/stock-moves", "icon": "fa-right-left"},
 	] -%}
 	{#- The Supervisor gets the same menu as everyone else, pointed at their own
 	    pages: Customers is the view-only look-up, Operations holds the floor screens
@@ -284,16 +286,16 @@
 	    Suppliers is left out. Everything else is a shortcut on their home. -#}
 	{%- if is_sup %}
 	{%- set nav_items = [
-		{"label": "Home", "route": "/a3-workshop", "icon": "fa-gauge-high"},
-		{"label": "Customers", "route": "/a3-workshop/masters#customers", "icon": "fa-users", "children": ["/a3-workshop/masters"]},
-		{"label": "Manufacturing", "route": "/a3-workshop/manufacturing", "icon": "fa-industry"},
-		{"label": "Quality", "route": "/a3-workshop/quality", "icon": "fa-clipboard-check"},
-		{"label": "Serial Register", "route": "/a3-workshop/serial-register", "icon": "fa-barcode"},
-		{"label": "Chassis Plates", "route": "/a3-workshop/chassis-plate-print", "icon": "fa-print"},
-		{"label": "Operations", "route": "/a3-workshop/transactions", "icon": "fa-file-invoice-dollar",
-		 "children": ["/a3-workshop/stock-moves", "/a3-workshop/purchase-requisitions", "/a3-workshop/boms",
-		              "/a3-workshop/quotations", "/a3-workshop/overtime", "/a3-workshop/staff-requests"]},
-		{"label": "Live Stock", "route": "/a3-workshop/live-stock", "icon": "fa-boxes-stacked"},
+		{"label": "Home", "route": "/a3-trading", "icon": "fa-gauge-high"},
+		{"label": "Customers", "route": "/a3-trading/masters#customers", "icon": "fa-users", "children": ["/a3-trading/masters"]},
+		{"label": "Manufacturing", "route": "/a3-trading/manufacturing", "icon": "fa-industry"},
+		{"label": "Quality", "route": "/a3-trading/quality", "icon": "fa-clipboard-check"},
+		{"label": "Serial Register", "route": "/a3-trading/serial-register", "icon": "fa-barcode"},
+		{"label": "Chassis Plates", "route": "/a3-trading/chassis-plate-print", "icon": "fa-print"},
+		{"label": "Operations", "route": "/a3-trading/transactions", "icon": "fa-file-invoice-dollar",
+		 "children": ["/a3-trading/stock-moves", "/a3-trading/purchase-requisitions", "/a3-trading/boms",
+		              "/a3-trading/quotations", "/a3-trading/overtime", "/a3-trading/staff-requests"]},
+		{"label": "Live Stock", "route": "/a3-trading/live-stock", "icon": "fa-boxes-stacked"},
 	] -%}
 	{%- endif %}
 	{#- `frappe.request` is not exposed in the Jinja sandbox: the namespace returns a
@@ -301,7 +303,7 @@
     `if frappe.request` guard passed and `.path` then raised. The renderer puts the
     current route in `path`, already stripped of slashes, so re-add the leading one
     to match the `route` values above. -#}
-	{%- set current_path = ("/" ~ (path or "a3-workshop")).rstrip("/") -%}
+	{%- set current_path = ("/" ~ (path or "a3-trading")).rstrip("/") -%}
 	{%- set uname = (frappe.session.user or "User") -%}
 	{%- set uinitial = uname[0] if uname and uname != "Guest" else "U" -%}
 	{%- set user_row = (frappe.db.get_value("User", uname, ["first_name", "role_profile_name"], as_dict=True) if uname != "Guest" else None) or {} -%}
@@ -315,7 +317,7 @@
 
 	<div class="workshop-shell">
 		<aside class="workshop-sidebar">
-			<a class="workshop-logo" href="/a3-workshop" title="{{ company_name }}">
+			<a class="workshop-logo" href="/a3-trading" title="{{ company_name }}">
 				<img src="/assets/a3_trading_management/images/redline-logo.png" alt="{{ company_name }}">
 			</a>
 			<div class="workshop-avatar">{{ uinitial }}</div>
@@ -327,7 +329,7 @@
 			<nav class="workshop-nav">
 				{%- for item in nav_items %}
 				{%- set is_active = (current_path == item.route)
-					or (item.route != "/a3-workshop" and current_path.startswith(item.route))
+					or (item.route != "/a3-trading" and current_path.startswith(item.route))
 					or (item.children and current_path in item.children) %}
 				<a class="workshop-nav-item{% if is_active %} is-active{% endif %}" href="{{ item.route }}">
 					<i class="fa-solid {{ item.icon }}"></i><span>{{ item.label }}</span>
@@ -365,7 +367,7 @@
 						<span data-page-count-label>{{ page_count_label if page_count_label is defined and page_count_label else "total" }}</span>
 					</span>
 					<div class="workshop-breadcrumb">
-						<a href="/a3-workshop">Home</a>{% if breadcrumb %}<span class="sep">›</span><b>{{ breadcrumb }}</b>{% endif %}
+						<a href="/a3-trading">Home</a>{% if breadcrumb %}<span class="sep">›</span><b>{{ breadcrumb }}</b>{% endif %}
 					</div>
 				</div>
 			</header>

@@ -1,5 +1,5 @@
 # Live Stock — read-only data for the Stock Monitoring Board page
-# (a3-workshop/live-stock). Everything here only READS ERPNext stock tables
+# (a3-trading/live-stock). Everything here only READS ERPNext stock tables
 # (Bin, Item Reorder, Material Request, Stock Ledger Entry, Purchase Invoice /
 # Receipt). The one action on the page, Request Selected, raises a Purchase
 # Material Request through create_material_request below.
