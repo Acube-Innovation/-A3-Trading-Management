@@ -23,6 +23,25 @@ IMMUTABLE_FIELDS = ("chassis_number", "work_order", "serial_no")
 
 
 class TrailerSerial(Document):
+	def before_insert(self):
+		"""A trailer entered by hand (no work order): take the chassis number off
+		its plate, or issue the next one. A work order's serials arrive with their
+		number already issued by serial_control."""
+		if self.work_order:
+			return
+		from a3_trading_management.a3_trading_management.doctype.chassis_numbering_rule.chassis_numbering_rule import (
+			get_rule,
+		)
+
+		rule = get_rule()
+		self.chassis_number = (self.chassis_number or "").strip().upper() or None
+		if not self.chassis_number:
+			self.chassis_number = rule.issue_next()
+			return
+		if frappe.db.exists("Trailer Serial", {"chassis_number": self.chassis_number}):
+			frappe.throw(_("Chassis number {0} is already on another trailer.").format(self.chassis_number))
+		rule.advance_past(self.chassis_number)
+
 	def autoname(self):
 		if not self.serial_no:
 			self.serial_no = make_autoname(SERIAL_SERIES)

@@ -469,9 +469,9 @@ function requestDeletion(doctype, name) {
 {%- macro dispatch_nav(active) -%}
 <div class="dispatch-nav">
 	{%- for key, label, icon, route in [
-		("awaiting", "Awaiting Dispatch", "fa-hourglass-half", "/a3-workshop/awaiting-dispatch"),
-		("notes", "Delivery Notes", "fa-truck-fast", "/a3-workshop/delivery-notes"),
-		("invoices", "Sales Invoices", "fa-file-invoice", "/a3-workshop/sales-invoices"),
+		("awaiting", "Awaiting Dispatch", "fa-hourglass-half", "/a3-trading/awaiting-dispatch"),
+		("notes", "Delivery Notes", "fa-truck-fast", "/a3-trading/delivery-notes"),
+		("invoices", "Sales Invoices", "fa-file-invoice", "/a3-trading/sales-invoices"),
 	] %}
 	<a class="dispatch-nav__step{% if key == active %} is-active{% endif %}" href="{{ route }}">
 		<span class="dispatch-nav__no">{{ loop.index }}</span><i class="fa-solid {{ icon }}"></i> {{ label }}</a>

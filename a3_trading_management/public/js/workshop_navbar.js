@@ -1,15 +1,15 @@
 // Workshop shortcut in the Desk navbar.
 //
 // Puts a single icon button immediately after the app logo that opens the
-// workshop portal at /a3-workshop. The route is deliberately relative so the
+// workshop portal at /a3-trading. The route is deliberately relative so the
 // link follows whatever host the Desk is being served from — hard-coding
 // 127.0.0.1:8000 would break the moment this runs anywhere but the dev machine.
 //
 // Loaded through `app_include_js`, so it only ever runs inside the Desk.
 
 (function () {
-	const LINK_ID = "a3-workshop-navbar-link";
-	const ROUTE = "/a3-workshop";
+	const LINK_ID = "a3-trading-navbar-link";
+	const ROUTE = "/a3-trading";
 
 	// Feather "tool" (MIT) — a wrench, which reads as workshop at 16px far better
 	// than the Redlines wordmark, which is a 2.1:1 banner and squashes to mush.
@@ -36,7 +36,7 @@
 		link.id = LINK_ID;
 		// NOT `custom-menu` — the toolbar strips that class's elements on every
 		// page change, which would make the button vanish on the first navigation.
-		link.className = "a3-workshop-navbar-btn";
+		link.className = "a3-trading-navbar-btn";
 		link.href = ROUTE;
 		link.title = label();
 		link.setAttribute("aria-label", label());

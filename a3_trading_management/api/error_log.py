@@ -43,7 +43,7 @@ SEVERITIES = ("Error", "Warning", "Info")
 
 
 def _route_of(url):
-	"""'/a3-workshop/vehicles' out of a full URL, so errors group by screen."""
+	"""'/a3-trading/vehicles' out of a full URL, so errors group by screen."""
 	if not url:
 		return None
 	path = str(url).split("#", 1)[0].split("?", 1)[0]

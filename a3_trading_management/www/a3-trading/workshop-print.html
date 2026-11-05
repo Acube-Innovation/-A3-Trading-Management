@@ -1,0 +1,116 @@
+{% extends "templates/print_base.html" %}
+
+{%- macro money(x) -%}AED {{ "{:,.2f}".format(x or 0) }}{%- endmacro -%}
+{%- macro money0(x) -%}AED {{ "{:,.0f}".format(x or 0) }}{%- endmacro -%}
+{%- macro pill(text, kind="") -%}<span class="pill {{ kind }}">{{ text }}</span>{%- endmacro -%}
+{%- macro statuspill(s) -%}
+{%- set k = "pill--green" if s in ("Completed", "Closed", "Ready", "Paid", "Resolved", "Done") else ("pill--amber" if s in ("Open", "In Progress", "On Hold", "Unpaid", "Pending", "Partly Paid") else ("pill--red" if s in ("Cancelled", "Overdue", "Escalated", "Critical", "Severe", "Urgent") else "")) -%}
+<span class="pill {{ k }}">{{ s }}</span>
+{%- endmacro -%}
+
+{% block doc_title -%}
+{%- if mode == "workorder" %}Work Order Traveler{% elif mode == "qi" %}Quality Inspection Report{% else %}Print{% endif %}
+{%- endblock %}
+
+{% block doc_subtitle -%}
+{%- if mode == "workorder" %}{{ wo.name }} · {{ wo.item }}{% elif mode == "qi" %}{{ qi.name }} · {{ qi.item }}{% endif %}
+{%- endblock %}
+
+{% block content %}
+
+{% if mode == "none" %}
+<p class="muted">Nothing to print — open with ?workorder= or ?qi=.</p>
+
+{# ================================================================ JOB CARD #}
+{% elif mode == "workorder" %}
+<h2 class="sec">Work Order</h2>
+<div class="kv">
+	<div><div class="k">Item</div><div class="v">{{ wo.item }}</div></div>
+	<div><div class="k">Quantity</div><div class="v">{{ wo.qty }}</div></div>
+	<div><div class="k">Status</div><div class="v">{{ statuspill(wo.status) }}</div></div>
+	<div><div class="k">Current Stage</div><div class="v">{{ wo.stage }}</div></div>
+	<div><div class="k">BOM</div><div class="v">{{ wo.bom }}</div></div>
+	<div><div class="k">Planned Start</div><div class="v">{{ wo.planned_start }}</div></div>
+	<div><div class="k">Target Delivery</div><div class="v">{{ wo.delivery }}</div></div>
+	<div><div class="k">Raw material from</div><div class="v">{{ wo.source }}</div></div>
+	<div><div class="k">Finished trailers to</div><div class="v">{{ wo.fg }}</div></div>
+	<div><div class="k">For Sales Order</div><div class="v">{% if wo.sales_order %}{{ wo.sales_order }} · {{ wo.customer }}{% else %}Build to stock{% endif %}</div></div>
+</div>
+{% if wo.spec %}
+<h2 class="sec">Specification</h2>
+<p style="white-space:pre-wrap">{{ wo.spec }}</p>
+{% endif %}
+
+<h2 class="sec">Raw Materials</h2>
+{% if wo.materials %}
+<table class="t"><thead><tr><th>#</th><th>Item</th><th class="right">Qty</th><th>Source Warehouse</th><th style="width:90px">Issued ✔</th></tr></thead><tbody>
+	{% for m in wo.materials %}
+	<tr><td>{{ loop.index }}</td><td>{{ m.item }}</td><td class="right">{{ m.qty }}</td><td>{{ m.warehouse }}</td><td></td></tr>
+	{% endfor %}
+</tbody></table>
+{% else %}<p class="muted">No raw materials.</p>{% endif %}
+
+<h2 class="sec">Operations</h2>
+{% if wo.operations %}
+<table class="t"><thead><tr><th>#</th><th>Operation</th><th>Workstation</th><th>Labour</th><th class="right">Mins</th><th style="width:110px">Sign</th></tr></thead><tbody>
+	{% for o in wo.operations %}
+	<tr><td>{{ loop.index }}</td><td><b>{{ o.operation }}</b></td><td>{{ o.workstation }}</td><td>{{ o.labour }}</td><td class="right">{{ o.mins }}</td><td></td></tr>
+	{% endfor %}
+</tbody></table>
+{% else %}<p class="muted">No operations.</p>{% endif %}
+
+<h2 class="sec">Stage History</h2>
+{% if wo.history %}
+<table class="t"><thead><tr><th>Stage</th><th>From</th><th>When</th><th>By</th><th class="right">Hrs</th><th>Notes</th></tr></thead><tbody>
+	{% for h in wo.history %}
+	<tr><td><b>{{ h.stage }}</b></td><td>{{ h.from_stage }}</td><td>{{ h.entered_on }}</td><td>{{ h.entered_by }}</td><td class="right">{{ h.hours or "—" }}</td><td>{{ h.notes }}</td></tr>
+	{% endfor %}
+</tbody></table>
+{% else %}<p class="muted">No stage transitions yet.</p>{% endif %}
+
+<div class="sigs">
+	<div class="sig"><b>&nbsp;</b>Production Supervisor</div>
+	<div class="sig"><b>&nbsp;</b>Quality Check</div>
+	<div class="sig"><b>&nbsp;</b>Store / Dispatch</div>
+</div>
+
+{# ================================================================ QUALITY INSPECTION #}
+{% elif mode == "qi" %}
+{%- set result_kind = "pill--green" if qi.status == "Accepted" else "pill--red" -%}
+<h2 class="sec">Inspection</h2>
+<div class="kv">
+	<div><div class="k">Inspection No</div><div class="v">{{ qi.name }}</div></div>
+	<div><div class="k">Date</div><div class="v">{{ qi.date }}</div></div>
+	<div><div class="k">Type</div><div class="v">{{ qi.inspection_type }}</div></div>
+	<div><div class="k">Result</div><div class="v">{{ pill(qi.status, result_kind) }}</div></div>
+	<div><div class="k">{{ qi.source }}</div><div class="v">{{ qi.reference_name }}</div></div>
+	<div><div class="k">Item</div><div class="v">{{ qi.item }}</div></div>
+	<div><div class="k">Sample Size</div><div class="v">{{ "%g" | format(qi.sample_size) }}</div></div>
+	<div><div class="k">Checklist</div><div class="v">{{ qi.template or "—" }}</div></div>
+	{% if qi.chassis %}<div><div class="k">Chassis</div><div class="v">{{ qi.chassis }}</div></div>{% endif %}
+	<div><div class="k">Inspected By</div><div class="v">{{ qi.inspector or "—" }}</div></div>
+</div>
+
+<h2 class="sec">Checks</h2>
+{% if qi.readings %}
+<table class="t"><thead><tr><th style="width:34px">#</th><th>Check</th><th>Acceptance</th><th>Reading</th><th style="width:80px">Result</th></tr></thead><tbody>
+	{% for r in qi.readings %}
+	<tr><td>{{ loop.index }}</td><td><b>{{ r.specification }}</b></td><td>{{ r.criteria or "—" }}</td><td>{{ r.reading or "—" }}</td>
+		<td>{{ pill(r.status, "pill--green" if r.status == "Accepted" else "pill--red") }}</td></tr>
+	{% endfor %}
+</tbody></table>
+{% else %}<p class="muted">No checks recorded.</p>{% endif %}
+
+{% if qi.remarks %}
+<h2 class="sec">Remarks</h2>
+<p style="white-space:pre-wrap">{{ qi.remarks }}</p>
+{% endif %}
+
+<div class="sigs">
+	<div class="sig"><b>{{ qi.inspector or "&nbsp;" }}</b>Inspected By</div>
+	<div class="sig"><b>&nbsp;</b>Verified By</div>
+	<div class="sig"><b>&nbsp;</b>Approved By</div>
+</div>
+
+{% endif %}
+{% endblock %}

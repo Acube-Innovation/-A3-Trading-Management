@@ -66,6 +66,16 @@ SELLING_DOC_FIELDS = [
 for _dt in ("Sales Order", "Delivery Note", "Sales Invoice"):
 	CUSTOM_FIELDS[_dt] = [dict(f) for f in SELLING_DOC_FIELDS]
 
+# The customer's own number for the trailer (fleet / plate sticker, e.g. TRK-SK-343),
+# printed next to our chassis number on the RLI Delivery Note (5 Nov 2026).
+CUSTOM_FIELDS["Delivery Note"].append({
+	"fieldname": "custom_customer_chassis_number",
+	"fieldtype": "Data",
+	"label": "Customer Chassis Number",
+	"insert_after": "custom_chassis_number",
+	"description": "The customer's own number for the trailer (e.g. fleet / plate number)",
+})
+
 # Task 18 — the hold that keeps a bill OUT of the ledger.
 # ERPNext's own `on_hold` is a payment hold and can only be set AFTER submitting
 # ("Purchase Invoice can be held after submitting"), so it cannot express "hold
@@ -175,6 +185,8 @@ def after_migrate():
 	setup_default_checklists()
 	setup_deletion_workflow()
 	setup_supervisor()
+	setup_letter_head()
+	setup_scrap_warehouse()
 
 
 # Two ready-made checklists, the first of them the default, so a new item is
@@ -218,6 +230,20 @@ def setup_deletion_workflow():
 def setup_supervisor():
 	"""Supervisor role: production access with every price hidden."""
 	from a3_trading_management.setup.supervisor import setup
+
+	setup()
+
+
+def setup_scrap_warehouse():
+	"""Where offcuts of cut material go, still at their value."""
+	from a3_trading_management.api.cut_material import ensure_scrap_warehouse
+
+	ensure_scrap_warehouse()
+
+
+def setup_letter_head():
+	"""The Redlines letter head every printed page carries."""
+	from a3_trading_management.setup.letter_head import setup
 
 	setup()
 
