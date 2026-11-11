@@ -1,0 +1,134 @@
+{
+ "actions": [],
+ "autoname": "field:shape_name",
+ "creation": "2026-11-10 13:00:00.000000",
+ "custom": 0,
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "shape_name",
+  "enabled",
+  "sort_order",
+  "dims_sb",
+  "dimensions",
+  "box_sb",
+  "length_formula",
+  "col",
+  "width_formula",
+  "note_sb",
+  "note"
+ ],
+ "fields": [
+  {
+   "fieldname": "shape_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Cut Shape",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "default": "1",
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Enabled"
+  },
+  {
+   "fieldname": "sort_order",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Order in list"
+  },
+  {
+   "fieldname": "dims_sb",
+   "fieldtype": "Section Break",
+   "label": "Sizes asked for"
+  },
+  {
+   "fieldname": "dimensions",
+   "fieldtype": "Table",
+   "label": "Sizes (cm)",
+   "options": "Cut Shape Dimension",
+   "reqd": 1
+  },
+  {
+   "description": "Formulas use the sizes' names, numbers, + - * / ( ), and max, min, sqrt, pi. Example for a circle: diameter. For a hexagon across flats af: length = af * 2 / sqrt(3), width = af.",
+   "fieldname": "box_sb",
+   "fieldtype": "Section Break",
+   "label": "Rectangle it is cut and charged as"
+  },
+  {
+   "fieldname": "length_formula",
+   "fieldtype": "Data",
+   "label": "Cut length (cm) =",
+   "reqd": 1
+  },
+  {
+   "fieldname": "col",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "width_formula",
+   "fieldtype": "Data",
+   "label": "Cut width (cm) =",
+   "reqd": 1
+  },
+  {
+   "fieldname": "note_sb",
+   "fieldtype": "Section Break"
+  },
+  {
+   "description": "e.g. A circle is cut and charged as the square around it; the corners are waste.",
+   "fieldname": "note",
+   "fieldtype": "Small Text",
+   "label": "Note shown in the Cut size window"
+  }
+ ],
+ "links": [],
+ "modified": "2026-11-10 13:30:00.000000",
+ "modified_by": "Administrator",
+ "module": "A3 Trading Management",
+ "name": "Cut Shape",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Manufacturing Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "read": 1,
+   "role": "Manufacturing User"
+  },
+  {
+   "read": 1,
+   "role": "Stock User"
+  }
+ ],
+ "sort_field": "sort_order",
+ "sort_order": "ASC",
+ "states": [],
+ "title_field": "shape_name",
+ "track_changes": 1
+}

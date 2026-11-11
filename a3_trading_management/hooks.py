@@ -134,6 +134,8 @@ doc_events = {
 			"a3_trading_management.serial_control.set_stock_entry_type",
 			# Cut material: take the shortest piece long enough when none is chosen.
 			"a3_trading_management.api.cut_material.apply_best_fit",
+			# Sheets: only whole pieces leave a batch; sizes are cut at production (work order).
+			"a3_trading_management.api.sheet_cut.guard_stock_entry",
 		],
 		"on_submit": "a3_trading_management.serial_control.on_manufacture_entry",
 	},

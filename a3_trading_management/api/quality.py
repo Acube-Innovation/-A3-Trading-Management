@@ -496,7 +496,17 @@ def record_inspection(reference_type, reference_name, item_code=None, readings=N
 	out = {"name": qi.name, "status": qi.status, "delivered": False}
 	if reference_type == WO and qi.status == "Accepted" and cint(deliver):
 		stage = frappe.db.get_value(WO, reference_name, "custom_production_stage")
-		if stage == "QC":
+		wo_doc = frappe.get_doc(WO, reference_name)
+		from a3_trading_management.api.sheet_cut import needs as sheet_needs
+
+		try:
+			has_sheets = bool(sheet_needs(wo_doc))
+		except frappe.ValidationError:
+			has_sheets = True   # a sheet row without a cut size: the screen asks for it
+		if stage == "QC" and has_sheets and not wo_doc.get("custom_sheet_plan"):
+			# Sheet pieces need the user's choice (leftover or new sheet) first.
+			out["stock_warning"] = _("QC passed. Deliver it from the Manufacturing screen, which asks where the sheet material comes from.")
+		elif stage == "QC":
 			from a3_trading_management.api.manufacturing import advance_stage
 
 			res = advance_stage(reference_name, notes=_("QC passed — {0}").format(qi.name))

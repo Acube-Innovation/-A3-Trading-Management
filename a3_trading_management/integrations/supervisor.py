@@ -43,6 +43,8 @@ PORTAL_API_ALLOWED = {
 	"repack": {"create_repack", "repack_from_bom"},
 	# Not scrap_offcut: taking stock out of use is a manager's call.
 	"cut_material": {"list_pieces"},
+	# Sheets are cut only at production, through advance_stage.
+	"sheet_cut": {"get_sheet_info", "sheet_needs", "get_cut_shapes"},
 	# cancel_inspection is a reversal: the Supervisor never cancels.
 	"quality": {"get_board", "get_template_parameters", "get_inspection_form", "record_inspection",
 	            "get_inspection", "search_parameters", "add_parameter", "search_items", "save_template",

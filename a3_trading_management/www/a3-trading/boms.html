@@ -80,6 +80,36 @@
 	</div>
 </div>
 
+<div class="modal-overlay" id="cut-modal" role="dialog" aria-modal="true">
+	<div class="modal" style="width:min(560px,96vw)">
+		<div class="modal__head"><div><h3>Cut size</h3><div class="sub" id="cut-sub">Size of the piece cut from the sheet.</div></div>
+			<button type="button" class="modal__close" data-sk-close><i class="fa-solid fa-xmark"></i></button></div>
+		<div class="modal__body">
+			<div class="form-grid">
+				<div class="field"><label>Cut Shape</label><select id="cut-shape"></select></div>
+				<div class="field"><label>Pieces per build</label><input id="cut-pieces" type="number" min="1" step="1" value="1"></div>
+			</div>
+			<div class="form-grid" id="cut-dims" style="margin-top:10px"></div>
+			<div class="muted" id="cut-hint" style="font-size:12px;margin-top:6px"></div>
+			<div style="display:flex;gap:14px;align-items:center;margin-top:12px">
+				<div id="cut-svg"></div>
+				<div style="font-size:13px;line-height:1.6">
+					<div>Cut as: <b id="cut-box">—</b></div>
+					<div>Charged per piece: <b id="cut-area">0</b> cm²</div>
+					<div>BOM quantity: <b id="cut-total">0</b> cm²</div>
+					<div class="price">Cost: <b id="cut-cost">0.00</b></div>
+				</div>
+			</div>
+			<div id="cut-info" style="font-size:12.5px;margin-top:10px"></div>
+			<div class="sk-err" id="cut-err"></div>
+		</div>
+		<div class="modal__foot">
+			<button type="button" class="btn btn--outline" data-sk-close style="margin-right:auto">Cancel</button>
+			<button type="button" class="btn btn--primary" onclick="cutOk()"><i class="fa-solid fa-scissors"></i> Use this size</button>
+		</div>
+	</div>
+</div>
+
 {{ call_method_js() }}
 {{ sup_kit() }}
 {{ filter_script() }}
@@ -122,25 +152,135 @@ function setUoms(tr, info, keepUom) {
 		return '<option value="' + SK.esc(u.uom) + '" data-cf="' + u.conversion_factor + '">' + SK.esc(u.uom) + (u.conversion_factor !== 1 ? " (" + u.conversion_factor + " " + SK.esc(info.stock_uom) + ")" : "") + "</option>";
 	}).join("");
 	if (keepUom) sel.value = keepUom;
+	tr._info = info;
+	// A sheet is used by cut size: unit is its area unit, qty comes from the size.
+	tr.querySelector(".bf-cut").style.display = info.is_sheet ? "" : "none";
+	if (info.is_sheet) { sel.value = info.stock_uom; sel.disabled = true; tr.querySelector(".bf-q").readOnly = true; }
+	else { sel.disabled = byId("bf-item").disabled; tr.querySelector(".bf-q").readOnly = false; }
 	recalc();
+}
+
+// ------------------------------------------------------------------ sheet cut size
+// Shapes and the sizes each asks for come from Cut Shape (set up in Desk); the
+// server works out the rectangle a shape is cut and charged as.
+var CUT_ROW = null, SHEET = "a3_trading_management.api.sheet_cut.", SHAPES = [], CUT_BOX = null, CUT_SEQ = 0;
+var SHAPES_READY = tradingCall(SHEET + "get_cut_shapes", {}).then(function (r) {
+	SHAPES = r || [];
+	byId("cut-shape").innerHTML = SHAPES.map(function (s) { return '<option value="' + SK.esc(s.name) + '">' + SK.esc(s.name) + "</option>"; }).join("");
+}).catch(function () {});
+function shapeOf(name) { return SHAPES.filter(function (s) { return s.name === name; })[0]; }
+function cutLabel(c) {
+	var s = shapeOf(c.shape), d = c.dims || {};
+	var sizes = s ? s.dims.map(function (x) { return x.label + " " + (d[x.key] || 0); }).join(", ")
+	              : Object.keys(d).map(function (k) { return k + " " + d[k]; }).join(", ");
+	return "✂ " + c.shape + " — " + sizes + " cm (cut " + c.l + "×" + c.w + ")" + ((c.pieces || 1) > 1 ? " × " + c.pieces : "");
+}
+function setCut(tr, c) {
+	tr.dataset.cutShape = c.shape; tr.dataset.cutDims = JSON.stringify(c.dims || {});
+	tr.dataset.cutL = c.l; tr.dataset.cutW = c.w; tr.dataset.cutPieces = c.pieces || 1;
+	tr.querySelector(".bf-q").value = Math.round(c.l * c.w * (c.pieces || 1) * 10000) / 10000;
+	tr.querySelector(".bf-cuttag").textContent = cutLabel(c);
+	recalc();
+}
+function clearCut(tr) {
+	["cutShape", "cutDims", "cutL", "cutW", "cutPieces"].forEach(function (k) { delete tr.dataset[k]; });
+	tr.querySelector(".bf-cuttag").textContent = "";
+}
+function renderDims(dims) {
+	var s = shapeOf(byId("cut-shape").value), ro = byId("bf-item").disabled;
+	byId("cut-dims").innerHTML = s ? s.dims.map(function (d) {
+		return '<div class="field"><label>' + SK.esc(d.label) + ' (cm) <span class="req">*</span></label><input type="number" min="0" step="any" data-key="' + SK.esc(d.key) +
+			'" value="' + (dims && dims[d.key] ? dims[d.key] : "") + '"' + (ro ? " disabled" : "") + (d.hint ? ' placeholder="' + SK.esc(d.hint) + '"' : "") + "></div>";
+	}).join("") : "";
+	byId("cut-hint").textContent = (s && s.note) || "";
+	byId("cut-dims").querySelectorAll("input").forEach(function (i) { i.addEventListener("input", cutUpdate); });
+}
+function cutRead() {
+	var dims = {};
+	byId("cut-dims").querySelectorAll("input").forEach(function (i) { dims[i.dataset.key] = Number(i.value) || 0; });
+	return { shape: byId("cut-shape").value, dims: dims, pieces: Math.max(1, parseInt(byId("cut-pieces").value, 10) || 1) };
+}
+var CUT_T = null;
+function cutUpdate() {
+	var c = cutRead(), info = (CUT_ROW && CUT_ROW._info) || {}, seq = ++CUT_SEQ;
+	CUT_BOX = null; byId("cut-err").style.display = "none";
+	var full = Object.keys(c.dims).length && Object.keys(c.dims).every(function (k) { return c.dims[k] > 0; });
+	function show(l, w) {
+		var area = l * w;
+		byId("cut-box").textContent = l && w ? l + " × " + w + " cm" : "—";
+		byId("cut-area").textContent = area.toLocaleString(); byId("cut-total").textContent = (area * c.pieces).toLocaleString();
+		byId("cut-cost").textContent = n2((info.valuation_rate || Number(CUT_ROW && CUT_ROW.dataset.vr) || 0) * area * c.pieces);
+		byId("cut-svg").innerHTML = info.sheet_length ? SK.sheet({ length: info.sheet_length, width: info.sheet_width, cutouts: [] }, 150,
+			l && w ? { x: 0, y: 0, l: Math.min(l, info.sheet_length), w: Math.min(w, info.sheet_width) } : null) : "";
+	}
+	show(0, 0); byId("cut-info").textContent = "";
+	clearTimeout(CUT_T);
+	if (!full) return;
+	CUT_T = setTimeout(function () {
+		tradingCall(SHEET + "get_sheet_info", { item: CUT_ROW.querySelector(".bf-i").dataset.value, shape: c.shape, dims: c.dims }).then(function (r) {
+			if (seq !== CUT_SEQ || !r || !r.is_sheet) return;
+			CUT_BOX = { l: r.cut_length, w: r.cut_width, seq: seq };
+			show(r.cut_length, r.cut_width);
+			byId("cut-info").innerHTML = (r.fits_sheet ? "" : '<div style="color:#b3261e">Bigger than a full sheet (' + r.length + "×" + r.width + " cm).</div>") +
+				'<i class="fa-solid fa-circle-info"></i> In stock now: <b>' + r.full_sheets + "</b> full sheet" + (r.full_sheets === 1 ? "" : "s") +
+				", <b>" + r.fitting_leftovers + "</b> leftover" + (r.fitting_leftovers === 1 ? "" : "s") + " this size fits in. " +
+				'<span class="muted">Leftover or new sheet is chosen when the work order is produced.</span>';
+			CUT_BOX.fits = r.fits_sheet;
+		}).catch(function (e) { if (seq !== CUT_SEQ) return; var err = byId("cut-err"); err.textContent = SK.err(e); err.style.display = "block"; });
+	}, 250);
+}
+byId("cut-shape").addEventListener("change", function () { renderDims({}); cutUpdate(); });
+byId("cut-pieces").addEventListener("input", cutUpdate);
+function openCut(tr) {
+	CUT_ROW = tr; byId("cut-err").style.display = "none";
+	SHAPES_READY.then(function () {
+		var info = tr._info || {};
+		byId("cut-sub").textContent = (tr.querySelector(".bf-i").value || "Sheet") + (info.sheet_length ? " · full sheet " + info.sheet_length + "×" + info.sheet_width + " cm" : "");
+		var shape = tr.dataset.cutShape && shapeOf(tr.dataset.cutShape) ? tr.dataset.cutShape : (SHAPES[0] || {}).name;
+		if (tr.dataset.cutShape && !shapeOf(tr.dataset.cutShape)) byId("cut-shape").insertAdjacentHTML("beforeend", '<option value="' + SK.esc(tr.dataset.cutShape) + '">' + SK.esc(tr.dataset.cutShape) + " (disabled)</option>");
+		byId("cut-shape").value = tr.dataset.cutShape || shape || "";
+		byId("cut-pieces").value = tr.dataset.cutPieces || 1;
+		var ro = byId("bf-item").disabled;   // approved BOM: look only
+		byId("cut-shape").disabled = ro; byId("cut-pieces").disabled = ro;
+		renderDims(JSON.parse(tr.dataset.cutDims || "{}"));
+		byId("cut-modal").querySelector(".btn--primary").style.display = ro ? "none" : "";
+		cutUpdate();
+		SK.open("cut-modal");
+		var first = byId("cut-dims").querySelector("input"); if (!ro && first) first.focus();
+	});
+}
+function cutOk() {
+	var c = cutRead(), err = byId("cut-err");
+	if (!c.shape) { err.textContent = "Choose a cut shape."; err.style.display = "block"; return; }
+	if (!(CUT_BOX && CUT_BOX.seq === CUT_SEQ)) { err.textContent = "Give every size in cm, and wait for the cut size to show."; err.style.display = "block"; return; }
+	if (!CUT_BOX.fits) { err.textContent = "That is bigger than a full sheet."; err.style.display = "block"; return; }
+	setCut(CUT_ROW, { shape: c.shape, dims: c.dims, l: CUT_BOX.l, w: CUT_BOX.w, pieces: c.pieces });
+	SK.close("cut-modal");
 }
 function addItem(row) {
 	var tr = document.createElement("tr");
-	tr.innerHTML = '<td><div><input class="bf-i" placeholder="Search material…" autocomplete="off"></div></td>' +
+	tr.innerHTML = '<td><div><input class="bf-i" placeholder="Search material…" autocomplete="off"></div><div class="bf-cuttag muted" style="font-size:11.5px;margin-top:3px"></div></td>' +
 		'<td><input class="bf-q" type="number" min="0" step="any" value="1"></td>' +
 		'<td><select class="bf-u" style="width:100%"><option value="">—</option></select></td>' +
 		'<td class="num price bf-rate">0.00</td><td class="num price bf-amt">0.00</td>' +
-		'<td><button type="button" class="bf-edit" style="background:none;border:0;cursor:pointer" title="Remove"><i class="fa-solid fa-trash"></i></button></td>';
+		'<td style="white-space:nowrap"><button type="button" class="bf-cut" style="background:none;border:0;cursor:pointer;display:none;color:var(--primary,#ec2e5d)" title="Cut size (sheet)"><i class="fa-solid fa-scissors"></i></button>' +
+		'<button type="button" class="bf-edit bf-del" style="background:none;border:0;cursor:pointer" title="Remove"><i class="fa-solid fa-trash"></i></button></td>';
 	byId("bf-items").appendChild(tr);
 	var inp = tr.querySelector(".bf-i");
 	SK.picker(inp, items(0), function (it) {
-		tradingCall(MFG + "get_item_uoms", { item: it.value }).then(function (info) { setUoms(tr, info); });
+		clearCut(tr);
+		tradingCall(MFG + "get_item_uoms", { item: it.value }).then(function (info) {
+			setUoms(tr, info);
+			if (info.is_sheet) openCut(tr);
+		});
 	});
 	tr.querySelector(".bf-q").addEventListener("input", recalc);
 	tr.querySelector(".bf-u").addEventListener("change", recalc);
-	tr.querySelector("button").addEventListener("click", function () { tr.remove(); recalc(); });
+	tr.querySelector(".bf-del").addEventListener("click", function () { tr.remove(); recalc(); });
+	tr.querySelector(".bf-cut").addEventListener("click", function () { openCut(tr); });
 	if (row) {
 		inp.value = row.item_name || row.item_code; inp.dataset.value = row.item_code;
+		if (row.cut_length_cm) SHAPES_READY.then(function () { setCut(tr, { shape: row.cut_shape || "Rectangle", dims: row.cut_dims || {}, l: row.cut_length_cm, w: row.cut_width_cm, pieces: row.cut_pieces || 1 }); });
 		tr.querySelector(".bf-q").value = row.qty;
 		// The BOM's own rate per row unit, until the unit is changed.
 		tr.dataset.vr = (row.rate || 0) / (row.conversion_factor || 1);
@@ -209,6 +349,10 @@ byId("bf-qty").addEventListener("input", recalc);
 function setEditable(on) {
 	byId("bf-body").querySelectorAll("input, select").forEach(function (el) { if (el.id !== "bf-copy") el.disabled = !on; });
 	byId("bf-body").querySelectorAll(".bf-edit").forEach(function (el) { el.style.display = on ? "" : "none"; });
+	// A sheet's unit and qty follow its cut size, never typed.
+	document.querySelectorAll("#bf-items tr").forEach(function (tr) {
+		if (tr._info && tr._info.is_sheet) { tr.querySelector(".bf-u").disabled = true; tr.querySelector(".bf-q").readOnly = true; }
+	});
 	byId("bf-copy-wrap").style.display = on ? "" : "none";
 }
 function footer(b) {
@@ -260,8 +404,16 @@ function save(submit) {
 	showErr("");
 	var item = byId("bf-item").dataset.value;
 	var mats = Array.prototype.map.call(document.querySelectorAll("#bf-items tr"), function (tr) {
-		return { item_code: tr.querySelector(".bf-i").dataset.value || "", qty: Number(tr.querySelector(".bf-q").value) || 0, uom: tr.querySelector(".bf-u").value };
+		var r = { item_code: tr.querySelector(".bf-i").dataset.value || "", qty: Number(tr.querySelector(".bf-q").value) || 0, uom: tr.querySelector(".bf-u").value };
+		if (tr._info && tr._info.is_sheet) {
+			r.is_sheet = true; r.cut_shape = tr.dataset.cutShape || ""; r.cut_dims = JSON.parse(tr.dataset.cutDims || "{}");
+			r.cut_length_cm = Number(tr.dataset.cutL) || 0; r.cut_width_cm = Number(tr.dataset.cutW) || 0; r.cut_pieces = Number(tr.dataset.cutPieces) || 1;
+			if (!r.cut_length_cm) r.qty = 1;   // kept so the check below names it
+		}
+		return r;
 	}).filter(function (r) { return r.item_code && r.qty > 0; });
+	var noSize = mats.filter(function (r) { return r.is_sheet && !r.cut_length_cm; });
+	if (noSize.length) return showErr("Set the cut size (✂) for every sheet material.");
 	var ops = Array.prototype.map.call(document.querySelectorAll("#bf-ops tr"), function (tr) {
 		return { operation: tr.querySelector(".bf-o").value, workstation: tr.dataset.ws || "", time_in_mins: (Number(tr.querySelector(".bf-h").value) || 0) * 60 };
 	}).filter(function (o) { return o.operation; });

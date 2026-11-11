@@ -187,6 +187,33 @@ def after_migrate():
 	setup_supervisor()
 	setup_letter_head()
 	setup_scrap_warehouse()
+	setup_cut_shapes()
+
+
+# The shapes a sheet piece can be cut in, created once (only while there are
+# none), so shapes changed or added in Desk are never overwritten. Each is cut
+# and charged as the rectangle its two formulas give.
+DEFAULT_CUT_SHAPES = [
+	("Rectangle", 1, [("Length", "length"), ("Width", "width")], "length", "width", ""),
+	("Square", 2, [("Side", "side")], "side", "side", ""),
+	("Circle", 3, [("Diameter", "diameter")], "diameter", "diameter",
+	 "A circle is cut and charged as the square around it; the corners are waste."),
+	("Triangle", 4, [("Base", "base"), ("Height", "height")], "base", "height",
+	 "A triangle is cut and charged as the rectangle base × height; the rest is waste."),
+	("Other", 9, [("Length", "length"), ("Width", "width")], "length", "width",
+	 "Give the rectangle the shape fits in; it is cut and charged as that rectangle."),
+]
+
+
+def setup_cut_shapes():
+	if not frappe.db.table_exists("Cut Shape") or frappe.db.count("Cut Shape"):
+		return
+	for name, order, dims, lf, wf, note in DEFAULT_CUT_SHAPES:
+		frappe.get_doc({
+			"doctype": "Cut Shape", "shape_name": name, "enabled": 1, "sort_order": order,
+			"length_formula": lf, "width_formula": wf, "note": note,
+			"dimensions": [{"label": label, "key": key} for label, key in dims],
+		}).insert(ignore_permissions=True)
 
 
 # Two ready-made checklists, the first of them the default, so a new item is

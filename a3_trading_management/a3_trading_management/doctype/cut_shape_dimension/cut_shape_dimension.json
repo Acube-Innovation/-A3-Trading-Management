@@ -1,0 +1,50 @@
+{
+ "actions": [],
+ "creation": "2026-11-10 13:00:00.000000",
+ "custom": 0,
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "label",
+  "key",
+  "hint"
+ ],
+ "fields": [
+  {
+   "columns": 4,
+   "description": "What the user types, e.g. Diameter",
+   "fieldname": "label",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Size",
+   "reqd": 1
+  },
+  {
+   "columns": 3,
+   "description": "Lower-case letters and _ only, e.g. diameter. Filled from Size when left blank.",
+   "fieldname": "key",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Name in formula"
+  },
+  {
+   "columns": 3,
+   "fieldname": "hint",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Hint"
+  }
+ ],
+ "istable": 1,
+ "links": [],
+ "modified": "2026-11-10 13:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "A3 Trading Management",
+ "name": "Cut Shape Dimension",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

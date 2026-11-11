@@ -555,6 +555,27 @@ def _conversion_factor(item_code, uom):
     return flt(get_conversion_factor(item_code, uom).get("conversion_factor")) or 1
 
 
+def _sheet_cut_fields(r, stock_uom):
+    """A sheet row carries its cut shape and sizes; the shape's formulas give the
+    rectangle it is cut and charged as, and the row qty is that area times the
+    pieces, in the stock unit (cm2)."""
+    from a3_trading_management.api.sheet_cut import _dims, is_sheet_item, legacy_dims, shape_box
+
+    if not is_sheet_item(r["item_code"]):
+        return {}
+    shape = r.get("cut_shape")
+    dims = _dims(r.get("cut_dims")) or (legacy_dims(shape, r.get("cut_length_cm"), r.get("cut_width_cm")) if shape else {})
+    if not shape or not dims:
+        frappe.throw(_("{0} is a sheet: set the size to cut with the scissors on its row").format(r["item_code"]))
+    l, w = shape_box(shape, dims)
+    pieces = max(1, cint(r.get("cut_pieces")) or 1)
+    return {
+        "custom_cut_shape": shape, "custom_cut_dims": json.dumps(dims), "custom_cut_length_cm": l,
+        "custom_cut_width_cm": w, "custom_cut_pieces": pieces,
+        "qty": l * w * pieces, "uom": stock_uom, "conversion_factor": 1,
+    }
+
+
 @frappe.whitelist()
 def save_bom(item, items, operations=None, quantity=1, name=None, submit=0, set_default=1):
     """Create a BOM, or rewrite a draft one (`name`), from the BOM form.
@@ -591,10 +612,12 @@ def save_bom(item, items, operations=None, quantity=1, name=None, submit=0, set_
     for r in rows:
         stock_uom = frappe.get_cached_value("Item", r["item_code"], "stock_uom")
         uom = (r.get("uom") or "").strip() or stock_uom
-        bom.append("items", {
+        row = {
             "item_code": r["item_code"], "qty": flt(r["qty"]), "uom": uom,
             "conversion_factor": 1 if uom == stock_uom else _conversion_factor(r["item_code"], uom),
-        })
+        }
+        row.update(_sheet_cut_fields(r, stock_uom))
+        bom.append("items", row)
     for o in ops:
         operation = _ensure_operation(o["operation"])
         workstation = _ensure_workstation(
@@ -609,6 +632,15 @@ def save_bom(item, items, operations=None, quantity=1, name=None, submit=0, set_
         bom.submit()
     frappe.db.commit()
     return {"name": bom.name, "submitted": bom.docstatus == 1, "total_cost": _money(bom.total_cost, bom.currency)}
+
+
+def _sheet_dims(i):
+    from a3_trading_management.api.sheet_cut import _dims, legacy_dims
+
+    if not i.get("custom_cut_shape"):
+        return {}
+    return _dims(i.get("custom_cut_dims")) or legacy_dims(
+        i.custom_cut_shape, i.get("custom_cut_length_cm"), i.get("custom_cut_width_cm"))
 
 
 @frappe.whitelist()
@@ -626,6 +658,9 @@ def get_bom_form(name):
             "item_code": i.item_code, "item_name": i.item_name, "qty": flt(i.qty), "uom": i.uom,
             "stock_uom": i.stock_uom, "conversion_factor": flt(i.conversion_factor) or 1,
             "rate": flt(i.rate), "amount": flt(i.amount),
+            "cut_shape": i.get("custom_cut_shape"), "cut_length_cm": flt(i.get("custom_cut_length_cm")),
+            "cut_width_cm": flt(i.get("custom_cut_width_cm")), "cut_pieces": cint(i.get("custom_cut_pieces")),
+            "cut_dims": _sheet_dims(i),
         } for i in bom.items],
         "operations": [{
             "operation": o.operation, "workstation": o.workstation, "time_in_mins": flt(o.time_in_mins),
@@ -650,9 +685,14 @@ def get_item_uoms(item):
                             fields=["uom", "conversion_factor"], order_by="idx"):
         if d.uom != stock_uom:
             uoms.append({"uom": d.uom, "conversion_factor": flt(d.conversion_factor)})
+    sheet = frappe.db.get_value(
+        "Item", item, ["custom_cut_type", "custom_sheet_length_cm", "custom_sheet_width_cm"], as_dict=True
+    ) or {}
     return {
         "stock_uom": stock_uom, "uoms": uoms,
         "valuation_rate": get_valuation_rate({"item_code": item, "company": _current_company()}),
+        "is_sheet": sheet.get("custom_cut_type") == "Sheet",
+        "sheet_length": flt(sheet.get("custom_sheet_length_cm")), "sheet_width": flt(sheet.get("custom_sheet_width_cm")),
     }
 
 
@@ -1020,6 +1060,24 @@ def get_work_order(name):
         }
         for d in wo.required_items
     ]
+    # A sheet row's cut size: its own, or the BOM's for a row that came from it.
+    from a3_trading_management.api.sheet_cut import wo_row_cuts
+
+    found = {}
+    for d, c in wo_row_cuts(wo):
+        found.setdefault(d.idx, []).append(c)
+    for r in required_items:
+        if r["idx"] in found:
+            cuts = found[r["idx"]]
+            r["is_sheet"] = True
+            if len(cuts) == 1 and cuts[0]:
+                c = cuts[0]
+                r["cut"] = {"shape": c["custom_cut_shape"] or "Rectangle", "l": flt(c["custom_cut_length_cm"]),
+                            "w": flt(c["custom_cut_width_cm"]) or flt(c["custom_cut_length_cm"]),
+                            "pieces": cint(c["custom_cut_pieces"]) or 1,
+                            "dims": json.loads(c["custom_cut_dims"]) if c["custom_cut_dims"] else {}}
+            elif len(cuts) > 1:
+                r["cut_note"] = _("{0} cut sizes from the BOM").format(len(cuts))
 
     # Labour the BOM assigns to each step: shown (and saved on the next save) for
     # any operation the work order has not assigned yet, including orders raised
@@ -1134,7 +1192,14 @@ def get_work_order(name):
         },
         "stock_entry": stock_entry,
         "currency": currency,
+        "sheet_pieces": _sheet_pieces(wo),
     }
+
+
+def _sheet_pieces(wo):
+    from a3_trading_management.api.sheet_cut import cut_summary
+
+    return cut_summary(wo) if wo.get("custom_sheet_plan") else []
 
 
 # ---------------------------------------------------------------------------
@@ -1166,6 +1231,12 @@ def update_work_order_tables(name, required_items=None, operations=None):
             for r in rows:
                 code = (r.get("item_code") or "").strip()
                 r["rate"] = old_rates.get(code) if code in old_rates else frappe.db.get_value("Item", code, "valuation_rate")
+        from a3_trading_management.api.sheet_cut import is_sheet_item, plan_doc
+
+        def sheet_rows():
+            return sorted((d.item_code, flt(d.required_qty, 2)) for d in wo.required_items if is_sheet_item(d.item_code))
+
+        before_sheets = sheet_rows()
         wo.set("required_items", [])
         for r in rows:
             item_code = (r.get("item_code") or "").strip()
@@ -1173,9 +1244,20 @@ def update_work_order_tables(name, required_items=None, operations=None):
                 continue
             qty = flt(r.get("qty"))
             rate = flt(r.get("rate"))
+            cut = {}
+            if is_sheet_item(item_code) and isinstance(r.get("cut"), dict) and flt(r["cut"].get("l")) > 0:
+                # A sheet is used by cut size: the quantity is the area of the pieces.
+                c = r["cut"]
+                length, width = flt(c.get("l")), flt(c.get("w")) or flt(c.get("l"))
+                pieces = max(1, cint(c.get("pieces")))
+                cut = {"custom_cut_shape": c.get("shape") or "Rectangle", "custom_cut_length_cm": length,
+                       "custom_cut_width_cm": width, "custom_cut_pieces": pieces,
+                       "custom_cut_dims": json.dumps(c.get("dims") or {})}
+                qty = flt(length * width * pieces, 4)
             wo.append(
                 "required_items",
                 {
+                    **cut,
                     "item_code": item_code,
                     "item_name": r.get("item_name")
                     or frappe.db.get_value("Item", item_code, "item_name"),
@@ -1187,6 +1269,10 @@ def update_work_order_tables(name, required_items=None, operations=None):
                     "source_warehouse": r.get("source_warehouse") or wo.source_warehouse,
                 },
             )
+
+        if plan_doc(wo.get("custom_sheet_plan"))["cut"] and sheet_rows() != before_sheets:
+            frappe.throw(_("The sheet pieces for this work order are already cut, so its sheet rows "
+                           "can no longer change."), title=_("Sheet material"))
 
     if operations is not None:
         rows = operations if isinstance(operations, list) else json.loads(operations)
@@ -1242,10 +1328,14 @@ def _append_stage_log(wo, to_stage, notes):
 
 
 @frappe.whitelist()
-def advance_stage(name, notes=None):
+def advance_stage(name, notes=None, sheet_choices=None):
     """Move the Work Order to the next production stage. Advancing into the final
     Delivery stage submits the Work Order and posts a Manufacture Stock Entry so
-    the finished item lands in stock."""
+    the finished item lands in stock.
+
+    A BOM with sheet rows needs `sheet_choices` ([{row, source, leftovers}], the
+    Sheet material dialog) before Delivery: per row, cut from leftovers, from a
+    new sheet, or leftovers first and the balance from new."""
     wo = frappe.get_doc("Work Order", name)
     cur = wo.custom_production_stage or "Material"
     idx = _stage_index(cur)
@@ -1253,6 +1343,7 @@ def advance_stage(name, notes=None):
         frappe.throw(_("Work order is already at the final stage"))
 
     nxt = STAGES[idx + 1]
+    _sheet_material(wo, cur, nxt, sheet_choices)
     if cur == "QC":
         # Leaving QC is the QC sign-off: it lands on the Quality screen's list,
         # and a failed inspection holds the trailer back.
@@ -1271,6 +1362,32 @@ def advance_stage(name, notes=None):
     detail = get_work_order(name)
     detail.update(result)
     return detail
+
+
+def _sheet_material(wo, cur, nxt, sheet_choices):
+    """Sheets are cut as the work order leaves its first stage (Material): the
+    user's choice per sheet row (leftover / new sheet / both) is checked, the
+    pieces are cut and kept for this work order. A work order already past
+    Material when this came in is asked at Delivery instead, as before."""
+    from a3_trading_management.api.sheet_cut import check_plan, cut_for_work_order, needs, plan_doc
+
+    if not (cur == STAGES[0] or nxt == "Delivery"):
+        return
+    pd = plan_doc(wo.get("custom_sheet_plan"))
+    if pd["cut"] or not needs(wo):
+        return
+    choices = check_plan(wo, sheet_choices if sheet_choices else pd["choices"])
+    if cur == STAGES[0]:
+        used = cut_for_work_order(wo, choices)
+        wo.custom_sheet_plan = json.dumps({"choices": choices, "cut": [list(u) for u in used]})
+        return
+    # Late path (already past Material): try the cuts, undo, cut for real at Manufacture.
+    frappe.db.savepoint("sheet_dry_run")
+    try:
+        cut_for_work_order(wo, choices)
+    finally:
+        frappe.db.rollback(save_point="sheet_dry_run")
+    wo.custom_sheet_plan = json.dumps({"choices": choices, "cut": []})
 
 
 def _complete_production(wo):
@@ -1296,6 +1413,13 @@ def _complete_production(wo):
     try:
         frappe.db.savepoint("mfg_manufacture")
         se = frappe.get_doc(make_stock_entry(wo.name, "Manufacture"))
+        if wo.get("custom_sheet_plan"):
+            # Sheets: consume exactly the pieces cut for this work order (cut now
+            # if it was still waiting for them).
+            from a3_trading_management.api.sheet_cut import apply_to_manufacture_entry, cut_for_work_order, plan_doc
+
+            pd = plan_doc(wo.custom_sheet_plan)
+            apply_to_manufacture_entry(se, pd["cut"] or cut_for_work_order(wo, pd["choices"]))
         # make_stock_entry sets `purpose` but not `stock_entry_type`, which is the
         # mandatory field on Stock Entry — without it the entry never posts and the
         # work order silently completes with nothing in the warehouse.

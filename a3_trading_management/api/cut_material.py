@@ -138,7 +138,8 @@ def apply_best_fit(doc, method=None):
 			_count(taken, row)
 			rows.append(row)
 			continue
-		if not is_cut_item(row.item_code):
+		# Sheets are cut by size (api/sheet_cut.py), never picked by area here.
+		if not is_cut_item(row.item_code) or frappe.get_cached_value("Item", row.item_code, "custom_cut_type") == "Sheet":
 			rows.append(row)
 			continue
 		# Before validate a row in Kg may not have its conversion yet.
@@ -217,19 +218,29 @@ def list_pieces(item_code=None, warehouse=None, max_length=None):
 	"""Pieces of cut items with what is left of each. With `max_length`, only the
 	offcuts at or under it. The Scrap warehouse is left out unless asked for."""
 	frappe.has_permission("Stock Entry", "read", throw=True)
+	from a3_trading_management.api.sheet_cut import reserved_pieces
+
 	scrap = scrap_warehouse()
+	reserved = reserved_pieces()
 	out = []
 	for p in pieces(item_code, warehouse):
 		if not warehouse and p.warehouse == scrap:
 			continue
 		if max_length not in (None, "") and flt(p.qty) > flt(max_length) + 0.0001:
 			continue
-		item = frappe.get_cached_value("Item", p.item_code, ["item_name", "stock_uom"], as_dict=True) or {}
-		out.append({
+		item = frappe.get_cached_value("Item", p.item_code, ["item_name", "stock_uom", "custom_cut_type"], as_dict=True) or {}
+		row = {
 			"item_code": p.item_code, "item_name": item.get("item_name"), "uom": item.get("stock_uom"),
 			"batch_no": p.batch_no, "warehouse": p.warehouse, "qty": flt(p.qty, 3),
 			"amount": flt(p.value, 2),
-		})
+		}
+		if item.get("custom_cut_type") == "Sheet":
+			from a3_trading_management.api.sheet_cut import piece_info
+
+			info = piece_info(p.item_code, p.batch_no, p.qty)
+			row.update({"sheet": True, "length": info.length, "width": info.width, "cutouts": info.cutouts,
+			            "is_offcut": info.is_offcut, "reserved_for": reserved.get(p.batch_no)})
+		out.append(row)
 	return out
 
 
@@ -238,6 +249,10 @@ def scrap_offcut(item_code, batch_no, warehouse, mode="transfer", remarks=None):
 	"""Take a whole offcut out of use: `transfer` moves it to the Scrap warehouse at
 	its value; `write_off` issues it, expensing the value."""
 	frappe.has_permission("Stock Entry", "submit", throw=True)
+	from a3_trading_management.api.sheet_cut import reserved_pieces
+
+	if reserved_pieces().get(batch_no):
+		frappe.throw(_("Piece {0} is cut for work order {1} and kept for it.").format(batch_no, reserved_pieces()[batch_no]))
 	left = next((p.qty for p in pieces(item_code, warehouse) if p.batch_no == batch_no), 0)
 	if flt(left) <= 0:
 		frappe.throw(_("Piece {0} has nothing left in {1}.").format(batch_no, warehouse))

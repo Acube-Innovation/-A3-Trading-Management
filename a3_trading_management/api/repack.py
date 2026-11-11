@@ -115,5 +115,13 @@ def repack_from_bom(bom, qty, from_warehouse, to_warehouse=None, remarks=None, s
 	doc.bom_no = bom
 	doc.fg_completed_qty = flt(qty)
 	doc.use_multi_level_bom = 0
+	from a3_trading_management.api.sheet_cut import is_sheet_item
+
+	sheets = [r.item_code for r in frappe.get_all("BOM Item", filters={"parent": bom}, fields=["item_code"])
+	          if is_sheet_item(r.item_code)]
+	if sheets:
+		frappe.throw(_("This BOM cuts sheet ({0}). Make it through a work order, which asks whether each piece comes from a leftover or a new sheet.")
+		             .format(", ".join(frappe.get_cached_value("Item", i, "item_name") or i for i in sheets)),
+		             title=_("Sheet material"))
 	doc.get_items()
 	return _finish(doc, submit, preview)

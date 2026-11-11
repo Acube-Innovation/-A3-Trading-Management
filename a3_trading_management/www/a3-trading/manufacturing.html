@@ -227,6 +227,64 @@
 	</div>
 </div>
 
+<!-- Cut size of a sheet row on the work order's materials (shapes from Cut Shape) -->
+<div class="modal-overlay" id="cut-modal" role="dialog" aria-modal="true">
+	<div class="modal" style="width:min(560px,96vw)">
+		<div class="modal__head"><div><h3>Cut size</h3><div class="sub" id="cut-sub"></div></div>
+			<button type="button" class="modal__close" data-cut-close><i class="fa-solid fa-xmark"></i></button></div>
+		<div class="modal__body">
+			<div class="form-grid">
+				<div class="field"><label>Cut Shape</label><select id="cut-shape"></select></div>
+				<div class="field"><label>Pieces (this work order)</label><input id="cut-pieces" type="number" min="1" step="1" value="1"></div>
+			</div>
+			<div class="form-grid" id="cut-dims" style="margin-top:10px"></div>
+			<div class="muted" id="cut-hint" style="font-size:12px;margin-top:6px"></div>
+			<div style="display:flex;gap:14px;align-items:center;margin-top:12px">
+				<div id="cut-svg"></div>
+				<div style="font-size:13px;line-height:1.6">
+					<div>Cut as: <b id="cut-box">—</b></div>
+					<div>Charged per piece: <b id="cut-area">0</b> cm²</div>
+					<div>Quantity: <b id="cut-total">0</b> cm²</div>
+				</div>
+			</div>
+			<div id="cut-info" style="font-size:12.5px;margin-top:10px"></div>
+			<div class="mfg-warn" id="cut-err" style="display:none"></div>
+		</div>
+		<div class="modal__foot">
+			<button type="button" class="btn btn--outline" data-cut-close style="margin-right:auto">Cancel</button>
+			<button type="button" class="btn btn--primary" id="cut-ok"><i class="fa-solid fa-scissors"></i> Use this size</button>
+		</div>
+	</div>
+</div>
+
+<!-- Sheet material: before the work order is produced, where each sheet piece comes from -->
+<div class="modal-overlay" id="sheet-modal" role="dialog" aria-modal="true">
+	<div class="modal" style="width:min(760px,96vw);max-width:none">
+		<div class="modal__head">
+			<div><h3>Sheet material</h3><div class="sub" id="sheet-sub"></div></div>
+			<button type="button" class="modal__close" data-sheet-close><i class="fa-solid fa-xmark"></i></button>
+		</div>
+		<div class="modal__body" id="sheet-body"></div>
+		<div class="modal__foot">
+			<button type="button" class="btn btn--outline" data-sheet-close style="margin-right:auto">Cancel</button>
+			<button type="button" class="btn btn--primary" id="sheet-go"><i class="fa-solid fa-scissors"></i> Cut &amp; deliver</button>
+		</div>
+	</div>
+</div>
+<style>
+	.sh-row { border:1px solid var(--border); border-radius:10px; padding:12px; margin-bottom:12px; }
+	.sh-opts { display:flex; gap:14px; flex-wrap:wrap; margin:8px 0; font-size:13px; }
+	.sh-opts label { display:flex; gap:6px; align-items:center; cursor:pointer; }
+	.sh-opts label.off { opacity:.45; cursor:not-allowed; }
+	.sh-prev { margin-top:10px; padding:10px; background:var(--bg-soft, #f6f7f9); border-radius:8px; }
+	.sh-prev__t { font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.04em; color:var(--muted, #6b7280); margin-bottom:8px; }
+	.sh-prev__row { display:flex; flex-wrap:wrap; gap:16px; }
+	.sh-prev__p { display:flex; gap:10px; align-items:center; font-size:12px; line-height:1.5; }
+	.sh-key { display:inline-block; width:10px; height:10px; border-radius:2px; vertical-align:-1px; }
+	.sh-left { display:flex; gap:10px; flex-wrap:wrap; }
+	.sh-left label { display:flex; gap:8px; align-items:center; border:1px solid var(--border); border-radius:8px; padding:6px 8px; font-size:12px; cursor:pointer; }
+</style>
+
 <script>window.csrf_token = "{{ frappe.session.csrf_token }}";</script>
 {% raw %}
 <script>
@@ -238,6 +296,22 @@
 	var PRICE = SUP ? ' class="price"' : "", PCLS = SUP ? " price" : "";
 	var current = null, search = "", detail = null;
 	var editRM = [], editOps = [];   // in-memory editable table state for the current draft WO
+	var seedTables = "";             // the tables as loaded, to tell unsaved edits
+	// Only what is saved counts: the unit picked to type a quantity in does not.
+	function tablesJson() {
+		return JSON.stringify([editRM.map(function (r) { return [r.item_code, r.qty, r.rate, r.source_warehouse, r.cut]; }), editOps]);
+	}
+	// A row's quantity and rate are kept in the item's stock unit (what is saved);
+	// they are typed in the unit picked on the row (cf = stock units per that unit).
+	function cfOf(r) { return Number(r.cf) || 1; }
+	function round6(x) { return Math.round(x * 1e6) / 1e6; }
+	function unitShort(u) { return { "Square Centimeter": "cm²", "Centimeter": "cm", "Meter": "m", "Square Meter": "m²" }[u] || u || ""; }
+	function stockLine(r) { return cfOf(r) !== 1 ? "= " + round6(r.qty || 0).toLocaleString() + " " + esc(unitShort(r.uom)) : ""; }
+	function setUnits(r, info) {
+		r.uoms = (info && info.uoms) || [{ uom: r.uom, conversion_factor: 1 }];
+		if (info && info.stock_uom) r.uom = info.stock_uom;
+		if (!r.uoms.some(function (u) { return u.uom === r.uom_in; })) { r.uom_in = r.uom; r.cf = 1; }
+	}
 	var LABOUR = [];                 // active employees, for the Labour dropdowns (loaded at boot)
 
 	// Operations are costed in minutes (ERPNext's unit) but entered and shown in hours.
@@ -330,9 +404,19 @@
 		var body = editRM.map(function (r, i) {
 			return '<tr>' +
 				'<td class="sl">' + (i + 1) + '</td>' +
-				'<td style="position:relative;min-width:150px"><input class="cell-inp rm-item-ac" data-i="' + i + '" value="' + esc(r.item_name || r.item_code || "") + '" placeholder="Search item…" autocomplete="off"></td>' +
-				'<td style="width:90px"><input class="cell-inp" type="number" step="any" data-rm="qty" data-i="' + i + '" value="' + (r.qty || 0) + '"></td>' +
-				'<td' + PRICE + ' style="width:110px"><input class="cell-inp" type="number" step="any" data-rm="rate" data-i="' + i + '" value="' + (r.rate || 0) + '"></td>' +
+				'<td style="position:relative;min-width:150px"><div style="display:flex;gap:6px;align-items:center"><input class="cell-inp rm-item-ac" data-i="' + i + '" value="' + esc(r.item_name || r.item_code || "") + '" placeholder="Search item…" autocomplete="off">' +
+					(r.is_sheet ? '<button type="button" class="mfg-row-x" data-rm-cut="' + i + '" title="Cut size"><i class="fa-solid fa-scissors"></i></button>' : "") + "</div>" +
+					(r.is_sheet ? '<div class="muted" style="font-size:11.5px;margin-top:3px' + (r.cut || r.cut_note ? "" : ";color:#b3261e") + '">' +
+						(r.cut ? esc(cutLabel(r.cut)) : r.cut_note ? "✂ " + esc(r.cut_note) : "✂ Set the cut size") + "</div>" : "") + '</td>' +
+				'<td style="width:170px"><div style="display:flex;gap:4px"><input class="cell-inp" style="min-width:60px" type="number" step="any" data-rm="qty" data-i="' + i + '" value="' + round6((r.qty || 0) / cfOf(r)) + '"' + (r.is_sheet ? ' readonly title="Comes from the cut size"' : "") + '>' +
+					((r.uoms || []).length > 1 && !r.is_sheet
+						? '<select class="cell-inp" style="width:auto;max-width:105px" data-rm-uom="' + i + '">' + r.uoms.map(function (u) {
+							return '<option value="' + esc(u.uom) + '"' + (u.uom === (r.uom_in || r.uom) ? " selected" : "") + ">" + esc(u.uom) + "</option>";
+						}).join("") + "</select>"
+						: '<span class="muted" style="font-size:12px;align-self:center;white-space:nowrap">' + esc(unitShort(r.uom)) + "</span>") + "</div>" +
+					'<div class="muted" style="font-size:11px;margin-top:2px" data-rm-stock="' + i + '">' + stockLine(r) + "</div>" + '</td>' +
+				'<td' + PRICE + ' style="width:110px"><input class="cell-inp" type="number" step="any" data-rm="rate" data-i="' + i + '" value="' + Math.round((r.rate || 0) * cfOf(r) * 1e4) / 1e4 + '">' +
+					'<div class="muted" style="font-size:11px;margin-top:2px">per ' + esc(unitShort(r.uom_in || r.uom || "")) + "</div></td>" +
 				'<td' + PRICE + ' style="width:110px" data-rm-amt="' + i + '">' + money((r.qty || 0) * (r.rate || 0)) + '</td>' +
 				'<td style="width:34px"><button type="button" class="mfg-row-x" data-rm-x="' + i + '" title="Remove row"><i class="fa-solid fa-trash"></i></button></td></tr>';
 		}).join("");
@@ -404,8 +488,16 @@
 		titleEl.textContent = o.name;
 		tagEl.textContent = o.item_name;
 		if (o.editable && seed !== false) {
-			editRM = (o.required_items || []).map(function (r) { return { item_code: r.item_code, item_name: r.item_name, uom: r.uom, qty: r.qty, rate: r.rate, source_warehouse: r.source_warehouse }; });
+			editRM = (o.required_items || []).map(function (r) { return { item_code: r.item_code, item_name: r.item_name, uom: r.uom, qty: r.qty, rate: r.rate, source_warehouse: r.source_warehouse, is_sheet: !!r.is_sheet, cut: r.cut || null, cut_note: r.cut_note || "" }; });
 			editOps = (o.operations || []).map(function (r) { return { operation: r.operation, workstation: r.workstation, labour: r.labour, labour_name: r.labour_name, labour_from_bom: r.labour_from_bom, time_in_mins: r.time_in_mins, hour_rate: r.hour_rate }; });
+			seedTables = tablesJson();
+			var forName = o.name;
+			Promise.all(editRM.map(function (r) { return r.item_code ? itemInfo(r.item_code) : null; })).then(function (infos) {
+				if (!detail || detail.name !== forName) return;
+				editRM.forEach(function (r, k) { if (infos[k]) setUnits(r, infos[k]); });
+				// Redraw for the unit lists unless something is being typed.
+				if (!detailEl.contains(document.activeElement)) rerenderTables();
+			});
 		}
 
 		var rmSection = o.editable ? rmTableHtml()
@@ -434,6 +526,7 @@
 			'<div class="fieldset-title">Work Order</div>' +
 			kv([["Item", o.item_name], ["For Sales Order", o.sales_order ? o.sales_order + (o.customer ? " · " + o.customer : "") : "Build to stock"], ["Specification", o.description || "—"], ["Quantity", o.qty], ["BOM", o.bom], ["Production Stage", o.stage], ["ERP Status", o.erp_status], ["Started", o.planned_start], ["Target Delivery", o.target], ["Raw material from", o.source_warehouse || "—"], ["FG Warehouse", o.fg_warehouse], ["Chassis Number", (o.chassis_numbers || []).join(", ") || "—"]]) +
 			'<div class="fieldset-title">BOM — Raw Materials' + (o.editable ? ' <span class="muted" style="font-weight:400">(editable)</span>' : '') + '</div>' + rmSection +
+			sheetPiecesBlock(o) +
 			'<div class="fieldset-title">BOM — Operations' + (o.editable ? ' <span class="muted" style="font-weight:400">(editable)</span>' : '') + '</div>' + opSection +
 			saveBtn +
 			(o.costing ? '<div class="fieldset-title">Costing</div>' +
@@ -464,8 +557,10 @@
 		// raw-material qty / rate
 		detailEl.querySelectorAll("[data-rm]").forEach(function (inp) {
 			inp.addEventListener("input", function () {
-				var i = +inp.dataset.i; editRM[i][inp.dataset.rm] = parseFloat(inp.value) || 0;
-				var amt = detailEl.querySelector('[data-rm-amt="' + i + '"]');
+				var i = +inp.dataset.i;
+				editRM[i][inp.dataset.rm] = (parseFloat(inp.value) || 0) * (inp.dataset.rm === "qty" ? cfOf(editRM[i]) : 1 / cfOf(editRM[i]));
+				var amt = detailEl.querySelector('[data-rm-amt="' + i + '"]'), sl = detailEl.querySelector('[data-rm-stock="' + i + '"]');
+				if (sl) sl.innerHTML = stockLine(editRM[i]);
 				if (amt) amt.textContent = money((editRM[i].qty || 0) * (editRM[i].rate || 0));
 			});
 		});
@@ -479,8 +574,34 @@
 			}, function (it) {
 				editRM[i].item_code = it.value; editRM[i].item_name = it.label; editRM[i].uom = it.uom || "";
 				if (!editRM[i].rate && it.rate) editRM[i].rate = it.rate;
+				editRM[i].is_sheet = false; editRM[i].cut = null; editRM[i].cut_note = "";
+				editRM[i].uom_in = editRM[i].uom; editRM[i].cf = 1; editRM[i].uoms = null;
+				rerenderTables();
+				itemInfo(it.value).then(function (info) {
+					if (editRM[i].item_code !== it.value) return;
+					// Its units, and the rate stock is valued at (the item master's is often 0).
+					setUnits(editRM[i], info);
+					if (info.valuation_rate) editRM[i].rate = Number(info.valuation_rate);
+					rerenderTables();
+					// A sheet is used by cut size: ask for it straight away.
+					if (!info.is_sheet) return;
+					editRM[i].is_sheet = true; editRM[i].uom = info.stock_uom; editRM[i].qty = 0;
+					editRM[i].rate = Number(info.valuation_rate) || editRM[i].rate;
+					rerenderTables(); openCut(i);
+				});
+			});
+		});
+		detailEl.querySelectorAll("[data-rm-uom]").forEach(function (sel) {
+			sel.addEventListener("change", function () {
+				var r = editRM[+sel.dataset.rmUom], typed = (r.qty || 0) / cfOf(r);
+				var u = (r.uoms || []).filter(function (x) { return x.uom === sel.value; })[0] || { conversion_factor: 1 };
+				r.uom_in = sel.value; r.cf = Number(u.conversion_factor) || 1;
+				r.qty = round6(typed * r.cf);   // the number typed stays, now in the new unit
 				rerenderTables();
 			});
+		});
+		detailEl.querySelectorAll("[data-rm-cut]").forEach(function (b) {
+			b.addEventListener("click", function () { openCut(+b.dataset.rmCut); });
 		});
 		// raw-material delete + add row
 		detailEl.querySelectorAll("[data-rm-x]").forEach(function (b) {
@@ -557,19 +678,254 @@
 	function saveTables() {
 		var btn = document.getElementById("save-tables");
 		if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving…'; }
-		callMethod(API + "update_work_order_tables", { name: current, required_items: editRM, operations: editOps })
-			.then(function (o) { renderDetail(o); refresh(true); })
-			.catch(function (e) { alert("Save failed: " + e.message); if (btn) { btn.disabled = false; btn.innerHTML = 'Save materials & operations'; } });
+		return callMethod(API + "update_work_order_tables", { name: current, required_items: editRM, operations: editOps })
+			.then(function (o) { renderDetail(o); refresh(true); return o; })
+			.catch(function (e) { alert("Save failed: " + e.message); if (btn) { btn.disabled = false; btn.innerHTML = 'Save materials & operations'; } throw e; });
 	}
 
 	function advance() {
+		// Unsaved material edits are saved first, so the cut works from what is on screen.
+		if (detail && detail.editable && tablesJson() !== seedTables) {
+			saveTables().then(advance).catch(function () {});
+			return;
+		}
+		// Leaving the first stage (Material) the sheet pieces are cut: the user chooses
+		// leftover or new sheet first. (A work order already past Material when this
+		// came in is asked at Delivery instead.)
+		if (detail && (detail.stage_index === 0 || detail.next_stage === "Delivery")) {
+			callMethod("a3_trading_management.api.sheet_cut.sheet_needs", { work_order: current })
+				.then(function (rows) { if ((rows || []).length) openSheet(rows, detail.stage_index === 0); else doAdvance(null); })
+				.catch(function (e) { alert("Could not read the sheet material: " + e.message); });
+			return;
+		}
+		doAdvance(null);
+	}
+	function doAdvance(sheetChoices) {
 		var btn = document.getElementById("advance-btn");
 		var notes = (document.getElementById("stage-notes") || {}).value || "";
 		if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Working…'; }
-		callMethod(API + "advance_stage", { name: current, notes: notes })
+		var args = { name: current, notes: notes };
+		if (sheetChoices) args.sheet_choices = sheetChoices;
+		return callMethod(API + "advance_stage", args)
 			.then(function (o) { renderDetail(o); refresh(true); })
-			.catch(function (e) { alert("Could not advance: " + e.message); if (btn) { btn.disabled = false; } });
+			.catch(function (e) { alert("Could not advance: " + e.message); if (btn) { btn.disabled = false; renderDetail(detail, false); } });
 	}
+
+	// ---- cut size of a sheet row ------------------------------------------
+	var SHEET_API = "a3_trading_management.api.sheet_cut.", SHAPES = [], SHAPES_READY = null, INFO = {};
+	var cutModal = document.getElementById("cut-modal"), CUT_I = null, CUT_BOX = null, CUT_SEQ = 0, CUT_T = null;
+	function byId(id) { return document.getElementById(id); }
+	function itemInfo(code) {
+		if (!INFO[code]) INFO[code] = callMethod(API + "get_item_uoms", { item: code }).catch(function () { delete INFO[code]; return {}; });
+		return INFO[code];
+	}
+	function loadShapes() {
+		if (!SHAPES_READY) SHAPES_READY = callMethod(SHEET_API + "get_cut_shapes", {}).then(function (r) {
+			SHAPES = r || [];
+			byId("cut-shape").innerHTML = SHAPES.map(function (x) { return '<option value="' + esc(x.name) + '">' + esc(x.name) + "</option>"; }).join("");
+		});
+		return SHAPES_READY;
+	}
+	loadShapes().then(function () { if (detail && detail.editable && tablesJson() === seedTables) rerenderTables(); }).catch(function () {});
+	function shapeOf(name) { return SHAPES.filter(function (x) { return x.name === name; })[0]; }
+	function cutLabel(c) {
+		var sh = shapeOf(c.shape), d = c.dims || {};
+		var sizes = sh ? sh.dims.map(function (x) { return x.label + " " + (d[x.key] || 0); }).join(", ")
+		              : Object.keys(d).map(function (k) { return k + " " + d[k]; }).join(", ");
+		return "✂ " + c.shape + (sizes ? " — " + sizes + " cm" : "") + " (cut " + c.l + "×" + c.w + ")" + ((c.pieces || 1) > 1 ? " × " + c.pieces : "");
+	}
+	function renderDims(dims) {
+		var sh = shapeOf(byId("cut-shape").value);
+		byId("cut-dims").innerHTML = sh ? sh.dims.map(function (d) {
+			return '<div class="field"><label>' + esc(d.label) + ' (cm) <span class="req">*</span></label><input type="number" min="0" step="any" data-key="' + esc(d.key) +
+				'" value="' + (dims && dims[d.key] ? dims[d.key] : "") + '"' + (d.hint ? ' placeholder="' + esc(d.hint) + '"' : "") + "></div>";
+		}).join("") : "";
+		byId("cut-hint").textContent = (sh && sh.note) || "";
+		byId("cut-dims").querySelectorAll("input").forEach(function (inp) { inp.addEventListener("input", cutUpdate); });
+	}
+	function cutRead() {
+		var dims = {};
+		byId("cut-dims").querySelectorAll("input").forEach(function (inp) { dims[inp.dataset.key] = Number(inp.value) || 0; });
+		return { shape: byId("cut-shape").value, dims: dims, pieces: Math.max(1, parseInt(byId("cut-pieces").value, 10) || 1) };
+	}
+	function cutUpdate() {
+		var c = cutRead(), r = editRM[CUT_I] || {}, seq = ++CUT_SEQ;
+		CUT_BOX = null; byId("cut-err").style.display = "none";
+		var full = Object.keys(c.dims).length && Object.keys(c.dims).every(function (k) { return c.dims[k] > 0; });
+		function show(l, w, info) {
+			byId("cut-box").textContent = l && w ? l + " × " + w + " cm" : "—";
+			byId("cut-area").textContent = (l * w).toLocaleString(); byId("cut-total").textContent = (l * w * c.pieces).toLocaleString();
+			byId("cut-svg").innerHTML = info && info.length ? sheetSvg({ length: info.length, width: info.width, cutouts: [] }, 150,
+				l && w ? [{ x: 0, y: 0, l: Math.min(l, info.length), w: Math.min(w, info.width) }] : [], /circle|round/i.test(c.shape)) : "";
+		}
+		show(0, 0); byId("cut-info").textContent = "";
+		clearTimeout(CUT_T);
+		if (!full) return;
+		CUT_T = setTimeout(function () {
+			callMethod(SHEET_API + "get_sheet_info", { item: r.item_code, warehouse: r.source_warehouse || "", shape: c.shape, dims: c.dims }).then(function (x) {
+				if (seq !== CUT_SEQ || !x || !x.is_sheet) return;
+				CUT_BOX = { l: x.cut_length, w: x.cut_width, fits: x.fits_sheet, seq: seq };
+				show(x.cut_length, x.cut_width, x);
+				byId("cut-info").innerHTML = (x.fits_sheet ? "" : '<div style="color:#b3261e">Bigger than a full sheet (' + x.length + "×" + x.width + " cm).</div>") +
+					'<i class="fa-solid fa-circle-info"></i> In stock now: <b>' + x.full_sheets + "</b> full sheet" + (x.full_sheets === 1 ? "" : "s") +
+					", <b>" + x.fitting_leftovers + "</b> leftover" + (x.fitting_leftovers === 1 ? "" : "s") + " this size fits in. " +
+					'<span class="muted">Leftover or new sheet is chosen as the work order leaves Material.</span>';
+			}).catch(function (e) { if (seq !== CUT_SEQ) return; byId("cut-err").textContent = e.message; byId("cut-err").style.display = "block"; });
+		}, 250);
+	}
+	function openCut(i) {
+		CUT_I = i; var r = editRM[i];
+		Promise.all([loadShapes(), itemInfo(r.item_code)]).then(function (res) {
+			var info = res[1] || {}, c = r.cut || {};
+			byId("cut-sub").textContent = (r.item_name || r.item_code) + (info.sheet_length ? " · full sheet " + info.sheet_length + "×" + info.sheet_width + " cm" : "");
+			byId("cut-shape").value = c.shape && shapeOf(c.shape) ? c.shape : (SHAPES[0] || {}).name || "";
+			byId("cut-pieces").value = c.pieces || 1;
+			renderDims(c.dims || {});
+			cutUpdate();
+			cutModal.classList.add("is-open");
+			var first = byId("cut-dims").querySelector("input"); if (first) first.focus();
+		}).catch(function (e) { alert("Could not open the cut size: " + e.message); });
+	}
+	function closeCut() { cutModal.classList.remove("is-open"); }
+	cutModal.querySelectorAll("[data-cut-close]").forEach(function (b) { b.addEventListener("click", closeCut); });
+	byId("cut-shape").addEventListener("change", function () { renderDims({}); cutUpdate(); });
+	byId("cut-pieces").addEventListener("input", cutUpdate);
+	byId("cut-ok").addEventListener("click", function () {
+		var c = cutRead(), err = byId("cut-err");
+		function fail(m) { err.textContent = m; err.style.display = "block"; }
+		if (!c.shape) return fail("Choose a cut shape.");
+		if (!(CUT_BOX && CUT_BOX.seq === CUT_SEQ)) return fail("Give every size in cm, and wait for the cut size to show.");
+		if (!CUT_BOX.fits) return fail("That is bigger than a full sheet.");
+		var r = editRM[CUT_I];
+		r.cut = { shape: c.shape, dims: c.dims, l: CUT_BOX.l, w: CUT_BOX.w, pieces: c.pieces }; r.cut_note = "";
+		r.qty = Math.round(CUT_BOX.l * CUT_BOX.w * c.pieces * 10000) / 10000;
+		closeCut(); rerenderTables();
+	});
+
+	// ---- sheet material --------------------------------------------------
+	function sheetPiecesBlock(o) {
+		var p = o.sheet_pieces || [];
+		if (!p.length) return "";
+		return '<div class="fieldset-title">Sheet pieces cut for this work order</div>' +
+			'<div style="font-size:13px;margin-bottom:12px">' + p.map(function (x) {
+				return '<div><i class="fa-solid fa-scissors" style="color:#ec2e5d"></i> ' + esc(x.item_name || x.item_code) + " — piece <b>" + esc(x.batch_no) + "</b> " +
+					x.length + "×" + x.width + " cm" + (x.shape && x.shape !== "Rectangle" ? " (" + esc(x.shape) + ")" : "") +
+					' <span class="muted">· ' + esc(x.warehouse) + (o.stage === "Delivery" ? " · used" : " · kept for this work order") + "</span></div>";
+			}).join("") + "</div>";
+	}
+	var sheetModal = document.getElementById("sheet-modal"), SHEET_ROWS = [];
+	// `cuts` ({x, y, l, w}) are drawn in red: the pieces this work order would take.
+	function sheetSvg(p, maxW, cuts, round) {
+		var L = Number(p.length) || 1, W = Number(p.width) || 1, w = maxW || 90, h = Math.max(14, Math.round(w * W / L));
+		if (h > w) { h = w; w = Math.max(14, Math.round(h * L / W)); }
+		var sx = w / L, sy = h / W;
+		function box(c, fill, stroke) {
+			return '<rect x="' + c.x * sx + '" y="' + (h - (c.y + c.w) * sy) + '" width="' + Math.max(1, c.l * sx) + '" height="' + Math.max(1, c.w * sy) + '" fill="' + fill + '" stroke="' + stroke + '"/>';
+		}
+		return '<svg width="' + w + '" height="' + h + '" style="display:block;overflow:visible" aria-hidden="true"><rect width="' + w + '" height="' + h + '" fill="#9aa7b4" fill-opacity=".35" stroke="#5b6672"/>' +
+			(p.cutouts || []).map(function (c) { return box(c, "var(--surface,#fff)", "#9aa7b4"); }).join("") +
+			(cuts || []).map(function (c) {
+				return round
+					? box(c, "#ec2e5d", "#ec2e5d").replace('fill="#ec2e5d"', 'fill="#ec2e5d" fill-opacity=".25"') +
+						'<ellipse cx="' + (c.x + c.l / 2) * sx + '" cy="' + (h - (c.y + c.w / 2) * sy) + '" rx="' + c.l * sx / 2 + '" ry="' + c.w * sy / 2 + '" fill="#ec2e5d"/>'
+					: box(c, "#ec2e5d", "#fff");
+			}).join("") + "</svg>";
+	}
+	// The same bottom-left placement the server cuts with (sheet_cut.free_spot).
+	function freeSpot(L, W, cutouts, l, w) {
+		var E = 0.001, xs = [0], ys = [0];
+		cutouts.forEach(function (c) { xs.push(c.x + c.l); ys.push(c.y + c.w); });
+		xs.sort(function (a, b) { return a - b; }); ys.sort(function (a, b) { return a - b; });
+		var turns = Math.abs(l - w) < E ? [[l, w]] : [[l, w], [w, l]];
+		for (var a = 0; a < ys.length; a++) for (var b = 0; b < xs.length; b++) for (var t = 0; t < turns.length; t++) {
+			var x = xs[b], y = ys[a], pl = turns[t][0], pw = turns[t][1];
+			if (x + pl > L + E || y + pw > W + E) continue;
+			if (cutouts.some(function (c) { return x < c.x + c.l - E && c.x < x + pl - E && y < c.y + c.w - E && c.y < y + pw - E; })) continue;
+			return { x: x, y: y, l: pl, w: pw };
+		}
+		return null;
+	}
+	// What the choice would do, as sketches: each piece cut from, with the new cuts in red.
+	function sheetPreview(r, src, lefts) {
+		if (!src) return "";
+		var L = Number(r.length), W = Number(r.width), used = [], left = r.pieces, n;
+		function take(p, label, kind) {
+			var cut = (p.cutouts || []).slice(), mine = [], spot;
+			while (left > 0 && (spot = freeSpot(Number(p.length), Number(p.width), cut, L, W))) { cut.push(spot); mine.push(spot); left--; }
+			if (mine.length) used.push({ p: p, cuts: mine, label: label, kind: kind });
+		}
+		if (src !== "new") r.leftovers.forEach(function (l) { if (lefts.indexOf(l.batch_no) >= 0) take(l, l.batch_no, "Leftover"); });
+		var short = src === "leftover" ? left : 0;
+		for (n = 1; src !== "leftover" && left > 0 && n <= Math.max(1, r.full_sheets); n++)
+			take({ length: r.sheet_length, width: r.sheet_width, cutouts: [] }, "New sheet" + (r.full_sheets > 1 ? " " + n : ""), "New");
+		var round = /circle|round/i.test(r.shape || "");
+		return '<div class="sh-prev"><div class="sh-prev__t">What will be cut</div><div class="sh-prev__row">' +
+			used.map(function (u) {
+				var area = u.cuts.length * L * W, before = Number(u.p.qty) || Number(u.p.length) * Number(u.p.width);
+				return '<div class="sh-prev__p">' + sheetSvg(u.p, 150, u.cuts, round) +
+					'<div><b>' + esc(u.label) + '</b> <span class="muted">· ' + u.kind + "</span><br>" +
+					u.cuts.length + " piece" + (u.cuts.length === 1 ? "" : "s") + " (" + Number(area).toLocaleString() + " cm²)<br>" +
+					'<span class="muted">Back to stock as one leftover: ' + Number(before - area).toLocaleString() + " cm²</span></div></div>";
+			}).join("") + "</div>" +
+			(short > 0 || left > 0 ? '<div class="mfg-warn">' + (short || left) + " of " + r.pieces + " piece" + (r.pieces === 1 ? "" : "s") +
+				" do not fit in " + (src === "leftover" ? "the leftovers ticked. Tick more, or choose leftover + new sheet." : "the stock.") + "</div>" : "") +
+			'<div class="muted" style="font-size:11px;margin-top:4px"><span class="sh-key" style="background:#ec2e5d"></span> this cut &nbsp; <span class="sh-key" style="background:#fff;border:1px solid #9aa7b4"></span> cut before &nbsp; <span class="sh-key" style="background:rgba(154,167,180,.35)"></span> sheet left</div></div>';
+	}
+	function refreshPreview(box) {
+		var r = SHEET_ROWS[Number(box.getAttribute("data-i"))];
+		var src = (box.querySelector("input[type=radio]:checked") || {}).value;
+		var lefts = Array.prototype.map.call(box.querySelectorAll(".sh-left input:checked"), function (c) { return c.value; });
+		var lb = box.querySelector(".sh-left");
+		if (lb) lb.style.opacity = src === "new" ? ".4" : "";
+		box.querySelector(".sh-prev-wrap").innerHTML = sheetPreview(r, src, lefts);
+	}
+	function openSheet(rows, atStart) {
+		SHEET_ROWS = rows;
+		document.getElementById("sheet-go").innerHTML = '<i class="fa-solid fa-scissors"></i> ' + (atStart ? "Cut &amp; start fabrication" : "Cut &amp; deliver");
+		document.getElementById("sheet-sub").textContent = (atStart ? "The sheet is cut now, as the work order moves on to fabrication; the pieces are kept for this work order. " : "") +
+			"Choose where each piece comes from: a leftover, a new sheet, or leftovers first and the rest from a new sheet. Every leftover goes back to stock as one piece, whatever its shape.";
+		document.getElementById("sheet-body").innerHTML = rows.map(function (r, i) {
+			var has = r.leftovers.length > 0, sheets = r.full_sheets > 0;
+			var src = (r.choice && r.choice.source) || (has ? "mixed" : "new");
+			var picked = (r.choice && r.choice.leftovers) || r.leftovers.map(function (l) { return l.batch_no; });
+			function opt(v, label, ok) {
+				return '<label class="' + (ok ? "" : "off") + '"><input type="radio" name="sh-src-' + i + '" value="' + v + '"' + (src === v && ok ? " checked" : "") + (ok ? "" : " disabled") + "> " + label + "</label>";
+			}
+			return '<div class="sh-row" data-i="' + i + '"><div><b>' + esc(r.item_name || r.item_code) + "</b> — " +
+				esc(r.shape) + (r.dims_text ? " " + esc(r.dims_text) + " cm" : "") + " (cut " + r.length + "×" + r.width + " cm)" +
+				" × <b>" + r.pieces + "</b> piece" + (r.pieces === 1 ? "" : "s") +
+				'<div class="muted" style="font-size:12px">' + esc(r.warehouse) + " · " + r.full_sheets + " full sheet" + (r.full_sheets === 1 ? "" : "s") + " (" + r.sheet_length + "×" + r.sheet_width + " cm) · " +
+				r.leftovers.length + " leftover" + (r.leftovers.length === 1 ? "" : "s") + " this size fits in</div></div>" +
+				'<div class="sh-opts">' + opt("leftover", "Leftover only", has) + opt("new", "New sheet", sheets) + opt("mixed", "Leftover + balance from new sheet", has && sheets) + "</div>" +
+				(has ? '<div class="sh-left">' + r.leftovers.map(function (l) {
+					return '<label title="' + esc(l.batch_no) + '"><input type="checkbox" value="' + esc(l.batch_no) + '"' + (picked.indexOf(l.batch_no) >= 0 ? " checked" : "") + ">" +
+						sheetSvg(l, 80) + "<span>" + esc(l.batch_no) + "<br><span class=\"muted\">" + Number(l.qty).toLocaleString() + " cm² left</span></span></label>";
+				}).join("") + "</div>" : '<div class="muted" style="font-size:12px">No leftover this size fits in.</div>') +
+				'<div class="sh-prev-wrap"></div>' +
+				(!has && !sheets ? '<div class="mfg-warn">No sheet or leftover in stock for this size.</div>' : "") + "</div>";
+		}).join("");
+		sheetModal.querySelectorAll(".sh-row").forEach(refreshPreview);
+		sheetModal.classList.add("is-open"); document.body.style.overflow = "hidden";
+	}
+	function closeSheet() { sheetModal.classList.remove("is-open"); document.body.style.overflow = ""; }
+	sheetModal.querySelectorAll("[data-sheet-close]").forEach(function (b) { b.addEventListener("click", closeSheet); });
+	document.getElementById("sheet-body").addEventListener("change", function (e) {
+		var box = e.target.closest(".sh-row"); if (box) refreshPreview(box);
+	});
+	document.getElementById("sheet-go").addEventListener("click", function () {
+		var choices = [], problem = "";
+		SHEET_ROWS.forEach(function (r, i) {
+			var box = sheetModal.querySelector('.sh-row[data-i="' + i + '"]');
+			var src = (box.querySelector('input[type=radio]:checked') || {}).value;
+			var lefts = Array.prototype.map.call(box.querySelectorAll('.sh-left input:checked'), function (c) { return c.value; });
+			if (!src) problem = problem || ((r.item_name || r.item_code) + ": nothing in stock to cut from.");
+			else if (src !== "new" && !lefts.length) problem = problem || ((r.item_name || r.item_code) + ": tick the leftover(s) to cut from.");
+			choices.push({ row: r.row, source: src, leftovers: src === "new" ? [] : lefts });
+		});
+		if (problem) { alert(problem); return; }
+		closeSheet();
+		doAdvance(choices);
+	});
 
 	// ---- select / refresh ----------------------------------------------
 	function select(name) {

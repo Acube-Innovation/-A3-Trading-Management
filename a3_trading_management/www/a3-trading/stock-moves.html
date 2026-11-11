@@ -100,7 +100,7 @@
 			</div>
 
 			<div id="rp-cut">
-				<div class="muted" style="font-size:12.5px;margin:10px 0 4px">To move pieces bought before an item was set up as cut material: consume 1 of the old item (kept in Nos) and make the cut item (kept per Meter or per Kg) in the length that piece actually measures. Each repack makes one piece, at the old item's cost.</div>
+				<div class="muted" style="font-size:12.5px;margin:10px 0 4px">To move pieces bought before an item was set up as cut material: consume 1 of the old item (kept in Nos) and make the cut item (kept per Meter or per Kg) in the length that piece actually measures. For a sheet, make the sheet item in cm²: length × width of that sheet (a 600 × 200 cm sheet = 120000). Each repack makes one piece, at the old item's cost.</div>
 				<div class="fieldset-title" style="margin-top:10px">Consume</div>
 				<table class="sk-lines"><thead><tr><th>Item</th><th style="width:110px">Qty</th><th style="width:90px">Unit</th><th style="width:36px"></th></tr></thead><tbody id="rp-in"></tbody></table>
 				<button type="button" class="btn btn--outline btn--sm" style="margin-top:8px" onclick="rpLine('rp-in')"><i class="fa-solid fa-plus"></i> Add line</button>
@@ -138,6 +138,7 @@
 			<div class="form-grid">
 				<div class="field"><label>Warehouse</label>
 					<select id="pc-wh" onchange="loadPieces()"><option value="">All (not scrap)</option>{%- for w in warehouses %}<option value="{{ w.name }}">{{ w.warehouse_name or w.name }}</option>{% endfor %}</select></div>
+				<div class="field"><label>Item</label><div><input id="pc-item" placeholder="All items — search to narrow" autocomplete="off"></div></div>
 				<div class="field"><label>Offcuts only: pieces up to</label>
 					<input id="pc-max" type="number" min="0" step="any" placeholder="All pieces, e.g. 1 for 1 m and under" onchange="loadPieces()"></div>
 			</div>
@@ -272,18 +273,22 @@ function saveRepack(submit, preview) {
 // ------------------------------------------------------------------ pieces
 var CUT = "a3_trading_management.api.cut_material.";
 function openPieces() { SK.open("pc-modal"); loadPieces(); }
+SK.picker(document.getElementById("pc-item"), rpItems, function () { loadPieces(); });
+document.getElementById("pc-item").addEventListener("input", function () { if (!this.value) loadPieces(); });
 function loadPieces() {
 	var body = document.getElementById("pc-rows"), err = document.getElementById("pc-err");
 	err.style.display = "none"; body.innerHTML = '<tr><td colspan="6" class="muted">Loading…</td></tr>';
 	tradingCall(CUT + "list_pieces", { warehouse: document.getElementById("pc-wh").value || null,
+	                                    item_code: document.getElementById("pc-item").dataset.value || null,
 	                                    max_length: document.getElementById("pc-max").value || null }).then(function (r) {
 		if (!(r || []).length) { body.innerHTML = '<tr><td colspan="6" class="muted">No pieces.</td></tr>'; return; }
 		body.innerHTML = r.map(function (p, i) {
 			return "<tr><td>" + SK.esc(p.item_name || p.item_code) + '<div class="muted" style="font-size:11px">' + SK.esc(p.item_code) + "</div></td>" +
-				"<td>" + SK.esc(p.batch_no) + "</td><td>" + SK.esc(p.warehouse) + '</td><td class="num"><b>' + p.qty + "</b> " + SK.esc(p.uom || "") + "</td>" +
-				'<td class="num price">' + n2(p.amount) + '</td><td class="not-sup" style="white-space:nowrap">' +
+				"<td>" + (p.sheet ? '<div style="display:flex;gap:8px;align-items:center">' + SK.sheet(p, 60) + "<span>" + SK.esc(p.batch_no) + '<div class="muted" style="font-size:11px">' + (p.is_offcut ? "Leftover " : "Full sheet ") + p.length + "×" + p.width + " cm" + (p.reserved_for ? '<br><b style="color:#b3261e">Kept for ' + SK.esc(p.reserved_for) + "</b>" : "") + "</div></span></div>" : SK.esc(p.batch_no)) +
+				"</td><td>" + SK.esc(p.warehouse) + '</td><td class="num"><b>' + p.qty + "</b> " + SK.esc(p.uom || "") + "</td>" +
+				'<td class="num price">' + n2(p.amount) + '</td><td class="not-sup" style="white-space:nowrap">' + (p.reserved_for ? '<span class="muted">Kept</span>' :
 				'<button type="button" class="btn btn--outline btn--sm" data-i="' + i + '" data-mode="transfer" title="Move to the Scrap warehouse, kept at its value">Scrap</button> ' +
-				'<button type="button" class="btn btn--outline btn--sm" data-i="' + i + '" data-mode="write_off" title="Issue it out and expense its value">Write off</button></td></tr>';
+				'<button type="button" class="btn btn--outline btn--sm" data-i="' + i + '" data-mode="write_off" title="Issue it out and expense its value">Write off</button>') + "</td></tr>";
 		}).join("");
 		body.querySelectorAll("button[data-i]").forEach(function (b) {
 			b.addEventListener("click", function () { scrapPiece(r[b.dataset.i], b.dataset.mode); });
