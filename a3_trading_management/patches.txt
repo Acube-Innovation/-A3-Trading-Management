@@ -5,3 +5,4 @@
 # Patches added in this section will be executed after doctypes are migrated
 a3_trading_management.patches.rename_print_formats_to_rli
 a3_trading_management.patches.rli_chassis_numbers_and_letter_head
+a3_trading_management.patches.apply_letter_head_layout

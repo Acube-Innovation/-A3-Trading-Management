@@ -23,24 +23,30 @@ with open(FONT_FILE, "rb") as f:
 	FONT_URL = "data:font/truetype;base64," + base64.b64encode(f.read()).decode()
 FONT = "'Redlines Agency FB', 'Agency FB', 'Arial Narrow', Arial, sans-serif"
 
+TRN = "105503411800003"
+# Layout after the client's letter head sample (11 Nov 2026): logo on the left; on
+# the right, in the logo's typeface, the name, address, contact lines and TRN.
+LINE = f"font-family:{FONT};font-weight:700;letter-spacing:.4px;line-height:1.25"
 CONTENT = f"""<style>@font-face {{ font-family: 'Redlines Agency FB'; src:  url('{FONT_URL}') format('truetype'); font-weight: 700; font-style: normal; }}</style>
 <table style="width:100%;border-collapse:collapse;border:0">
 	<tr>
-		<td style="width:150px;vertical-align:middle;padding:0;border:0">
-			<img src="{LOGO}" alt="Redlines International" style="height:60px;width:auto">
+		<td style="width:190px;vertical-align:middle;padding:0;border:0">
+			<img src="{LOGO}" alt="Redlines International" style="height:82px;width:auto">
 		</td>
-		<td style="vertical-align:middle;text-align:right;padding:0;border:0;font-family:Arial, sans-serif">
-			<div style="font-family:{FONT};font-size:32px;font-weight:700;letter-spacing:.5px;line-height:1.1">
+		<td style="vertical-align:middle;text-align:right;padding:0;border:0">
+			<div style="{LINE};font-size:30px;line-height:1.1">
 				<span style="color:#FF0066">RED</span><span style="color:#00268A">LINES INTERNATIONAL TRADING LLC</span>
 			</div>
-			<div style="font-size:14px;font-weight:700;color:#1F497D;margin-top:3px">G4, Bank Street Building, Burjuman, Dubai, UAE</div>
+			<div style="{LINE};font-size:17px;color:#1a1a1a;margin-top:2px">G4, BANK STREET BUILDING, BURJUMAN, DUBAI, UAE</div>
+			<div style="{LINE};font-size:14px;color:#1a1a1a">P.O. BOX 27969 &nbsp; TEL: +971 4 3596160, 3558595 &nbsp; FAX: +971 4 3596181</div>
+			<div style="{LINE};font-size:14px;color:#00268A"><span style="color:#FF0066">red</span>line@eim.ae</div>
+			<div style="{LINE};font-size:14px;color:#1a1a1a">TRN : {TRN}</div>
 		</td>
 	</tr>
 </table>"""
 
-FOOTER = """<div style="border-top:1px solid #1f2a44;padding-top:5px;text-align:center;font-size:10px;color:#1F497D;font-family:Arial, sans-serif">
-	P.O. BOX: 27969. &nbsp;&nbsp; TEL: +971 4 3596160, 3558595 &nbsp;&nbsp; FAX: +971 4 3596181 &nbsp;&nbsp; email: redline@eim.ae
-</div>"""
+# The contact line moved up into the header, so the footer is empty.
+FOOTER = ""
 
 
 def setup():
@@ -57,3 +63,11 @@ def setup():
 	# A company with no letter head of its own prints on this one.
 	for company in frappe.get_all("Company", filters={"default_letter_head": ["in", ["", None]]}, pluck="name"):
 		frappe.db.set_value("Company", company, "default_letter_head", NAME)
+
+
+def apply_layout():
+	"""Write the layout above over the existing letter head (run once, 11 Nov 2026)."""
+	lh = frappe.get_doc("Letter Head", NAME)
+	lh.source, lh.content = "HTML", CONTENT
+	lh.footer_source, lh.footer = "HTML", FOOTER
+	lh.save(ignore_permissions=True)

@@ -149,6 +149,22 @@ window.SK = {
 			list.style.display = "none"; e.preventDefault(); if (onPick) onPick(it);
 		});
 	},
+	// A sheet piece as a small SVG: the outline, with what was already cut out
+	// hatched and an optional `next` cut ({x, y, l, w}) highlighted.
+	sheet: function (p, maxW, next) {
+		var L = Number(p.length) || 1, W = Number(p.width) || 1, w = maxW || 120, h = Math.max(18, Math.round(w * W / L));
+		if (h > w) { h = w; w = Math.max(18, Math.round(h * L / W)); }
+		var sx = w / L, sy = h / W;
+		function r(c, fill, stroke) {
+			return '<rect x="' + (c.x * sx) + '" y="' + (h - (c.y + c.w) * sy) + '" width="' + Math.max(1, c.l * sx) + '" height="' + Math.max(1, c.w * sy) +
+				'" fill="' + fill + '" stroke="' + stroke + '" stroke-width="1"/>';
+		}
+		return '<svg width="' + w + '" height="' + h + '" viewBox="0 0 ' + w + " " + h + '" style="display:block;overflow:visible" role="img" aria-label="' +
+			L + " x " + W + ' cm piece">' +
+			'<rect x="0" y="0" width="' + w + '" height="' + h + '" fill="#9aa7b4" fill-opacity=".35" stroke="#5b6672"/>' +
+			(p.cutouts || []).map(function (c) { return r(c, "var(--surface, #fff)", "#9aa7b4"); }).join("") +
+			(next ? r(next, "#ec2e5d", "#ec2e5d") : "") + "</svg>";
+	},
 	items: function (q) {
 		return tradingCall("a3_trading_management.api._common.search_items", { search: q })
 			.then(function (r) { return (r || []).map(function (i) { return { label: i.item_name || i.name, sub: i.name + " · " + (i.stock_uom || ""), value: i.name }; }); });
@@ -222,6 +238,10 @@ function requestDeletion(doctype, name) {
 	.td-lines input { width:100%; min-width:70px; font:inherit; padding:5px 7px; border:1px solid var(--border); border-radius:6px; background:var(--surface); color:var(--text); }
 	.td-lines input.num { text-align:right; }
 	.td-lines select { width:100%; font:inherit; padding:5px 7px; border:1px solid var(--border); border-radius:6px; background:var(--surface); color:var(--text); }
+	.td-tabs { display:flex; gap:6px; margin-bottom:10px; }
+	.td-tabs button { border:1px solid var(--border); background:var(--surface, #fff); border-radius:999px; padding:6px 14px; font-size:13px; font-weight:600; cursor:pointer; color:inherit; }
+	.td-tabs button.is-on { background:#ec2e5d; border-color:#ec2e5d; color:#fff; }
+	.td-print { width:100%; height:min(72vh, 1000px); border:1px solid var(--border); border-radius:8px; background:#e9ecf0; display:block; }
 	.td-kv { display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:8px 16px; margin-bottom:12px; font-size:13.5px; }
 	.td-kv div span { display:block; font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); }
 	.td-kv div b { font-weight:600; }
@@ -298,12 +318,48 @@ function requestDeletion(doctype, name) {
 		"Payment Entry": [["reference_doctype", "Against"], ["reference_name", "Document"], ["total_amount", "Total", "money"], ["outstanding_amount", "Outstanding", "money"], ["allocated_amount", "Allocated", "money"]],
 		"Journal Entry": [["account", "Account"], ["party", "Party"], ["debit_in_account_currency", "Debit", "money"], ["credit_in_account_currency", "Credit", "money"], ["user_remark", "Remark"]]
 	};
+	// The print format each document opens in (the RLI formats share
+	// templates/print/rli_document.html; set as each doctype's default too).
+	var PRINT_FORMATS = {
+		"Material Request": "RLI Material Requisition", "Purchase Order": "RLI Purchase Order",
+		"Purchase Receipt": "RLI Goods Received Note", "Purchase Invoice": "RLI Purchase Invoice",
+		"Sales Order": "A3 Trading Sales Order", "Delivery Note": "RLI Delivery Note",
+		"Sales Invoice": "RLI Sales Invoice", "Payment Entry": "RLI Payment Voucher",
+		"Journal Entry": "RLI Journal Voucher", "Quality Inspection": "RLI Quality Inspection"
+	};
+	function printUrl(doctype, name, extra) {
+		return "/printview?doctype=" + encodeURIComponent(doctype) + "&name=" + encodeURIComponent(name) +
+			"&format=" + encodeURIComponent(PRINT_FORMATS[doctype]) + "&no_letterhead=0" + (extra || "");
+	}
+	function pdfUrl(doctype, name) {
+		return "/api/method/frappe.utils.print_format.download_pdf?doctype=" + encodeURIComponent(doctype) + "&name=" + encodeURIComponent(name) +
+			"&format=" + encodeURIComponent(PRINT_FORMATS[doctype]) + "&no_letterhead=0";
+	}
 	window.openDoc = function (doctype, name, opts) {
 		opts = opts || {};
+		var printable = !!PRINT_FORMATS[doctype];
 		document.getElementById("td-view-title").textContent = name;
 		document.getElementById("td-view-sub").textContent = doctype;
-		document.getElementById("td-view-body").innerHTML = '<div class="empty">Loading…</div>';
-		document.getElementById("td-view-foot").innerHTML = '<button type="button" class="btn btn--outline" data-td-close>Close</button>';
+		// A printable document opens on its print; the summary is one tab away.
+		document.getElementById("td-view-body").innerHTML = printable
+			? '<div class="td-tabs"><button type="button" class="is-on" data-td-tab="print"><i class="fa-solid fa-file-lines"></i> Print view</button>' +
+				'<button type="button" data-td-tab="details"><i class="fa-solid fa-list"></i> Details</button></div>' +
+				'<div data-td-pane="print"><iframe class="td-print" title="' + esc(doctype + " " + name) + '" src="' + printUrl(doctype, name) + '"></iframe></div>' +
+				'<div data-td-pane="details" hidden><div class="empty">Loading…</div></div>'
+			: '<div data-td-pane="details"><div class="empty">Loading…</div></div>';
+		// The print page's own Print / Get PDF bar repeats the buttons below.
+		var frame = document.querySelector("#td-view-body .td-print");
+		if (frame) frame.addEventListener("load", function () {
+			try { frame.contentDocument.head.insertAdjacentHTML("beforeend", "<style>.action-banner{display:none!important}</style>"); } catch (e) { /* not same-origin */ }
+		});
+		document.querySelectorAll("#td-view-body [data-td-tab]").forEach(function (b) {
+			b.addEventListener("click", function () { tdTab(b.getAttribute("data-td-tab")); });
+		});
+		var foot = document.getElementById("td-view-foot");
+		foot.innerHTML = '<button type="button" class="btn btn--outline" data-td-close>Close</button>';
+		if (printable) foot.insertAdjacentHTML("afterbegin",
+			'<a class="btn btn--outline" href="' + printUrl(doctype, name, "&trigger_print=1") + '" target="_blank" rel="noopener"><i class="fa-solid fa-print"></i> Print</a>' +
+			'<a class="btn btn--outline" href="' + pdfUrl(doctype, name) + '" target="_blank" rel="noopener"><i class="fa-solid fa-file-pdf"></i> PDF</a>');
 		document.querySelector("#td-view-foot [data-td-close]").addEventListener("click", function () { hide("td-view"); });
 		show("td-view");
 		call(COMMON + "get_document", { doctype: doctype, name: name }).then(function (d) {
@@ -329,11 +385,13 @@ function requestDeletion(doctype, name) {
 					return "<td" + (c[2] ? ' class="num"' : "") + ">" + esc(v) + "</td>";
 				}).join("") + "</tr>";
 			}).join("");
-			document.getElementById("td-view-body").innerHTML = '<div class="td-kv">' + kv + '</div>' +
+			document.querySelector('#td-view-body [data-td-pane="details"]').innerHTML = '<div class="td-kv">' + kv + '</div>' +
 				'<div style="overflow-x:auto"><table class="td-lines"><thead><tr>' + th + '</tr></thead><tbody>' + (rows || '<tr><td colspan="' + cols.length + '" class="muted">No lines</td></tr>') + '</tbody></table></div>' +
 				'<div class="td-err" id="td-view-err"></div>';
 			var foot = document.getElementById("td-view-foot");
-			if (opts.print) foot.insertAdjacentHTML("afterbegin", '<a class="btn btn--outline" href="' + opts.print + '" target="_blank" rel="noopener"><i class="fa-solid fa-print"></i> Print</a>');
+			// Editing happens on the summary, so a document open for edits starts there.
+			if (edit) tdTab("details");
+			if (opts.print && !printable) foot.insertAdjacentHTML("afterbegin", '<a class="btn btn--outline" href="' + opts.print + '" target="_blank" rel="noopener"><i class="fa-solid fa-print"></i> Print</a>');
 			if (edit) {
 				foot.insertAdjacentHTML("beforeend", '<button type="button" class="btn btn--outline" id="td-view-save"><i class="fa-solid fa-floppy-disk"></i> ' + esc(edit.label || "Save") + '</button>');
 				document.getElementById("td-view-save").addEventListener("click", function () {
@@ -356,8 +414,12 @@ function requestDeletion(doctype, name) {
 						.catch(function (e) { var er = document.getElementById("td-view-err"); er.textContent = errText(e); er.style.display = "block"; b.disabled = false; });
 				});
 			}
-		}).catch(function (e) { document.getElementById("td-view-body").innerHTML = '<div class="td-err" style="display:block">' + esc(errText(e)) + '</div>'; });
+		}).catch(function (e) { document.querySelector('#td-view-body [data-td-pane="details"]').innerHTML = '<div class="td-err" style="display:block">' + esc(errText(e)) + '</div>'; });
 	};
+	function tdTab(which) {
+		document.querySelectorAll("#td-view-body [data-td-tab]").forEach(function (b) { b.classList.toggle("is-on", b.getAttribute("data-td-tab") === which); });
+		document.querySelectorAll("#td-view-body [data-td-pane]").forEach(function (p) { p.hidden = p.getAttribute("data-td-pane") !== which; });
+	}
 
 	// ---------------------------------------------------------- autocomplete
 	function attachAC(input, source, onPick) {

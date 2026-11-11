@@ -1,0 +1,385 @@
+{#- Shared print layout for the trading documents, after the client's reference
+    tax invoice (11 Nov 2026): centred title, "Billed To" on the left, a
+    label : value list on the right, a grey-headed items table without grid
+    lines, plain totals, bank details beside the total in words, two signatures.
+    Each Print Format ("RLI Sales Invoice", "RLI Purchase Invoice", ...) is one
+    line that includes this file; the document type picks the content.
+
+    Context from Frappe's print view: doc, letter_head, footer, no_letterhead. -#}
+{%- set dt = doc.doctype -%}
+{%- set U = frappe.utils -%}
+{%- set cur = doc.get("currency") or doc.get("paid_from_account_currency") or frappe.db.get_value("Company", doc.company, "default_currency") or "AED" -%}
+{%- macro d(v) -%}{{ U.formatdate(v, "yyyy-MM-dd") if v else "" }}{%- endmacro -%}
+{%- macro m(v) -%}{{ U.fmt_money(v or 0, precision=2) }}{%- endmacro -%}
+{%- macro q(v) -%}{{ "%g" | format(v or 0) }}{%- endmacro -%}
+{%- macro words(v) -%}{{ U.money_in_words(v or 0, cur) }}{%- endmacro -%}
+{%- macro who(user) -%}{{ (frappe.db.get_value("User", user, "full_name") or user) if user else "" }}{%- endmacro -%}
+
+{#- ---------------------------------------------------------------- titles -#}
+{%- set company_trn = frappe.db.get_value("Company", doc.company, "tax_id") if doc.get("company") else None -%}
+{%- if dt == "Sales Invoice" -%}
+	{%- set title = "Tax Credit Note" if doc.is_return else "Tax Invoice" -%}
+{%- elif dt == "Purchase Invoice" -%}
+	{%- set title = "Debit Note" if doc.is_return else "Purchase Invoice" -%}
+{%- elif dt == "Purchase Order" -%}{%- set title = "Purchase Order" -%}
+{%- elif dt == "Purchase Receipt" -%}
+	{%- set title = "Goods Return Note" if doc.is_return else "Goods Received Note" -%}
+{%- elif dt == "Material Request" -%}{%- set title = "Material Requisition" -%}
+{%- elif dt == "Payment Entry" -%}
+	{%- set title = {"Receive": "Receipt Voucher", "Pay": "Payment Voucher"}.get(doc.payment_type, "Transfer Voucher") -%}
+{%- elif dt == "Journal Entry" -%}{%- set title = "Journal Voucher" -%}
+{%- else -%}{%- set title = dt -%}
+{%- endif -%}
+{%- set no_label = {"Tax Invoice": "Invoice No", "Tax Credit Note": "Credit Note No", "Purchase Invoice": "Invoice No", "Debit Note": "Debit Note No",
+                    "Purchase Order": "PO No", "Goods Received Note": "GRN No", "Goods Return Note": "Return No",
+                    "Material Requisition": "Requisition No"}.get(title, "Voucher No") -%}
+{%- set draft = doc.docstatus == 0 -%}
+{%- set cancelled = doc.docstatus == 2 -%}
+
+{#- ---------------------------------------------------------------- party -#}
+{%- set party_type = "Supplier" if doc.get("supplier") else ("Customer" if doc.get("customer") else doc.get("party_type")) -%}
+{%- set party = doc.get("supplier") or doc.get("customer") or doc.get("party") -%}
+{%- set party_name = doc.get("supplier_name") or doc.get("customer_name") or doc.get("party_name") or party -%}
+{%- set addr_name = doc.get("supplier_address") or doc.get("customer_address") or doc.get("party_address") -%}
+{%- if not addr_name and party_type in ("Supplier", "Customer") and party -%}
+	{%- set links = frappe.get_all("Dynamic Link", filters={"link_doctype": party_type, "link_name": party, "parenttype": "Address"}, pluck="parent", limit=1) -%}
+	{%- set addr_name = links[0] if links else None -%}
+{%- endif -%}
+{%- set addr = frappe.get_doc("Address", addr_name) if addr_name else None -%}
+{%- set party_trn = doc.get("tax_id") or (frappe.db.get_value(party_type, party, "tax_id") if party_type in ("Supplier", "Customer") and party else None) -%}
+{%- set party_phone = doc.get("contact_mobile") or doc.get("contact_phone") or (addr.phone if addr else None) or (frappe.db.get_value(party_type, party, "mobile_no") if party_type in ("Supplier", "Customer") and party else None) -%}
+{%- set party_label = {"Sales Invoice": "Billed To", "Purchase Invoice": "Supplier", "Purchase Order": "Supplier", "Purchase Receipt": "Supplier"}.get(dt) -%}
+{%- if dt == "Payment Entry" -%}{%- set party_label = "Received From" if doc.payment_type == "Receive" else "Paid To" -%}{%- endif -%}
+
+{#- ---------------------------------------------------------------- VAT per line -#}
+{#- item_wise_tax_detail on each tax row: {"ITEM": [rate, amount]}; a line's VAT %
+    is the sum over the rows that charge on the net total. -#}
+{%- set vat = {} -%}
+{%- for t in (doc.get("taxes") or []) -%}
+	{%- if t.item_wise_tax_detail and t.charge_type in ("On Net Total", "On Item Quantity") -%}
+		{%- set detail = json.loads(t.item_wise_tax_detail) -%}
+		{%- for code, pair in detail.items() -%}
+			{%- set _ = vat.update({code: (vat.get(code) or 0) + ((pair[0] if pair is sequence and pair is not string else pair) or 0)}) -%}
+		{%- endfor -%}
+	{%- endif -%}
+{%- endfor -%}
+
+{#- ---------------------------------------------------------------- reference list -#}
+{%- set ref = [(no_label, doc.name), ("Date", d(doc.get("posting_date") or doc.get("transaction_date")))] -%}
+{%- if dt in ("Sales Invoice", "Purchase Invoice") and doc.due_date and not doc.is_return %}{% set ref = ref + [("Due Date", d(doc.due_date))] %}{% endif -%}
+{%- if dt == "Purchase Invoice" and doc.bill_no %}{% set ref = ref + [("Supplier Invoice", doc.bill_no ~ (" (" ~ d(doc.bill_date) ~ ")" if doc.bill_date else ""))] %}{% endif -%}
+{%- if dt in ("Sales Invoice", "Purchase Invoice", "Purchase Receipt") and doc.get("return_against") %}{% set ref = ref + [("Against", doc.return_against)] %}{% endif -%}
+{%- if dt in ("Purchase Order", "Material Request") and doc.schedule_date %}{% set ref = ref + [("Required By", d(doc.schedule_date))] %}{% endif -%}
+{%- if dt in ("Sales Invoice", "Purchase Invoice", "Purchase Receipt", "Purchase Order") -%}
+	{%- set orders = doc.get("items") | map(attribute="sales_order" if dt == "Sales Invoice" else ("material_request" if dt == "Purchase Order" else "purchase_order")) | select | unique | list -%}
+	{%- if orders %}{% set ref = ref + [({"Sales Invoice": "Sales Order", "Purchase Order": "Requisition"}.get(dt, "Purchase Order"), orders | join(", "))] %}{% endif -%}
+{%- endif -%}
+{%- if dt in ("Sales Invoice", "Purchase Invoice") -%}
+	{%- set notes = doc.get("items") | map(attribute="delivery_note" if dt == "Sales Invoice" else "purchase_receipt") | select | unique | list -%}
+	{%- if notes %}{% set ref = ref + [("Delivery Note" if dt == "Sales Invoice" else "Goods Receipt", notes | join(", "))] %}{% endif -%}
+{%- endif -%}
+{%- if dt == "Purchase Receipt" and doc.get("supplier_delivery_note") %}{% set ref = ref + [("Supplier DN", doc.supplier_delivery_note)] %}{% endif -%}
+{%- if dt == "Sales Invoice" and doc.po_no %}{% set ref = ref + [("Customer PO", doc.po_no)] %}{% endif -%}
+{%- if doc.get("custom_chassis_number") %}{% set ref = ref + [("Chassis No", doc.custom_chassis_number)] %}{% endif -%}
+{%- if doc.get("custom_customer_chassis_number") %}{% set ref = ref + [("Customer Chassis", doc.custom_customer_chassis_number)] %}{% endif -%}
+{%- if dt == "Payment Entry" -%}
+	{%- set ref = ref + [("Mode", doc.mode_of_payment or "")] -%}
+	{%- if doc.reference_no %}{% set ref = ref + [("Cheque / Ref No", doc.reference_no)] %}{% endif -%}
+	{%- set ref = ref + [("Deposited To" if doc.payment_type == "Receive" else "Paid From", doc.paid_to if doc.payment_type == "Receive" else doc.paid_from)] -%}
+{%- endif -%}
+{%- if dt == "Journal Entry" -%}
+	{%- set ref = ref + [("Type", doc.voucher_type)] -%}
+	{%- if doc.cheque_no %}{% set ref = ref + [("Cheque / Ref No", doc.cheque_no)] %}{% endif -%}
+{%- endif -%}
+{%- if dt in ("Purchase Order", "Purchase Receipt") and doc.set_warehouse %}{% set ref = ref + [("Deliver To" if dt == "Purchase Order" else "Received At", doc.set_warehouse)] %}{% endif -%}
+{%- if dt == "Material Request" %}{% set ref = ref + [("Requested By", who(doc.owner)), ("Type", doc.material_request_type)] %}{% endif -%}
+
+{#- ---------------------------------------------------------------- bank (sales) -#}
+{%- set bank = None -%}
+{%- if dt == "Sales Invoice" -%}
+	{%- set banks = frappe.get_all("Bank Account", filters={"company": doc.company, "is_company_account": 1, "disabled": 0},
+	                               fields=["bank", "account_name", "iban", "bank_account_no", "branch_code"], order_by="is_default desc", limit=1) -%}
+	{%- set bank = banks[0] if banks else None -%}
+{%- endif -%}
+
+<div id="header-html" class="hidden-pdf">
+	{%- if letter_head and not no_letterhead %}<div class="letter-head">{{ letter_head }}</div>{% endif %}
+</div>
+<div id="footer-html" class="visible-pdf">
+	{%- if not no_letterhead and footer %}<div class="letter-head-footer">{{ footer }}</div>{% endif %}
+</div>
+<style>
+	.rp { font-family: Arial, Helvetica, sans-serif; font-size: 11.5px; color: #444; line-height: 1.6; }
+	.rp b, .rp .bold { color: #333; font-weight: bold; }
+	.rp-trn { text-align: right; font-size: 11px; font-weight: bold; color: #333; margin: 0 0 4px; }
+	.rp-title { text-align: center; font-size: 19px; font-weight: bold; letter-spacing: .04em; text-transform: uppercase; color: #444; margin: 6px 0 16px; }
+	.rp-title .stamp { display: inline-block; vertical-align: middle; margin-left: 10px; border: 2px solid #c01643; color: #c01643; font-size: 11px; padding: 1px 8px; letter-spacing: .12em; }
+	.rp-lay { width: 100%; border-collapse: collapse; }
+	.rp-to .to-lbl { font-weight: bold; color: #333; }
+	.rp-to .name { font-weight: bold; color: #333; font-size: 12.5px; }
+	.rp-ref { border-collapse: collapse; margin-left: auto; }
+	.rp-ref td.k { text-align: right; font-weight: bold; color: #333; white-space: nowrap; }
+	.rp-ref td.c { width: 22px; text-align: center; color: #777; }
+	.rp-ref td.v { color: #555; font-size: 11px; }
+	.rp-t { width: 100%; border-collapse: collapse; margin-top: 16px; }
+	.rp-t th { background: #f5f5f5; font-weight: bold; color: #333; font-size: 11px; text-align: left; vertical-align: middle; border: 0; }
+	.rp-t td { font-size: 10.5px; color: #555; vertical-align: top; border: 0; }
+	.rp-t .num { text-align: right; white-space: nowrap; }
+	.rp-t .ctr { text-align: center; white-space: nowrap; }
+	.rp-t .sub { color: #999; font-size: 9.5px; }
+	.rp-t tr { page-break-inside: avoid; }
+	.rp-t tfoot td { font-weight: bold; color: #333; border-top: 1px solid #e5e5e5; }
+	.rp-info td { font-size: 10.5px; color: #555; }
+	.rp-info .k { text-transform: uppercase; }
+	.rp-tot { border-collapse: collapse; width: 100%; }
+	.rp-tot td { font-size: 10.5px; color: #555; }
+	.rp-tot td.lbl { color: #4a6a8a; }
+	.rp-tot td.num { text-align: right; white-space: nowrap; }
+	.rp-tot tr.grand td { font-size: 11.5px; font-weight: bold; color: #333; }
+	.rp h4 { font-size: 12px; font-weight: bold; color: #333; margin: 22px 0 4px; }
+	.rp-words { text-align: right; }
+	.rp-words em { color: #555; }
+	.rp-big { font-size: 22px; font-weight: bold; color: #333; }
+	.rp-sign { width: 100%; border-collapse: collapse; margin-top: 110px; page-break-inside: avoid; }
+	.rp-sign td { font-weight: bold; color: #333; font-size: 12px; border: 0; }
+	/* Desk's print styles pad and border every table cell; set them here. */
+	.rp .rp-lay > tbody > tr > td { padding: 0 !important; border: 0 !important; vertical-align: top; }
+	.rp .rp-ref td { padding: 1px 0 3px !important; border: 0 !important; }
+	.rp .rp-t th { padding: 9px 8px !important; }
+	.rp .rp-t td { padding: 9px 8px !important; }
+	.rp .rp-info td, .rp .rp-tot td { padding: 3px 8px !important; border: 0 !important; }
+	.rp .rp-tot tr.grand td { padding-top: 8px !important; }
+	.rp .rp-sign td { padding: 0 !important; }
+</style>
+
+<div class="rp">
+	{#- The company TRN is on the letter head. #}
+	<div class="rp-title">{{ title }}{% if draft %}<span class="stamp">DRAFT</span>{% elif cancelled %}<span class="stamp">CANCELLED</span>{% endif %}</div>
+
+	{#- ------------------------------------------------ party + reference -#}
+	<table class="rp-lay"><tr>
+		<td style="width:55%">
+			<div class="rp-to">
+			{%- if party_label and party %}
+				<div class="to-lbl">{{ party_label }}:</div>
+				<div class="name">{{ party_name }}</div>
+				{%- if addr %}
+				{%- set line1 = [addr.address_line1, addr.address_line2, addr.city] | select | join(", ") %}
+				{%- if line1 %}<div>{{ line1 }}{% if addr.pincode %}, {{ addr.pincode }}{% endif %}</div>{% endif %}
+				{%- if addr.country %}<div>{{ addr.country }}</div>{% endif %}
+				{%- endif %}
+				{%- if doc.get("contact_display") %}<div>Attn: {{ doc.contact_display }}</div>{% endif %}
+				{%- if party_phone %}<div>Phone: {{ party_phone }}</div>{% endif %}
+				{%- if party_trn %}<div>TRN: {{ party_trn }}</div>{% endif %}
+			{%- elif dt == "Journal Entry" and doc.title and doc.title != doc.name %}
+				<div class="to-lbl">Narration:</div>
+				<div class="name">{{ doc.title }}</div>
+			{%- endif %}
+			</div>
+		</td>
+		<td>
+			<table class="rp-ref">
+			{%- for k, v in ref %}
+				<tr><td class="k">{{ k }}</td><td class="c">:</td><td class="v">{{ v }}</td></tr>
+			{%- endfor %}
+			</table>
+		</td>
+	</tr></table>
+
+	{#- ------------------------------------------------ lines -#}
+	{%- if dt in ("Sales Invoice", "Purchase Invoice", "Purchase Order") %}
+	{%- set ns = namespace(qty=0) %}
+	<table class="rp-t">
+		<thead><tr>
+			<th style="width:19%">Items</th><th>Description</th><th class="ctr">Qty</th><th class="num">Rate</th><th class="num">Amount</th>
+			<th class="ctr">VAT</th><th class="num" style="width:62px;text-align:center">VAT<br>Amount</th><th class="num" style="width:62px;text-align:center">Total<br>Amount</th>
+		</tr></thead>
+		<tbody>
+		{%- for it in doc.items %}
+			{%- set rate = vat.get(it.item_code) or vat.get(it.item_name) or 0 -%}
+			{%- set net = it.net_amount if it.net_amount is not none else it.amount -%}
+			{%- set tax = (net or 0) * rate / 100 -%}
+			{%- set ns.qty = ns.qty + (it.qty or 0) -%}
+			{%- set desc = it.description | striptags | trim if it.description else "" -%}
+			<tr>
+				<td>{{ it.item_name }}</td>
+				<td>{{ desc if desc and desc != it.item_name else it.item_code }}{% if dt == "Purchase Order" and it.schedule_date and it.schedule_date != doc.schedule_date %}<div class="sub">by {{ d(it.schedule_date) }}</div>{% endif %}</td>
+				<td class="ctr">{{ q(it.qty) }}{% if it.uom and it.uom != "Nos" %} {{ it.uom }}{% endif %}</td>
+				<td class="num">{{ m(it.net_rate if it.net_rate is not none else it.rate) }}</td>
+				<td class="num">{{ m(net) }}</td>
+				<td class="ctr">{{ q(rate) }}%</td>
+				<td class="num" style="text-align:center">{{ m(tax) }}</td>
+				<td class="num" style="text-align:center">{{ m((net or 0) + tax) }}</td>
+			</tr>
+		{%- endfor %}
+		</tbody>
+	</table>
+
+	<table class="rp-lay" style="margin-top:22px"><tr>
+		<td style="width:55%">
+			<table class="rp-info">
+				{%- if doc.get("custom_chassis_number") %}<tr><td class="k">Chassis No:</td><td>{{ doc.custom_chassis_number }}</td></tr>{% endif %}
+				<tr><td class="k">Total Pieces:</td><td>{{ q(ns.qty) }}</td></tr>
+			</table>
+		</td>
+		<td>
+			<table class="rp-tot">
+				<tr><td class="lbl">Total</td><td class="num">{{ m(doc.net_total) }}</td></tr>
+				{%- for t in (doc.get("taxes") or []) if t.tax_amount %}
+				<tr><td class="lbl">{{ "VAT" if "vat" in (t.description or t.account_head or "").lower() else (t.description or t.account_head).split(" @ ")[0] }}</td><td class="num">{{ m(t.tax_amount) }}</td></tr>
+				{%- endfor %}
+				{%- if doc.get("discount_amount") %}<tr><td class="lbl">Discount</td><td class="num">-{{ m(doc.discount_amount) }}</td></tr>{% endif %}
+				{%- if doc.get("rounding_adjustment") %}<tr><td class="lbl">Rounding</td><td class="num">{{ m(doc.rounding_adjustment) }}</td></tr>{% endif %}
+				<tr class="grand"><td>Grand Total</td><td class="num">{{ m(doc.rounded_total or doc.grand_total) }}</td></tr>
+				{%- if dt == "Purchase Invoice" and doc.docstatus == 1 and not doc.is_return %}
+				<tr><td class="lbl">Paid</td><td class="num">{{ m((doc.rounded_total or doc.grand_total) - doc.outstanding_amount) }}</td></tr>
+				<tr class="grand"><td>Outstanding</td><td class="num">{{ m(doc.outstanding_amount) }}</td></tr>
+				{%- endif %}
+			</table>
+		</td>
+	</tr></table>
+	{%- set words_amount = doc.get("in_words") or words(doc.rounded_total or doc.grand_total) -%}
+
+	{%- elif dt == "Purchase Receipt" %}
+	<table class="rp-t">
+		<thead><tr><th>Items</th><th>Description</th><th class="ctr">Received</th><th class="ctr">Rejected</th><th class="ctr">Accepted</th><th>Yard</th><th>Batch / Serial</th></tr></thead>
+		<tbody>
+		{%- for it in doc.items %}
+			{%- set bundle = frappe.get_all("Serial and Batch Entry", filters={"parent": it.serial_and_batch_bundle}, fields=["batch_no", "serial_no"]) if it.serial_and_batch_bundle else [] -%}
+			{%- set marks = (bundle | map(attribute="serial_no") | select | list) + (bundle | map(attribute="batch_no") | select | list) -%}
+			<tr>
+				<td>{{ it.item_name }}</td>
+				<td>{{ it.item_code }}</td>
+				<td class="ctr">{{ q(it.received_qty) }} {{ it.uom }}</td>
+				<td class="ctr">{{ q(it.rejected_qty) }}</td>
+				<td class="ctr"><b>{{ q(it.qty) }}</b></td>
+				<td>{{ it.warehouse or "" }}</td>
+				<td>{{ (marks | unique | list | join(", ")) or "" }}</td>
+			</tr>
+		{%- endfor %}
+		</tbody>
+		<tfoot><tr><td colspan="4" class="num">Total accepted</td><td class="ctr">{{ q(doc.total_qty) }}</td><td colspan="2"></td></tr></tfoot>
+	</table>
+	{%- set words_amount = None -%}
+
+	{%- elif dt == "Material Request" %}
+	<table class="rp-t">
+		<thead><tr><th>Items</th><th>Description</th><th class="ctr">Qty</th><th>For Yard</th><th>Required By</th><th class="ctr">Ordered</th><th class="ctr">Received</th></tr></thead>
+		<tbody>
+		{%- for it in doc.items %}
+			<tr>
+				<td>{{ it.item_name }}</td>
+				<td>{{ it.item_code }}</td>
+				<td class="ctr"><b>{{ q(it.qty) }}</b> {{ it.uom }}</td>
+				<td>{{ it.warehouse or "" }}</td>
+				<td>{{ d(it.schedule_date) }}</td>
+				<td class="ctr">{{ q(it.ordered_qty) }}</td>
+				<td class="ctr">{{ q(it.received_qty) }}</td>
+			</tr>
+		{%- endfor %}
+		</tbody>
+	</table>
+	{%- set words_amount = None -%}
+
+	{%- elif dt == "Payment Entry" %}
+	{%- set amount = doc.received_amount if doc.payment_type == "Receive" else doc.paid_amount -%}
+	<table class="rp-t">
+		<thead><tr><th>Against</th><th>Type</th><th class="num">Invoice Total</th><th class="num">Outstanding</th><th class="num">Allocated</th></tr></thead>
+		<tbody>
+		{%- for r in doc.references %}
+			{%- set bill = frappe.db.get_value(r.reference_doctype, r.reference_name, "bill_no") if r.reference_doctype == "Purchase Invoice" else None -%}
+			<tr>
+				<td>{{ r.reference_name }}{% if bill %}<div class="sub">Supplier invoice {{ bill }}</div>{% endif %}</td>
+				<td>{{ r.reference_doctype }}</td>
+				<td class="num">{{ m(r.total_amount) }}</td>
+				<td class="num">{{ m(r.outstanding_amount) }}</td>
+				<td class="num">{{ m(r.allocated_amount) }}</td>
+			</tr>
+		{%- else %}
+			<tr><td colspan="5">On account</td></tr>
+		{%- endfor %}
+		{%- for r in (doc.get("deductions") or []) %}
+			<tr><td>{{ r.account }}</td><td>Deduction</td><td></td><td></td><td class="num">{{ m(r.amount) }}</td></tr>
+		{%- endfor %}
+		</tbody>
+	</table>
+	<table class="rp-lay" style="margin-top:22px"><tr>
+		<td style="width:55%"></td>
+		<td>
+			<table class="rp-tot">
+				{%- if doc.references %}<tr><td class="lbl">Allocated</td><td class="num">{{ m(doc.total_allocated_amount) }}</td></tr>{% endif %}
+				{%- if doc.unallocated_amount %}<tr><td class="lbl">On account</td><td class="num">{{ m(doc.unallocated_amount) }}</td></tr>{% endif %}
+				<tr class="grand"><td>Amount {{ "Received" if doc.payment_type == "Receive" else "Paid" }} ({{ cur }})</td><td class="num rp-big" style="font-size:15px">{{ m(amount) }}</td></tr>
+			</table>
+		</td>
+	</tr></table>
+	{%- set words_amount = words(amount) -%}
+
+	{%- elif dt == "Journal Entry" %}
+	<table class="rp-t">
+		<thead><tr><th>Account</th><th>Party</th><th>Against</th><th class="num">Debit</th><th class="num">Credit</th></tr></thead>
+		<tbody>
+		{%- for a in doc.accounts %}
+			<tr>
+				<td>{{ a.account }}{% if a.user_remark %}<div class="sub">{{ a.user_remark }}</div>{% endif %}</td>
+				<td>{{ a.party or "" }}</td>
+				<td>{{ a.reference_name or "" }}</td>
+				<td class="num">{{ m(a.debit) if a.debit else "" }}</td>
+				<td class="num">{{ m(a.credit) if a.credit else "" }}</td>
+			</tr>
+		{%- endfor %}
+		</tbody>
+		<tfoot><tr><td colspan="3" class="num">Total ({{ cur }})</td><td class="num">{{ m(doc.total_debit) }}</td><td class="num">{{ m(doc.total_credit) }}</td></tr></tfoot>
+	</table>
+	{%- set words_amount = words(doc.total_debit) -%}
+	{%- endif %}
+
+	{#- ------------------------------------------------ remarks -#}
+	{%- set note = doc.get("remarks") if dt in ("Payment Entry", "Purchase Invoice", "Sales Invoice") else (doc.get("user_remark") if dt == "Journal Entry" else None) -%}
+	{%- if note and (note.startswith("Amount ") or note.startswith("Against Supplier Invoice")) %}{% set note = None %}{% endif -%}
+	{%- if dt not in ("Purchase Receipt", "Material Request") or note %}
+	<h4>Remarks</h4>
+	<div style="white-space:pre-wrap">{{ note or "No Remarks" }}</div>
+	{%- endif %}
+	{%- if doc.get("terms") %}
+	<h4>Terms &amp; Conditions</h4>
+	<div style="white-space:pre-wrap">{{ doc.terms | striptags | trim }}</div>
+	{%- endif %}
+
+	{#- ------------------------------------------------ bank + words -#}
+	{%- if bank or words_amount %}
+	<table class="rp-lay"><tr>
+		<td style="width:55%">
+			{%- if bank %}
+			<h4>BANK DETAILS</h4>
+			{%- set swift = frappe.db.get_value("Bank", bank.bank, "swift_number") if bank.bank else None %}
+			<div>{{ bank.bank }}</div>
+			<div>{{ frappe.db.get_value("Company", doc.company, "company_name") }}</div>
+			{%- if bank.iban %}<div>IBAN: {{ bank.iban }}</div>{% endif %}
+			{%- if swift %}<div>SWIFT CODE: {{ swift }}</div>{% endif %}
+			{%- if bank.bank_account_no %}<div>ACCOUNT NUMBER: {{ bank.bank_account_no }}</div>{% endif %}
+			{%- endif %}
+		</td>
+		<td class="rp-words">
+			{%- if words_amount %}
+			<h4>Total in Words</h4>
+			<em>{{ words_amount }}</em>
+			{%- endif %}
+		</td>
+	</tr></table>
+	{%- endif %}
+
+	{#- ------------------------------------------------ signatures -#}
+	{%- if dt == "Sales Invoice" %}{% set sigs = ["Authorized Signature", "Customer Signature"] %}
+	{%- elif dt == "Payment Entry" %}{% set sigs = ["Authorized Signature", "Receiver's Signature" if doc.payment_type == "Pay" else "Payer's Signature"] %}
+	{%- elif dt == "Purchase Receipt" %}{% set sigs = ["Received By (Store)", "Checked By (QC)", "Approved By"] %}
+	{%- elif dt == "Material Request" %}{% set sigs = ["Requested By", "Approved By"] %}
+	{%- elif dt == "Purchase Order" %}{% set sigs = ["Authorized Signature", "Supplier Acceptance"] %}
+	{%- else %}{% set sigs = ["Prepared By", "Checked By", "Approved By"] %}
+	{%- endif %}
+	<table class="rp-sign"><tr>
+		{%- for s in sigs %}
+		<td style="text-align:{{ 'left' if loop.first else ('right' if loop.last else 'center') }}">{{ s }}</td>
+		{%- endfor %}
+	</tr></table>
+</div>
