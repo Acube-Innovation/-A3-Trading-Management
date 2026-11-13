@@ -1435,3 +1435,23 @@ def _complete_production(wo):
         frappe.log_error(frappe.get_traceback(), "Manufacturing: Manufacture Stock Entry failed")
 
     return {"stock_entry": stock_entry, "stock_warning": warning}
+
+
+def stock_unit_rates(doc, method=None):
+    """Work Order validate: ERPNext copies a BOM line's rate per BOM unit (e.g. per
+    Meter) onto the work order, whose quantity is in the stock unit (Centimeter),
+    so 250 cm of pipe at 10 per Meter showed as 2,500. A row still holding the BOM
+    rate gets it per stock unit; a rate typed on the work order is left alone."""
+    if not doc.bom_no:
+        return
+    bom_rates = {}
+    for b in frappe.get_all("BOM Item", filters={"parent": doc.bom_no, "parenttype": "BOM"},
+                            fields=["item_code", "rate", "conversion_factor"]):
+        if flt(b.conversion_factor) and flt(b.conversion_factor) != 1:
+            bom_rates.setdefault(b.item_code, (flt(b.rate), flt(b.conversion_factor)))
+    for d in doc.required_items:
+        if d.item_code in bom_rates:
+            rate, cf = bom_rates[d.item_code]
+            if abs(flt(d.rate) - rate) < 1e-9:
+                d.rate = rate / cf
+                d.amount = flt(d.rate) * flt(d.required_qty)

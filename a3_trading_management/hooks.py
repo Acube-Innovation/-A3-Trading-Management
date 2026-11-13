@@ -113,6 +113,7 @@ doc_events = {
 	# Phase 2: serials are minted from Work Order events so that a work order raised
 	# from the Desk, an import or the portal all behave the same way.
 	"Work Order": {
+		"validate": "a3_trading_management.api.manufacturing.stock_unit_rates",
 		"after_insert": "a3_trading_management.serial_control.create_serials",
 		"on_update": "a3_trading_management.serial_control.sync_stage",
 		"on_submit": "a3_trading_management.serial_control.sync_stage",
