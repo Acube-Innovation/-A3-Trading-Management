@@ -1,0 +1,19 @@
+{#- BANK DETAILS block for the RLI prints: the company's default bank account
+    (Bank Account with is_company_account). Included by rli_document.html and by
+    the RLI Delivery Note / Quality Inspection formats. Needs `doc`. -#}
+{%- set _banks = frappe.get_all("Bank Account", filters={"company": doc.company, "is_company_account": 1, "disabled": 0},
+                                fields=["bank", "account_name", "iban", "bank_account_no"], order_by="is_default desc, creation asc", limit=1) if doc.get("company") else [] -%}
+{%- if _banks -%}
+{%- set _b = _banks[0] -%}
+{%- set _swift = frappe.db.get_value("Bank", _b.bank, "swift_number") if _b.bank else None -%}
+{%- set _cur = frappe.db.get_value("Company", doc.company, "default_currency") or "AED" -%}
+<div class="rli-bank" style="font-size:10.5px;color:#555;line-height:1.6;page-break-inside:avoid">
+	<div style="font-size:12px;font-weight:bold;color:#333;margin:18px 0 4px">BANK DETAILS</div>
+	<div><b style="color:#333">{{ _b.bank }}</b></div>
+	<div>{{ _b.account_name }}</div>
+	{%- if _b.bank_account_no %}<div>ACCOUNT NUMBER: {{ _b.bank_account_no }}</div>{% endif %}
+	{%- if _b.iban %}<div>IBAN: {{ _b.iban }}</div>{% endif %}
+	{%- if _swift %}<div>SWIFT CODE: {{ _swift }}</div>{% endif %}
+	<div>CURRENCY: {{ _cur }}</div>
+</div>
+{%- endif -%}

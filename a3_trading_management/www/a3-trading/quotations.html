@@ -25,7 +25,7 @@
 <div class="card"><div class="card__body" style="overflow-x:auto">
 	{%- if quotations %}
 	<table class="table" id="tf-table">
-		<thead><tr><th>Quotation</th><th>Customer</th><th>Date</th><th>Valid Till</th><th>Items</th><th>Status</th></tr></thead>
+		<thead><tr><th>Quotation</th><th>Customer</th><th>Date</th><th>Valid Till</th><th>Items</th><th>Status</th><th>Action</th></tr></thead>
 		<tbody>
 		{%- for q in quotations %}
 			<tr data-hay="{{ (q.name ~ ' ' ~ (q.customer_name or q.party_name or '') ~ ' ' ~ (q["items"] | map(attribute='item_code') | join(' '))) | lower }}" data-status="{{ q.status }}">
@@ -36,6 +36,7 @@
 				<td>{%- for i in q["items"][:3] %}{{ i.item_name or i.item_code }} &times;{{ i.qty | int }}{% if not loop.last %}, {% endif %}{%- endfor %}
 					{%- if q["items"] | length > 3 %} <span class="muted">+{{ (q["items"] | length) - 3 }} more</span>{% endif %}</td>
 				<td>{{ status_pill(q.status, q.docstatus) }}</td>
+				<td><button type="button" class="btn btn--outline btn--sm" onclick="openDoc('Quotation', '{{ q.name }}')"><i class="fa-solid fa-eye"></i> View</button></td>
 			</tr>
 		{%- endfor %}
 		</tbody>

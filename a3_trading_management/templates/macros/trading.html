@@ -306,7 +306,7 @@ function requestDeletion(doctype, name) {
 	document.addEventListener("keydown", function (e) { if (e.key === "Escape") { hide("td-view"); hide("td-new"); } });
 
 	// ---------------------------------------------------------- viewer
-	var HEAD_LABELS = { transaction_date: "Date", schedule_date: "Required by", posting_date: "Date", due_date: "Due", delivery_date: "Delivery date", net_total: "Net", taxes_and_charges: "Tax template", total_taxes_and_charges: "VAT", grand_total: "Total incl. VAT", outstanding_amount: "Outstanding", per_received: "Received %", per_billed: "Billed %", per_delivered: "Delivered %", material_request_type: "Type", payment_type: "Type", party_type: "Party type", mode_of_payment: "Mode", paid_from: "From account", paid_to: "To account", paid_amount: "Paid", received_amount: "Received", reference_no: "Reference", voucher_type: "Type", total_debit: "Total debit", total_credit: "Total credit", user_remark: "Remark", custom_trailer_serial: "Trailer serial", custom_chassis_number: "Chassis", remarks: "Remarks", custom_approval_hold: "On hold", custom_hold_reason: "Hold reason" };
+	var HEAD_LABELS = { transaction_date: "Date", schedule_date: "Required by", posting_date: "Date", due_date: "Due", valid_till: "Valid till", delivery_date: "Delivery date", net_total: "Net", taxes_and_charges: "Tax template", total_taxes_and_charges: "VAT", grand_total: "Total incl. VAT", outstanding_amount: "Outstanding", per_received: "Received %", per_billed: "Billed %", per_delivered: "Delivered %", material_request_type: "Type", payment_type: "Type", party_type: "Party type", mode_of_payment: "Mode", paid_from: "From account", paid_to: "To account", paid_amount: "Paid", received_amount: "Received", reference_no: "Reference", voucher_type: "Type", total_debit: "Total debit", total_credit: "Total credit", user_remark: "Remark", custom_trailer_serial: "Trailer serial", custom_chassis_number: "Chassis", remarks: "Remarks", custom_approval_hold: "On hold", custom_hold_reason: "Hold reason" };
 	var LINE_COLS = {
 		"Material Request": [["item_code", "Item"], ["qty", "Qty", "num"], ["uom", "UOM"], ["warehouse", "Yard"], ["ordered_qty", "Ordered", "num"], ["received_qty", "Received", "num"]],
 		"Purchase Order": [["item_code", "Item"], ["qty", "Qty", "num"], ["rate", "Rate", "money"], ["amount", "Amount", "money"], ["received_qty", "Received", "num"], ["billed_amt", "Billed", "money"]],
@@ -315,6 +315,7 @@ function requestDeletion(doctype, name) {
 		"Sales Order": [["item_code", "Item"], ["qty", "Qty", "num"], ["rate", "Rate", "money"], ["amount", "Amount", "money"], ["delivered_qty", "Delivered", "num"], ["billed_amt", "Billed", "money"]],
 		"Delivery Note": [["item_code", "Item"], ["qty", "Qty", "num"], ["rate", "Rate", "money"], ["amount", "Amount", "money"], ["warehouse", "From yard"], ["against_sales_order", "Order"]],
 		"Sales Invoice": [["item_code", "Item"], ["qty", "Qty", "num"], ["rate", "Rate", "money"], ["amount", "Amount", "money"], ["delivery_note", "Delivery note"]],
+		"Quotation": [["item_code", "Item"], ["qty", "Qty", "num"], ["uom", "UOM"], ["rate", "Rate", "money"], ["amount", "Amount", "money"]],
 		"Payment Entry": [["reference_doctype", "Against"], ["reference_name", "Document"], ["total_amount", "Total", "money"], ["outstanding_amount", "Outstanding", "money"], ["allocated_amount", "Allocated", "money"]],
 		"Journal Entry": [["account", "Account"], ["party", "Party"], ["debit_in_account_currency", "Debit", "money"], ["credit_in_account_currency", "Credit", "money"], ["user_remark", "Remark"]]
 	};
@@ -323,9 +324,10 @@ function requestDeletion(doctype, name) {
 	var PRINT_FORMATS = {
 		"Material Request": "RLI Material Requisition", "Purchase Order": "RLI Purchase Order",
 		"Purchase Receipt": "RLI Goods Received Note", "Purchase Invoice": "RLI Purchase Invoice",
-		"Sales Order": "A3 Trading Sales Order", "Delivery Note": "RLI Delivery Note",
+		"Sales Order": "RLI Sales Order", "Delivery Note": "RLI Delivery Note",
 		"Sales Invoice": "RLI Sales Invoice", "Payment Entry": "RLI Payment Voucher",
-		"Journal Entry": "RLI Journal Voucher", "Quality Inspection": "RLI Quality Inspection"
+		"Journal Entry": "RLI Journal Voucher", "Quality Inspection": "RLI Quality Inspection",
+		"Quotation": "RLI Quotation"
 	};
 	function printUrl(doctype, name, extra) {
 		return "/printview?doctype=" + encodeURIComponent(doctype) + "&name=" + encodeURIComponent(name) +
@@ -334,6 +336,31 @@ function requestDeletion(doctype, name) {
 	function pdfUrl(doctype, name) {
 		return "/api/method/frappe.utils.print_format.download_pdf?doctype=" + encodeURIComponent(doctype) + "&name=" + encodeURIComponent(name) +
 			"&format=" + encodeURIComponent(PRINT_FORMATS[doctype]) + "&no_letterhead=0";
+	}
+	// Print the PDF itself (the same page as the PDF file, letter head included):
+	// load it into a hidden frame and open the print dialog on it. If the browser
+	// will not print a PDF from a frame, it opens in a new tab instead.
+	function printPdf(btn, doctype, name) {
+		var label = btn.innerHTML;
+		btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Preparing…';
+		fetch(pdfUrl(doctype, name), { credentials: "same-origin" }).then(function (r) {
+			if (!r.ok) throw new Error(r.statusText);
+			return r.blob();
+		}).then(function (blob) {
+			var url = URL.createObjectURL(new Blob([blob], { type: "application/pdf" }));
+			var old = document.getElementById("td-pdf-frame"); if (old) old.remove();
+			var f = document.createElement("iframe");
+			f.id = "td-pdf-frame";
+			f.style.cssText = "position:fixed;right:0;bottom:0;width:1px;height:1px;border:0;opacity:0";
+			f.onload = function () {
+				setTimeout(function () {
+					try { f.contentWindow.focus(); f.contentWindow.print(); } catch (e) { window.open(url, "_blank"); }
+				}, 300);
+			};
+			f.src = url;
+			document.body.appendChild(f);
+		}).catch(function (e) { alert("Could not make the PDF: " + e.message); })
+			.then(function () { btn.disabled = false; btn.innerHTML = label; });
 	}
 	window.openDoc = function (doctype, name, opts) {
 		opts = opts || {};
@@ -357,9 +384,10 @@ function requestDeletion(doctype, name) {
 		});
 		var foot = document.getElementById("td-view-foot");
 		foot.innerHTML = '<button type="button" class="btn btn--outline" data-td-close>Close</button>';
-		if (printable) foot.insertAdjacentHTML("afterbegin",
-			'<a class="btn btn--outline" href="' + printUrl(doctype, name, "&trigger_print=1") + '" target="_blank" rel="noopener"><i class="fa-solid fa-print"></i> Print</a>' +
-			'<a class="btn btn--outline" href="' + pdfUrl(doctype, name) + '" target="_blank" rel="noopener"><i class="fa-solid fa-file-pdf"></i> PDF</a>');
+		if (printable) {
+			foot.insertAdjacentHTML("afterbegin", '<button type="button" class="btn btn--primary" id="td-print-pdf"><i class="fa-solid fa-print"></i> Print</button>');
+			document.getElementById("td-print-pdf").addEventListener("click", function () { printPdf(this, doctype, name); });
+		}
 		document.querySelector("#td-view-foot [data-td-close]").addEventListener("click", function () { hide("td-view"); });
 		show("td-view");
 		call(COMMON + "get_document", { doctype: doctype, name: name }).then(function (d) {
@@ -369,7 +397,7 @@ function requestDeletion(doctype, name) {
 			Object.keys(d.head || {}).forEach(function (k) {
 				var v = d.head[k]; if (v === null || v === undefined || v === "") return;
 				if (/amount|total|paid|received_amount|debit|credit/.test(k) && typeof v === "number") v = money(v);
-				else if (/date|due/.test(k)) v = dateLabel(v);
+				else if (/date|due|valid_till/.test(k)) v = dateLabel(v);
 				else if (/^per_/.test(k)) v = Math.round(v) + "%";
 				else if (k === "custom_approval_hold") v = v ? "Yes" : "No";
 				kv += "<div><span>" + esc(HEAD_LABELS[k] || k) + "</span><b>" + esc(v) + "</b></div>";

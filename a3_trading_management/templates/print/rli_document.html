@@ -25,6 +25,8 @@
 {%- elif dt == "Purchase Receipt" -%}
 	{%- set title = "Goods Return Note" if doc.is_return else "Goods Received Note" -%}
 {%- elif dt == "Material Request" -%}{%- set title = "Material Requisition" -%}
+{%- elif dt == "Quotation" -%}{%- set title = "Quotation" -%}
+{%- elif dt == "Sales Order" -%}{%- set title = "Sales Order" -%}
 {%- elif dt == "Payment Entry" -%}
 	{%- set title = {"Receive": "Receipt Voucher", "Pay": "Payment Voucher"}.get(doc.payment_type, "Transfer Voucher") -%}
 {%- elif dt == "Journal Entry" -%}{%- set title = "Journal Voucher" -%}
@@ -32,13 +34,16 @@
 {%- endif -%}
 {%- set no_label = {"Tax Invoice": "Invoice No", "Tax Credit Note": "Credit Note No", "Purchase Invoice": "Invoice No", "Debit Note": "Debit Note No",
                     "Purchase Order": "PO No", "Goods Received Note": "GRN No", "Goods Return Note": "Return No",
-                    "Material Requisition": "Requisition No"}.get(title, "Voucher No") -%}
+                    "Material Requisition": "Requisition No", "Quotation": "Quotation No", "Sales Order": "Order No"}.get(title, "Voucher No") -%}
 {%- set draft = doc.docstatus == 0 -%}
 {%- set cancelled = doc.docstatus == 2 -%}
+{#- Prices sit on a permission level the Supervisor does not have. Desk's
+    standard print drops such fields, a Jinja format does not, so ask here. -#}
+{%- set show_price = doc.has_permlevel_access_to("grand_total") if doc.meta.has_field("grand_total") else True -%}
 
 {#- ---------------------------------------------------------------- party -#}
-{%- set party_type = "Supplier" if doc.get("supplier") else ("Customer" if doc.get("customer") else doc.get("party_type")) -%}
-{%- set party = doc.get("supplier") or doc.get("customer") or doc.get("party") -%}
+{%- set party_type = "Supplier" if doc.get("supplier") else ("Customer" if doc.get("customer") else (doc.get("quotation_to") or doc.get("party_type"))) -%}
+{%- set party = doc.get("supplier") or doc.get("customer") or (doc.get("party_name") if dt == "Quotation" else doc.get("party")) -%}
 {%- set party_name = doc.get("supplier_name") or doc.get("customer_name") or doc.get("party_name") or party -%}
 {%- set addr_name = doc.get("supplier_address") or doc.get("customer_address") or doc.get("party_address") -%}
 {%- if not addr_name and party_type in ("Supplier", "Customer") and party -%}
@@ -48,7 +53,7 @@
 {%- set addr = frappe.get_doc("Address", addr_name) if addr_name else None -%}
 {%- set party_trn = doc.get("tax_id") or (frappe.db.get_value(party_type, party, "tax_id") if party_type in ("Supplier", "Customer") and party else None) -%}
 {%- set party_phone = doc.get("contact_mobile") or doc.get("contact_phone") or (addr.phone if addr else None) or (frappe.db.get_value(party_type, party, "mobile_no") if party_type in ("Supplier", "Customer") and party else None) -%}
-{%- set party_label = {"Sales Invoice": "Billed To", "Purchase Invoice": "Supplier", "Purchase Order": "Supplier", "Purchase Receipt": "Supplier"}.get(dt) -%}
+{%- set party_label = {"Sales Invoice": "Billed To", "Purchase Invoice": "Supplier", "Purchase Order": "Supplier", "Purchase Receipt": "Supplier", "Quotation": "Quotation To", "Sales Order": "Customer"}.get(dt) -%}
 {%- if dt == "Payment Entry" -%}{%- set party_label = "Received From" if doc.payment_type == "Receive" else "Paid To" -%}{%- endif -%}
 
 {#- ---------------------------------------------------------------- VAT per line -#}
@@ -67,6 +72,8 @@
 {#- ---------------------------------------------------------------- reference list -#}
 {%- set ref = [(no_label, doc.name), ("Date", d(doc.get("posting_date") or doc.get("transaction_date")))] -%}
 {%- if dt in ("Sales Invoice", "Purchase Invoice") and doc.due_date and not doc.is_return %}{% set ref = ref + [("Due Date", d(doc.due_date))] %}{% endif -%}
+{%- if dt == "Quotation" and doc.valid_till %}{% set ref = ref + [("Valid Till", d(doc.valid_till))] %}{% endif -%}
+{%- if dt == "Sales Order" and doc.delivery_date %}{% set ref = ref + [("Delivery Date", d(doc.delivery_date))] %}{% endif -%}
 {%- if dt == "Purchase Invoice" and doc.bill_no %}{% set ref = ref + [("Supplier Invoice", doc.bill_no ~ (" (" ~ d(doc.bill_date) ~ ")" if doc.bill_date else ""))] %}{% endif -%}
 {%- if dt in ("Sales Invoice", "Purchase Invoice", "Purchase Receipt") and doc.get("return_against") %}{% set ref = ref + [("Against", doc.return_against)] %}{% endif -%}
 {%- if dt in ("Purchase Order", "Material Request") and doc.schedule_date %}{% set ref = ref + [("Required By", d(doc.schedule_date))] %}{% endif -%}
@@ -79,7 +86,7 @@
 	{%- if notes %}{% set ref = ref + [("Delivery Note" if dt == "Sales Invoice" else "Goods Receipt", notes | join(", "))] %}{% endif -%}
 {%- endif -%}
 {%- if dt == "Purchase Receipt" and doc.get("supplier_delivery_note") %}{% set ref = ref + [("Supplier DN", doc.supplier_delivery_note)] %}{% endif -%}
-{%- if dt == "Sales Invoice" and doc.po_no %}{% set ref = ref + [("Customer PO", doc.po_no)] %}{% endif -%}
+{%- if dt in ("Sales Invoice", "Sales Order") and doc.po_no %}{% set ref = ref + [("Customer PO", doc.po_no)] %}{% endif -%}
 {%- if doc.get("custom_chassis_number") %}{% set ref = ref + [("Chassis No", doc.custom_chassis_number)] %}{% endif -%}
 {%- if doc.get("custom_customer_chassis_number") %}{% set ref = ref + [("Customer Chassis", doc.custom_customer_chassis_number)] %}{% endif -%}
 {%- if dt == "Payment Entry" -%}
@@ -93,14 +100,6 @@
 {%- endif -%}
 {%- if dt in ("Purchase Order", "Purchase Receipt") and doc.set_warehouse %}{% set ref = ref + [("Deliver To" if dt == "Purchase Order" else "Received At", doc.set_warehouse)] %}{% endif -%}
 {%- if dt == "Material Request" %}{% set ref = ref + [("Requested By", who(doc.owner)), ("Type", doc.material_request_type)] %}{% endif -%}
-
-{#- ---------------------------------------------------------------- bank (sales) -#}
-{%- set bank = None -%}
-{%- if dt == "Sales Invoice" -%}
-	{%- set banks = frappe.get_all("Bank Account", filters={"company": doc.company, "is_company_account": 1, "disabled": 0},
-	                               fields=["bank", "account_name", "iban", "bank_account_no", "branch_code"], order_by="is_default desc", limit=1) -%}
-	{%- set bank = banks[0] if banks else None -%}
-{%- endif -%}
 
 <div id="header-html" class="hidden-pdf">
 	{%- if letter_head and not no_letterhead %}<div class="letter-head">{{ letter_head }}</div>{% endif %}
@@ -153,7 +152,7 @@
 </style>
 
 <div class="rp">
-	{#- The company TRN is on the letter head. #}
+	{#- The company TRN and the red rule are on the letter head. #}
 	<div class="rp-title">{{ title }}{% if draft %}<span class="stamp">DRAFT</span>{% elif cancelled %}<span class="stamp">CANCELLED</span>{% endif %}</div>
 
 	{#- ------------------------------------------------ party + reference -#}
@@ -187,7 +186,7 @@
 	</tr></table>
 
 	{#- ------------------------------------------------ lines -#}
-	{%- if dt in ("Sales Invoice", "Purchase Invoice", "Purchase Order") %}
+	{%- if dt in ("Sales Invoice", "Sales Order", "Purchase Invoice", "Purchase Order", "Quotation") and show_price %}
 	{%- set ns = namespace(qty=0) %}
 	<table class="rp-t">
 		<thead><tr>
@@ -239,6 +238,20 @@
 		</td>
 	</tr></table>
 	{%- set words_amount = doc.get("in_words") or words(doc.rounded_total or doc.grand_total) -%}
+
+	{%- elif dt == "Quotation" %}
+	{#- Quotation for a reader without prices (the Supervisor's draft): items and quantities. #}
+	<table class="rp-t">
+	<thead><tr><th style="width:25%">Items</th><th>Description</th><th class="ctr">Qty</th></tr></thead>
+	<tbody>
+	{%- for it in doc.items %}
+	{%- set desc = it.description | striptags | trim if it.description else "" -%}
+	<tr><td>{{ it.item_name }}</td><td>{{ desc if desc and desc != it.item_name else it.item_code }}</td><td class="ctr">{{ q(it.qty) }}{% if it.uom and it.uom != "Nos" %} {{ it.uom }}{% endif %}</td></tr>
+	{%- endfor %}
+	</tbody>
+	<tfoot><tr><td colspan="2" class="num">Total Pieces</td><td class="ctr">{{ q(doc.total_qty) }}</td></tr></tfoot>
+	</table>
+	{%- set words_amount = None -%}
 
 	{%- elif dt == "Purchase Receipt" %}
 	<table class="rp-t">
@@ -347,19 +360,9 @@
 	{%- endif %}
 
 	{#- ------------------------------------------------ bank + words -#}
-	{%- if bank or words_amount %}
+	{#- The company bank account is on every print (templates/print/rli_bank.html). #}
 	<table class="rp-lay"><tr>
-		<td style="width:55%">
-			{%- if bank %}
-			<h4>BANK DETAILS</h4>
-			{%- set swift = frappe.db.get_value("Bank", bank.bank, "swift_number") if bank.bank else None %}
-			<div>{{ bank.bank }}</div>
-			<div>{{ frappe.db.get_value("Company", doc.company, "company_name") }}</div>
-			{%- if bank.iban %}<div>IBAN: {{ bank.iban }}</div>{% endif %}
-			{%- if swift %}<div>SWIFT CODE: {{ swift }}</div>{% endif %}
-			{%- if bank.bank_account_no %}<div>ACCOUNT NUMBER: {{ bank.bank_account_no }}</div>{% endif %}
-			{%- endif %}
-		</td>
+		<td style="width:55%">{% include "templates/print/rli_bank.html" %}</td>
 		<td class="rp-words">
 			{%- if words_amount %}
 			<h4>Total in Words</h4>
@@ -367,10 +370,10 @@
 			{%- endif %}
 		</td>
 	</tr></table>
-	{%- endif %}
 
 	{#- ------------------------------------------------ signatures -#}
-	{%- if dt == "Sales Invoice" %}{% set sigs = ["Authorized Signature", "Customer Signature"] %}
+	{%- if dt in ("Sales Invoice", "Sales Order") %}{% set sigs = ["Authorized Signature", "Customer Signature"] %}
+	{%- elif dt == "Quotation" %}{% set sigs = ["Authorized Signature", "Customer Acceptance"] %}
 	{%- elif dt == "Payment Entry" %}{% set sigs = ["Authorized Signature", "Receiver's Signature" if doc.payment_type == "Pay" else "Payer's Signature"] %}
 	{%- elif dt == "Purchase Receipt" %}{% set sigs = ["Received By (Store)", "Checked By (QC)", "Approved By"] %}
 	{%- elif dt == "Material Request" %}{% set sigs = ["Requested By", "Approved By"] %}

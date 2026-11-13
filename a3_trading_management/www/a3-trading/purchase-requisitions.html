@@ -45,12 +45,13 @@
 				<td class="num">{{ "%.0f%%" | format(r.per_ordered or 0) }}
 					{%- for po in r.purchase_orders %}<div><a href="/a3-trading/purchase-orders?material_request={{ r.name | urlencode }}" style="font-size:12px">{{ po }}</a></div>{% endfor %}</td>
 				<td style="white-space:nowrap">
+					<button type="button" class="btn btn--outline btn--sm" onclick="openDoc('Material Request', '{{ r.name }}')"><i class="fa-solid fa-eye"></i> View</button>
 					{%- if r.docstatus == 0 %}
 					<button class="btn btn--primary btn--sm" onclick="approveReq('{{ r.name }}')">Approve</button>
 					<button class="btn btn--outline btn--sm not-sup" onclick="rejectReq('{{ r.name }}')">Reject</button>
 					{%- elif r.docstatus == 1 and (r.per_ordered or 0) < 100 and not (supervisor is defined and supervisor) %}
 					<button class="btn btn--outline btn--sm" onclick="convertReq('{{ r.name }}')">To Order</button>
-					{%- else %}<span class="muted">—</span>{% endif %}
+					{%- endif %}
 				</td>
 			</tr>
 		{%- endfor %}

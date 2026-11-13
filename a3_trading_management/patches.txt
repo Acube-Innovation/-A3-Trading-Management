@@ -6,3 +6,5 @@
 a3_trading_management.patches.rename_print_formats_to_rli
 a3_trading_management.patches.rli_chassis_numbers_and_letter_head
 a3_trading_management.patches.apply_letter_head_layout
+a3_trading_management.patches.apply_letter_head_layout #2026-11-12 name, P.O. Box, TEL/FAX/info@redlines.ae, red TRN, red rule + TEL order
+a3_trading_management.patches.add_rak_bank_account

@@ -24,8 +24,9 @@ with open(FONT_FILE, "rb") as f:
 FONT = "'Redlines Agency FB', 'Agency FB', 'Arial Narrow', Arial, sans-serif"
 
 TRN = "105503411800003"
-# Layout after the client's letter head sample (11 Nov 2026): logo on the left; on
-# the right, in the logo's typeface, the name, address, contact lines and TRN.
+# Layout after the client's letter head sample (12 Nov 2026): logo on the left; on
+# the right, in the logo's typeface: name, P.O. Box, TEL / FAX / email, and the TRN
+# in the logo's red.
 LINE = f"font-family:{FONT};font-weight:700;letter-spacing:.4px;line-height:1.25"
 CONTENT = f"""<style>@font-face {{ font-family: 'Redlines Agency FB'; src:  url('{FONT_URL}') format('truetype'); font-weight: 700; font-style: normal; }}</style>
 <table style="width:100%;border-collapse:collapse;border:0">
@@ -37,13 +38,13 @@ CONTENT = f"""<style>@font-face {{ font-family: 'Redlines Agency FB'; src:  url(
 			<div style="{LINE};font-size:30px;line-height:1.1">
 				<span style="color:#FF0066">RED</span><span style="color:#00268A">LINES INTERNATIONAL TRADING LLC</span>
 			</div>
-			<div style="{LINE};font-size:17px;color:#1a1a1a;margin-top:2px">G4, BANK STREET BUILDING, BURJUMAN, DUBAI, UAE</div>
-			<div style="{LINE};font-size:14px;color:#1a1a1a">P.O. BOX 27969 &nbsp; TEL: +971 4 3596160, 3558595 &nbsp; FAX: +971 4 3596181</div>
-			<div style="{LINE};font-size:14px;color:#00268A"><span style="color:#FF0066">red</span>line@eim.ae</div>
-			<div style="{LINE};font-size:14px;color:#1a1a1a">TRN : {TRN}</div>
+			<div style="{LINE};font-size:15px;color:#1a1a1a;margin-top:6px">P.O.BOX 27969,DUBAI,UAE</div>
+			<div style="{LINE};font-size:15px;color:#1a1a1a;margin-top:2px">TEL: +971 4 3558595, 3596160 &nbsp;&nbsp; FAX: +971 4 3596181 &nbsp;&nbsp; <span style="color:#00268A">info@</span><span style="color:#EC2E5D">red</span><span style="color:#00268A">lines.ae</span></div>
+			<div style="{LINE};font-size:15px;color:#EC2E5D;margin-top:2px">TRN : {TRN}</div>
 		</td>
 	</tr>
-</table>"""
+</table>
+<div style="border-top:3px solid #EC2E5D;margin-top:8px"></div>"""
 
 # The contact line moved up into the header, so the footer is empty.
 FOOTER = ""

@@ -182,6 +182,9 @@ VIEWABLE = {
 	"Payment Entry": {"party": "party", "party_name": "party_name", "lines": "references",
 		"line_fields": ["reference_doctype", "reference_name", "total_amount", "outstanding_amount", "allocated_amount"],
 		"head": ["posting_date", "payment_type", "party_type", "mode_of_payment", "paid_from", "paid_to", "paid_amount", "received_amount", "reference_no"]},
+	"Quotation": {"party": "party_name", "party_name": "customer_name", "lines": "items",
+		"line_fields": ["item_code", "item_name", "qty", "uom", "rate", "amount"],
+		"head": ["transaction_date", "valid_till", "net_total", "taxes_and_charges", "total_taxes_and_charges", "grand_total"]},
 	"Journal Entry": {"party": None, "lines": "accounts",
 		"line_fields": ["account", "party_type", "party", "debit_in_account_currency", "credit_in_account_currency", "user_remark"],
 		"head": ["posting_date", "voucher_type", "total_debit", "total_credit", "user_remark"]},
@@ -196,6 +199,9 @@ def get_document(doctype, name):
 		frappe.throw(_("{0} cannot be shown here").format(doctype))
 	frappe.has_permission(doctype, "read", doc=name, throw=True)
 	doc = frappe.get_doc(doctype, name)
+	# Blank the fields above the reader's permission level (the Supervisor's
+	# hidden prices), as Desk's form would.
+	doc.apply_fieldlevel_read_permissions()
 	spec = VIEWABLE[doctype]
 	head = {f: doc.get(f) for f in spec["head"] if doc.meta.has_field(f)}
 	lines = []
