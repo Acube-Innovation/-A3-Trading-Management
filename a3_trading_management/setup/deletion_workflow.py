@@ -69,11 +69,11 @@ def setup():
 		"send_email_alert": 0,
 	})
 	wf.set("states", [{"state": s, "doc_status": "0", "allow_edit": role} for s, _style, role in STATES])
-	# Self-approval off: whoever raised the request cannot approve it. The
-	# controller also keeps the Finance and Owner approvers different people.
+	# Self-approval on: the client runs with one or two people who hold every
+	# role, so whoever raised the request may approve each step (13 Nov 2026).
+	# The request still records who approved what and when.
 	wf.set("transitions", [
-		{"state": f, "action": a, "next_state": t, "allowed": role,
-		 "allow_self_approval": 1 if a in ("Submit for Approval", "Reject") else 0}
+		{"state": f, "action": a, "next_state": t, "allowed": role, "allow_self_approval": 1}
 		for f, a, t, role in TRANSITIONS
 	])
 	wf.flags.ignore_permissions = True

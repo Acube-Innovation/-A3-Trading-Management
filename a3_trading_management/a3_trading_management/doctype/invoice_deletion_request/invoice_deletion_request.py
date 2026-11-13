@@ -3,7 +3,7 @@
 Operator raises it -> Finance (Accounts Manager) approves -> Owner approves, and
 the Owner's approval is what actually deletes the invoice (api.invoice_delete).
 The workflow "Invoice Deletion Approval" decides who may move it; this controller
-records who did, keeps the three people different, and runs the deletion inside
+records who did, and runs the deletion inside
 the same save so a failure leaves both the request and the invoice untouched.
 """
 
@@ -35,12 +35,9 @@ class InvoiceDeletionRequest(Document):
 		if state == "Pending Finance":
 			self._refresh_impact(block=True)
 		elif state == "Pending Owner":
-			self._distinct(user, self.requested_by, _("the person who raised it"))
 			self._refresh_impact(block=True)
 			self.finance_approved_by, self.finance_approved_on = user, now_datetime()
 		elif state == "Deleted":
-			self._distinct(user, self.requested_by, _("the person who raised it"))
-			self._distinct(user, self.finance_approved_by, _("the Finance approver"))
 			self.owner_approved_by, self.owner_approved_on = user, now_datetime()
 		elif state == "Rejected":
 			self.rejected_by, self.rejected_on = user, now_datetime()
@@ -50,11 +47,6 @@ class InvoiceDeletionRequest(Document):
 			log = invoice_delete.delete_invoice(self.invoice_type, self.invoice)
 			self.deleted_on = now_datetime()
 			self.deletion_log = "\n".join(log)
-
-	def _distinct(self, user, other, who):
-		if user != "Administrator" and other and user == other:
-			frappe.throw(_("You cannot approve this request because you are {0}. "
-			               "A different person must approve it.").format(who))
 
 	def _snapshot(self):
 		inv = frappe.get_doc(self.invoice_type, self.invoice)
