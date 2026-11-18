@@ -188,6 +188,22 @@ def after_migrate():
 	setup_letter_head()
 	setup_scrap_warehouse()
 	setup_cut_shapes()
+	setup_purchase_units()
+
+
+def setup_purchase_units():
+	"""The average purchase price list BOMs cost from, and the pack units a
+	bill line can be bought in."""
+	from a3_trading_management.api.avg_rate import ensure_price_list
+
+	ensure_price_list()
+	for uom in PURCHASE_UNITS:
+		if not frappe.db.exists("UOM", uom):
+			frappe.get_doc({"doctype": "UOM", "uom_name": uom, "must_be_whole_number": 1}).insert(ignore_permissions=True)
+
+
+# How a bill line can be bought; the portal form offers these plus the item's own units.
+PURCHASE_UNITS = ["Nos", "Box", "Pallet", "Carton", "Packet", "Roll", "Set"]
 
 
 # The shapes a sheet piece can be cut in, created once (only while there are

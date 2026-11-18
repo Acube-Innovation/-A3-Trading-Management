@@ -8,7 +8,7 @@ def get_context(context):
 	require_login(context)
 	context.title = "Purchase Invoices"
 	context.page_icon = "fa-file-invoice"
-	context.subtitle = "Bills against receipts and orders, with a hold before the ledger"
+	context.subtitle = "Supplier bills, new or against receipts and orders, with a hold before the ledger"
 	context.breadcrumb = "Purchase Invoices"
 
 	from a3_trading_management.api.buying import list_purchase_invoices

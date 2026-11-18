@@ -2,7 +2,8 @@
 {% from "templates/macros/trading.html" import status_pill, filter_bar, filter_script, call_method_js, stat_row, doc_modals, deletion_request_js %}
 
 {% block page_content %}
-{#- Bill against a receipt or an order, with a hold and approval step before the
+{#- A new bill (New Purchase Invoice, bought loose / by the box / by the pallet), or one
+    against a receipt or an order, with a hold and approval step before the
     invoice reaches the ledger. Approving IS submitting the Purchase Invoice —
     that is what posts it — and approval is refused while the bill is on hold. -#}
 
@@ -18,6 +19,8 @@
 	<div class="toolbar__right">
 		<a class="btn btn--outline btn--sm" href="/a3-trading/supplier-payments">
 			<i class="fa-solid fa-money-bill-transfer"></i> Payments</a>
+		<button type="button" class="btn btn--primary btn--sm" onclick="newPurchaseInvoice()">
+			<i class="fa-solid fa-plus"></i> New Purchase Invoice</button>
 	</div>
 </div>
 
@@ -103,4 +106,72 @@ function payInv(name, outstanding) {
 </script>
 {{ doc_modals() }}
 {{ filter_script() }}
+<script>
+// How each line was bought. "" is the item's own stock unit (loose pieces).
+var PI_UNITS = [{ value: "", label: "Loose (stock unit)" }, "Nos", "Box", "Pallet", "Carton", "Packet", "Roll", "Set"];
+function piNum(v) { return Number(v) || 0; }
+function piMoney(v) { return v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 }); }
+function newPurchaseInvoice() {
+	openNewDoc({
+		title: "New Purchase Invoice",
+		subtitle: "A supplier's bill with the goods received on it. Say how each line was bought: loose, by the box, by the pallet. The rate per piece feeds the average purchase rate every BOM is costed at once the bill is approved.",
+		head: [
+			{ key: "supplier", label: "Supplier", party: "Supplier", required: true, placeholder: "Search supplier…" },
+			{ key: "bill_no", label: "Supplier invoice no", required: true, placeholder: "As printed on their tax invoice" },
+			{ key: "bill_date", label: "Supplier invoice date", type: "date", required: true, value: new Date().toISOString().slice(0, 10) }
+		],
+		columns: [
+			{ key: "item_code", label: "Item", pick: "item", placeholder: "Search item…" },
+			{ key: "uom", label: "Bought as", options: PI_UNITS, value: "", width: "140px" },
+			{ key: "packs", label: "How many", num: true, value: 1, width: "90px" },
+			{ key: "per_pack", label: "Pcs per pack", num: true, width: "100px" },
+			{ key: "pack_rate", label: "Rate each", num: true, width: "110px" },
+			{ key: "per_piece", label: "Per piece", width: "100px", calc: function (l) {
+				var per = l.uom ? piNum(l.per_pack) : 1;
+				return per && piNum(l.pack_rate) ? piMoney(piNum(l.pack_rate) / per) : "";
+			} },
+			{ key: "pieces", label: "Pieces", width: "80px", calc: function (l) {
+				var per = l.uom ? piNum(l.per_pack) : 1;
+				return per && piNum(l.packs) ? String(+(piNum(l.packs) * per).toFixed(3)) : "";
+			} },
+			{ key: "warehouse", label: "To yard", default: "Stores - A3T" }
+		],
+		priceList: "Standard Buying",
+		onPick: function (tr, it) {
+			// The rate the search shows is per stock unit; it only fits a loose line.
+			var unit = tr.querySelector('[data-key="uom"]'), rate = tr.querySelector('[data-key="pack_rate"]');
+			if (unit && unit.value && rate) rate.value = "";
+		},
+		onLine: function (tr, l) {
+			// Loose pieces: one per "pack", nothing to fill in.
+			var per = tr.querySelector('[data-key="per_pack"]');
+			if (!per) return;
+			per.disabled = !l.uom;
+			if (!l.uom) per.value = "";
+			per.placeholder = l.uom ? "e.g. 50" : "1";
+		},
+		total: function (l) {
+			l = l.filter(function (r) { return r.item_code; });
+			return [["Lines", String(l.length)], ["Total before VAT", piMoney(l.reduce(function (s, r) { return s + piNum(r.packs) * piNum(r.pack_rate); }, 0))]];
+		},
+		validate: function (h, l) {
+			l = l.filter(function (r) { return r.item_code; });
+			if (!h.supplier) return "Choose a supplier.";
+			if (!h.bill_no) return "Enter the supplier's invoice no.";
+			if (!h.bill_date) return "Enter the supplier's invoice date.";
+			if (!l.length) return "Add at least one item.";
+			if (l.some(function (r) { return !piNum(r.packs); })) return "Every line needs how many were bought.";
+			if (l.some(function (r) { return !piNum(r.pack_rate); })) return "Every line needs a rate.";
+			return null;
+		},
+		build: function (h, l) {
+			return { supplier: h.supplier, bill_no: h.bill_no, bill_date: h.bill_date,
+				items: JSON.stringify(l.filter(function (r) { return r.item_code; }).map(function (r) {
+					return { item_code: r.item_code, uom: r.uom, packs: r.packs, per_pack: r.per_pack, pack_rate: r.pack_rate, warehouse: r.warehouse };
+				})) };
+		},
+		method: "a3_trading_management.api.buying.create_purchase_invoice"
+	});
+}
+</script>
 {% endblock %}

@@ -603,7 +603,13 @@ def save_bom(item, items, operations=None, quantity=1, name=None, submit=0, set_
         bom = frappe.new_doc("BOM")
         bom.company = _current_company()
         bom.currency = _company_currency(bom.company)
-        bom.rm_cost_as_per = "Valuation Rate"
+        # Materials are costed at their average purchase rate (api/avg_rate.py).
+        from a3_trading_management.api.avg_rate import AVERAGE_PRICE_LIST, ensure_price_list
+
+        bom.rm_cost_as_per = "Price List"
+        bom.buying_price_list = ensure_price_list()
+        bom.price_list_currency = frappe.db.get_value("Price List", AVERAGE_PRICE_LIST, "currency")
+        bom.plc_conversion_rate = 1
         bom.is_active = 1
     bom.item = item
     bom.quantity = flt(quantity) or 1
@@ -690,10 +696,18 @@ def get_item_uoms(item):
     ) or {}
     return {
         "stock_uom": stock_uom, "uoms": uoms,
-        "valuation_rate": get_valuation_rate({"item_code": item, "company": _current_company()}),
+        # The rate a BOM costs it at: the average purchase rate, else valuation.
+        "valuation_rate": _bom_rate(item) or get_valuation_rate({"item_code": item, "company": _current_company()}),
         "is_sheet": sheet.get("custom_cut_type") == "Sheet",
         "sheet_length": flt(sheet.get("custom_sheet_length_cm")), "sheet_width": flt(sheet.get("custom_sheet_width_cm")),
     }
+
+
+def _bom_rate(item):
+    from a3_trading_management.api.avg_rate import AVERAGE_PRICE_LIST
+
+    return flt(frappe.db.get_value(
+        "Item Price", {"price_list": AVERAGE_PRICE_LIST, "item_code": item}, "price_list_rate"))
 
 
 @frappe.whitelist()

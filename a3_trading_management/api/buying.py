@@ -598,6 +598,81 @@ def create_purchase_order(supplier, items, schedule_date=None, company=None):
 
 
 @frappe.whitelist()
+def create_purchase_invoice(supplier, items, bill_no=None, bill_date=None, posting_date=None, company=None):
+	"""A bill straight from the supplier's invoice, the goods received on it
+	(Update Stock). Saved as a draft; Approve on the list posts it.
+
+	Each line says how it was bought: {item_code, uom, packs, per_pack, pack_rate,
+	warehouse}. "5 Box, 50 pieces a box, 100 a box" is uom Box, qty 5,
+	conversion factor 50, rate 100: 250 pieces in stock at 2 each. A blank uom is
+	the item's own stock unit (loose pieces). Cut material and sheets keep the
+	length or size their item master gives a piece."""
+	frappe.has_permission("Purchase Invoice", "create", throw=True)
+	if isinstance(items, str):
+		items = frappe.parse_json(items)
+	items = [r for r in (items or []) if (r.get("item_code") or "").strip()]
+	if not supplier:
+		frappe.throw(_("Choose a supplier"))
+	if not items:
+		frappe.throw(_("Add at least one item to the bill"))
+
+	from a3_trading_management.api.cut_material import is_cut_item
+	from a3_trading_management.api.live_stock import _mr_warehouse
+	from a3_trading_management.api.sheet_cut import is_sheet_item
+
+	pi = frappe.new_doc("Purchase Invoice")
+	pi.supplier = supplier
+	pi.company = company or default_company()
+	pi.posting_date = posting_date or nowdate()
+	if posting_date:
+		pi.set_posting_time = 1
+	pi.bill_no = (bill_no or "").strip() or None
+	pi.bill_date = getdate(bill_date) if bill_date else None
+	pi.update_stock = 1
+	pi.disable_rounded_total = 1
+	default_yard = _mr_warehouse()
+	for row in items:
+		item_code = row["item_code"].strip()
+		stock_uom = frappe.get_cached_value("Item", item_code, "stock_uom")
+		if not stock_uom:
+			frappe.throw(_("Item {0} not found").format(item_code))
+		uom = (row.get("uom") or "").strip() or stock_uom
+		packs = flt(row.get("packs"))
+		if packs <= 0:
+			frappe.throw(_("{0}: enter how many {1} were bought").format(item_code, uom))
+		if not frappe.db.exists("UOM", uom):
+			frappe.throw(_("Unit {0} not found").format(uom))
+		# Only the item's own unit table: ERPNext's lookup falls back to 1 for an unknown unit.
+		known = 1 if uom == stock_uom else flt(frappe.db.get_value(
+			"UOM Conversion Detail", {"parent": item_code, "parenttype": "Item", "uom": uom}, "conversion_factor"))
+		if uom == stock_uom:
+			per_pack = 1
+		elif is_cut_item(item_code) or is_sheet_item(item_code):
+			# A piece of cut material is the length its item master says.
+			if not known:
+				frappe.throw(_("{0} is cut material: its item has no {1} conversion. Buy it in {2} or add the unit to the item.").format(item_code, uom, stock_uom))
+			per_pack = known
+		else:
+			per_pack = flt(row.get("per_pack")) or known
+			if per_pack <= 0:
+				frappe.throw(_("{0}: say how many {1} are in each {2}").format(item_code, stock_uom, uom))
+		pi.append("items", {
+			"item_code": item_code,
+			"qty": packs,
+			"received_qty": packs,
+			"uom": uom,
+			"conversion_factor": per_pack,
+			"rate": flt(row.get("pack_rate")),
+			"warehouse": row.get("warehouse") or default_yard,
+		})
+	pi.set_missing_values()
+	apply_taxes(pi)
+	pi.insert()
+	frappe.db.commit()
+	return {"name": pi.name, "grand_total": pi.grand_total}
+
+
+@frappe.whitelist()
 def update_order_rates(name, rows):
 	"""Fix the rates on a draft order (an order made from a requisition carries
 	none when the item has no price list rate)."""

@@ -103,6 +103,9 @@ doc_events = {
 		"validate": "a3_trading_management.integrations.uae_vat.purchase_invoice_validate",
 		# A bill with no supplier invoice no, a repeated one, or stock that was never received.
 		"before_submit": "a3_trading_management.integrations.uae_vat.purchase_invoice_before_submit",
+		# The average purchase rate per piece, and every BOM costed from it.
+		"on_submit": "a3_trading_management.api.avg_rate.on_purchase_invoice_change",
+		"on_cancel": "a3_trading_management.api.avg_rate.on_purchase_invoice_change",
 	},
 	# Items are numbered from a series while Item Code stays a typeable field.
 	"Item": {

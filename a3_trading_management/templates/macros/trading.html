@@ -507,6 +507,10 @@ function requestDeletion(doctype, name) {
 		tr.innerHTML = CFG.columns.map(function (c) {
 			if (c.key === "warehouse") return '<td><select data-key="warehouse"><option value="">—</option>' + (WAREHOUSES || []).map(function (w) { return '<option value="' + esc(w.name) + '"' + (c.default && w.name === c.default ? " selected" : "") + '>' + esc(w.warehouse_name || w.name) + "</option>"; }).join("") + "</select></td>";
 			if (c.pick) return '<td><div><input data-key="' + c.key + '" placeholder="' + esc(c.placeholder || "Search…") + '" autocomplete="off"></div></td>';
+			// A fixed list: [{value, label}] or plain strings.
+			if (c.options) return '<td><select data-key="' + c.key + '">' + c.options.map(function (o) { var v = o.value != null ? o.value : o, l = o.label || o; return '<option value="' + esc(v) + '"' + (c.value != null && String(c.value) === String(v) ? " selected" : "") + ">" + esc(l) + "</option>"; }).join("") + "</select></td>";
+			// Worked out from the other cells of the line by c.calc(line); read-only.
+			if (c.calc) return '<td class="num muted" data-calc="' + c.key + '">—</td>';
 			return '<td' + (c.num ? ' class="num"' : "") + '><input data-key="' + c.key + '" type="' + (c.num ? "number" : "text") + '" step="any" class="' + (c.num ? "num" : "") + '" value="' + esc(c.value != null ? c.value : "") + '"></td>';
 		}).join("") + '<td><button type="button" class="td-rm" title="Remove line"><i class="fa-solid fa-trash"></i></button></td>';
 		document.querySelector("#td-new-table tbody").appendChild(tr);
@@ -520,18 +524,32 @@ function requestDeletion(doctype, name) {
 			}, function (it) {
 				var rate = tr.querySelector('input[data-key="rate"]');
 				if (rate && it.rate != null && !Number(rate.value)) rate.value = it.rate;
-				total();
+				if (CFG.onPick) CFG.onPick(tr, it);
+				refresh(tr);
 			});
 		});
-		tr.querySelectorAll("input").forEach(function (i) { i.addEventListener("input", total); });
+		tr.querySelectorAll("input").forEach(function (i) { i.addEventListener("input", function () { refresh(tr); }); });
+		tr.querySelectorAll("select").forEach(function (i) { i.addEventListener("change", function () { refresh(tr); }); });
 		tr.querySelector(".td-rm").addEventListener("click", function () { tr.remove(); total(); });
+		refresh(tr);
+	}
+	function lineOf(tr) {
+		var o = {};
+		tr.querySelectorAll("[data-key]").forEach(function (el) { o[el.getAttribute("data-key")] = el.tagName === "SELECT" ? el.value : (el.dataset.value || el.value); });
+		return o;
+	}
+	function refresh(tr) {
+		if (CFG.onLine) CFG.onLine(tr, lineOf(tr));
+		var line = lineOf(tr);
+		CFG.columns.forEach(function (c) {
+			if (!c.calc) return;
+			var cell = tr.querySelector('[data-calc="' + c.key + '"]'), v = c.calc(line);
+			if (cell) cell.textContent = (v == null || v === "") ? "—" : v;
+		});
+		total();
 	}
 	function lines() {
-		return Array.prototype.map.call(document.querySelectorAll("#td-new-table tbody tr"), function (tr) {
-			var o = {};
-			tr.querySelectorAll("[data-key]").forEach(function (el) { o[el.getAttribute("data-key")] = el.tagName === "SELECT" ? el.value : (el.dataset.value || el.value); });
-			return o;
-		}).filter(function (o) { return Object.keys(o).some(function (k) { return String(o[k] || "").trim() !== "" && !(k === "warehouse"); }); });
+		return Array.prototype.map.call(document.querySelectorAll("#td-new-table tbody tr"), lineOf).filter(function (o) { return Object.keys(o).some(function (k) { return String(o[k] || "").trim() !== "" && !(k === "warehouse"); }); });
 	}
 	function total() {
 		var box = document.getElementById("td-new-total"); if (!CFG || !CFG.total) { box.innerHTML = ""; return; }
