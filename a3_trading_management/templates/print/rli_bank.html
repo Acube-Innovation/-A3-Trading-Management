@@ -1,6 +1,6 @@
 {#- BANK DETAILS block for the RLI prints: the company's default bank account
-    (Bank Account with is_company_account). Included by rli_document.html and by
-    the RLI Delivery Note / Quality Inspection formats. Needs `doc`. -#}
+    (Bank Account with is_company_account). Printed on Sales Invoice and Quotation
+    only (rli_document.html); no other print carries it. Needs `doc`. -#}
 {%- set _banks = frappe.get_all("Bank Account", filters={"company": doc.company, "is_company_account": 1, "disabled": 0},
                                 fields=["bank", "account_name", "iban", "bank_account_no"], order_by="is_default desc, creation asc", limit=1) if doc.get("company") else [] -%}
 {%- if _banks -%}

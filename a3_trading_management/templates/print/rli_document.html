@@ -1,7 +1,8 @@
 {#- Shared print layout for the trading documents, after the client's reference
     tax invoice (11 Nov 2026): centred title, "Billed To" on the left, a
     label : value list on the right, a grey-headed items table without grid
-    lines, plain totals, bank details beside the total in words, two signatures.
+    lines, plain totals, the total in words (bank details beside it on Sales Invoice and
+    Quotation only), signatures.
     Each Print Format ("RLI Sales Invoice", "RLI Purchase Invoice", ...) is one
     line that includes this file; the document type picks the content.
 
@@ -360,9 +361,10 @@
 	{%- endif %}
 
 	{#- ------------------------------------------------ bank + words -#}
-	{#- The company bank account is on every print (templates/print/rli_bank.html). #}
+	{#- The company bank account is printed only where the customer pays from the
+	    document: Sales Invoice and Quotation (templates/print/rli_bank.html). #}
 	<table class="rp-lay"><tr>
-		<td style="width:55%">{% include "templates/print/rli_bank.html" %}</td>
+		<td style="width:55%">{% if dt in ("Sales Invoice", "Quotation") %}{% include "templates/print/rli_bank.html" %}{% endif %}</td>
 		<td class="rp-words">
 			{%- if words_amount %}
 			<h4>Total in Words</h4>
