@@ -247,6 +247,8 @@ function requestDeletion(doctype, name) {
 	.td-kv div b { font-weight:600; }
 	.td-ac { position:relative; }
 	.td-ac__list { position:absolute; left:0; right:0; top:100%; z-index:20; background:var(--surface); border:1px solid var(--border); border-radius:8px; box-shadow:var(--shadow-md); max-height:220px; overflow:auto; display:none; }
+	/* Inside a scrolling table the list is placed on the page, so the table cannot clip it. */
+	.td-ac__list.is-float { position:fixed; right:auto; z-index:3000; min-width:320px; }
 	.td-ac__item { padding:7px 10px; cursor:pointer; font-size:13px; }
 	.td-ac__item:hover, .td-ac__item.is-active { background:var(--bg); }
 	.td-ac__item small { display:block; color:var(--muted); }
@@ -266,7 +268,7 @@ function requestDeletion(doctype, name) {
 	</div>
 </div>
 <div class="modal-overlay" id="td-new" role="dialog" aria-modal="true">
-	<div class="modal" style="width:min(960px,96vw);max-width:none">
+	<div class="modal" id="td-new-box" style="width:min(960px,96vw);max-width:none">
 		<div class="modal__head">
 			<div><h3 id="td-new-title">New</h3><div class="sub" id="td-new-sub"></div></div>
 			<button type="button" class="modal__close" data-td-close><i class="fa-solid fa-xmark"></i></button>
@@ -458,8 +460,20 @@ function requestDeletion(doctype, name) {
 		function render() {
 			list.innerHTML = items.map(function (it, i) { return '<div class="td-ac__item' + (i === active ? " is-active" : "") + '" data-i="' + i + '">' + esc(it.label) + (it.sub ? "<small>" + esc(it.sub) + "</small>" : "") + "</div>"; }).join("");
 			list.style.display = items.length ? "block" : "none";
+			if (items.length && input.closest("table")) place();
 		}
-		function pick(i) { var it = items[i]; if (!it) return; input.value = it.value; input.dataset.value = it.value; close(); onPick(it); }
+		function place() {
+			// Open below the box, or above it when there is no room below.
+			var r = input.getBoundingClientRect();
+			list.classList.add("is-float");
+			list.style.width = Math.max(r.width, 320) + "px";
+			list.style.left = Math.min(r.left, window.innerWidth - Math.max(r.width, 320) - 8) + "px";
+			var below = window.innerHeight - r.bottom;
+			if (below < 230 && r.top > below) { list.style.top = ""; list.style.bottom = (window.innerHeight - r.top + 2) + "px"; }
+			else { list.style.bottom = ""; list.style.top = (r.bottom + 2) + "px"; }
+		}
+		// A picked item shows its name; its code is what the form sends.
+		function pick(i) { var it = items[i]; if (!it) return; input.value = it.label || it.value; input.dataset.value = it.value; input.title = it.value; close(); onPick(it); }
 		input.addEventListener("input", function () {
 			input.dataset.value = ""; clearTimeout(timer);
 			timer = setTimeout(function () { source(input.value).then(function (res) { items = res || []; render(); }); }, 150);
@@ -474,12 +488,16 @@ function requestDeletion(doctype, name) {
 		});
 		list.addEventListener("mousedown", function (e) { var it = e.target.closest("[data-i]"); if (it) { pick(+it.dataset.i); e.preventDefault(); } });
 		input.addEventListener("blur", function () { setTimeout(close, 150); });
+		// A floating list would drift when the modal or table scrolls; close it.
+		window.addEventListener("scroll", function (e) { if (e.target !== list && list.classList.contains("is-float")) close(); }, true);
 	}
 
 	// ---------------------------------------------------------- new-document editor
 	var CFG = null, WAREHOUSES = null;
 	window.openNewDoc = function (cfg) {
 		CFG = cfg;
+		// cfg.width widens the pop-up for a form with many columns.
+		document.getElementById("td-new-box").style.width = "min(" + (cfg.width || 960) + "px,96vw)";
 		document.getElementById("td-new-title").textContent = cfg.title || "New";
 		document.getElementById("td-new-sub").textContent = cfg.subtitle || "";
 		var head = document.getElementById("td-new-head"); head.innerHTML = "";

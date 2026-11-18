@@ -199,12 +199,13 @@
 			{%- set rate = vat.get(it.item_code) or vat.get(it.item_name) or 0 -%}
 			{%- set net = it.net_amount if it.net_amount is not none else it.amount -%}
 			{%- set tax = (net or 0) * rate / 100 -%}
-			{%- set ns.qty = ns.qty + (it.qty or 0) -%}
+			{%- set packed = it.get("stock_uom") == "Nos" and it.uom and it.uom != "Nos" and it.get("stock_qty") -%}
+			{%- set ns.qty = ns.qty + ((it.stock_qty if packed else it.qty) or 0) -%}
 			{%- set desc = it.description | striptags | trim if it.description else "" -%}
 			<tr>
 				<td>{{ it.item_name }}</td>
 				<td>{{ desc if desc and desc != it.item_name else it.item_code }}{% if dt == "Purchase Order" and it.schedule_date and it.schedule_date != doc.schedule_date %}<div class="sub">by {{ d(it.schedule_date) }}</div>{% endif %}</td>
-				<td class="ctr">{{ q(it.qty) }}{% if it.uom and it.uom != "Nos" %} {{ it.uom }}{% endif %}</td>
+				<td class="ctr">{{ q(it.qty) }}{% if it.uom and it.uom != "Nos" %} {{ it.uom }}{% endif %}{% if packed %}<div class="sub">{{ q(it.stock_qty) }} Nos</div>{% endif %}</td>
 				<td class="num">{{ m(it.net_rate if it.net_rate is not none else it.rate) }}</td>
 				<td class="num">{{ m(net) }}</td>
 				<td class="ctr">{{ q(rate) }}%</td>

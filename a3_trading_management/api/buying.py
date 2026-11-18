@@ -598,15 +598,38 @@ def create_purchase_order(supplier, items, schedule_date=None, company=None):
 
 
 @frappe.whitelist()
+def list_packing_types():
+	"""The enabled Packing Types for the New Purchase Invoice form, in their order."""
+	return frappe.get_all("Packing Type", filters={"enabled": 1},
+		fields=["name", "is_loose", "uom"], order_by="sort_order asc, name asc")
+
+
+def _packing(name):
+	"""(is loose, uom) of a Packing Type; a blank name is loose."""
+	if not name:
+		return True, None
+	pt = frappe.db.get_value("Packing Type", name, ["is_loose", "uom", "enabled"], as_dict=True)
+	if not pt or not pt.enabled:
+		frappe.throw(_("Packing Type {0} not found").format(name))
+	if not pt.is_loose and not pt.uom:
+		frappe.throw(_("Packing Type {0} has no Unit of Measure").format(name))
+	return bool(pt.is_loose), pt.uom
+
+
+@frappe.whitelist()
 def create_purchase_invoice(supplier, items, bill_no=None, bill_date=None, posting_date=None, company=None):
 	"""A bill straight from the supplier's invoice, the goods received on it
 	(Update Stock). Saved as a draft; Approve on the list posts it.
 
-	Each line says how it was bought: {item_code, uom, packs, per_pack, pack_rate,
-	warehouse}. "5 Box, 50 pieces a box, 100 a box" is uom Box, qty 5,
-	conversion factor 50, rate 100: 250 pieces in stock at 2 each. A blank uom is
-	the item's own stock unit (loose pieces). Cut material and sheets keep the
-	length or size their item master gives a piece."""
+	Each line says how it was bought: {item_code, packing_type, packs,
+	inner_packing, inner_per_pack, per_pack, pack_rate, warehouse}.
+	- Loose: packs = pieces, rate per piece.
+	- 5 Box of 100 at 100 a box: packing_type Box, packs 5, per_pack 100.
+	- 2 Pallet of 10 Box x 10 pieces at 900 a pallet: packing_type Pallet,
+	  packs 2, inner_packing Box, inner_per_pack 10, per_pack 10 -> 100 a pallet.
+	ERPNext books it as uom = the packing's unit, qty = packs, conversion factor =
+	pieces per pack, rate = pack rate. Cut material and sheets keep the length or
+	size their item master gives a piece."""
 	frappe.has_permission("Purchase Invoice", "create", throw=True)
 	if isinstance(items, str):
 		items = frappe.parse_json(items)
@@ -636,12 +659,13 @@ def create_purchase_invoice(supplier, items, bill_no=None, bill_date=None, posti
 		stock_uom = frappe.get_cached_value("Item", item_code, "stock_uom")
 		if not stock_uom:
 			frappe.throw(_("Item {0} not found").format(item_code))
-		uom = (row.get("uom") or "").strip() or stock_uom
+		packing = (row.get("packing_type") or "").strip() or None
+		loose, uom = _packing(packing)
+		uom = stock_uom if loose else uom
 		packs = flt(row.get("packs"))
 		if packs <= 0:
-			frappe.throw(_("{0}: enter how many {1} were bought").format(item_code, uom))
-		if not frappe.db.exists("UOM", uom):
-			frappe.throw(_("Unit {0} not found").format(uom))
+			frappe.throw(_("{0}: enter how many {1} were bought").format(item_code, packing or stock_uom))
+		inner, inner_per, per_unit = None, 0, 0
 		# Only the item's own unit table: ERPNext's lookup falls back to 1 for an unknown unit.
 		known = 1 if uom == stock_uom else flt(frappe.db.get_value(
 			"UOM Conversion Detail", {"parent": item_code, "parenttype": "Item", "uom": uom}, "conversion_factor"))
@@ -650,12 +674,26 @@ def create_purchase_invoice(supplier, items, bill_no=None, bill_date=None, posti
 		elif is_cut_item(item_code) or is_sheet_item(item_code):
 			# A piece of cut material is the length its item master says.
 			if not known:
-				frappe.throw(_("{0} is cut material: its item has no {1} conversion. Buy it in {2} or add the unit to the item.").format(item_code, uom, stock_uom))
+				frappe.throw(_("{0} is cut material: its item has no {1} conversion. Buy it Loose or add the unit to the item.").format(item_code, uom))
 			per_pack = known
 		else:
-			per_pack = flt(row.get("per_pack")) or known
-			if per_pack <= 0:
-				frappe.throw(_("{0}: say how many {1} are in each {2}").format(item_code, stock_uom, uom))
+			per_unit = flt(row.get("per_pack"))
+			inner = (row.get("inner_packing") or "").strip() or None
+			if inner:
+				if inner == packing:
+					frappe.throw(_("{0}: the inner packing cannot be the same as the packing ({1})").format(item_code, packing))
+				if _packing(inner)[0]:
+					frappe.throw(_("{0}: the inner packing must be a pack (Box, Packet...), not {1}").format(item_code, inner))
+				inner_per = flt(row.get("inner_per_pack"))
+				if inner_per <= 0:
+					frappe.throw(_("{0}: say how many {1} are in each {2}").format(item_code, inner, packing))
+				if per_unit <= 0:
+					frappe.throw(_("{0}: say how many {1} are in each {2}").format(item_code, stock_uom, inner))
+				per_pack = inner_per * per_unit
+			else:
+				per_pack = per_unit or known
+				if per_pack <= 0:
+					frappe.throw(_("{0}: say how many {1} are in each {2}").format(item_code, stock_uom, packing))
 		pi.append("items", {
 			"item_code": item_code,
 			"qty": packs,
@@ -664,6 +702,10 @@ def create_purchase_invoice(supplier, items, bill_no=None, bill_date=None, posti
 			"conversion_factor": per_pack,
 			"rate": flt(row.get("pack_rate")),
 			"warehouse": row.get("warehouse") or default_yard,
+			"custom_packing_type": packing,
+			"custom_inner_packing": inner,
+			"custom_inner_per_pack": inner_per,
+			"custom_pcs_per_unit": per_unit or per_pack,
 		})
 	pi.set_missing_values()
 	apply_taxes(pi)

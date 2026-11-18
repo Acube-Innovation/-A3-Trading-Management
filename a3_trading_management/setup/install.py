@@ -97,6 +97,20 @@ CUSTOM_FIELDS["Purchase Invoice"] = [
 	},
 ]
 
+# How a bill line was bought, as entered on the portal's New Purchase Invoice:
+# 2 Pallet, each 10 Box of 10 pieces. ERPNext's own uom / qty / conversion
+# factor carry the numbers (Pallet, 2, 100); these keep the packing as typed.
+CUSTOM_FIELDS["Purchase Invoice Item"] = [
+	{"fieldname": "custom_packing_type", "fieldtype": "Link", "options": "Packing Type", "label": "Packing Type",
+	 "insert_after": "uom", "read_only": 1},
+	{"fieldname": "custom_inner_packing", "fieldtype": "Link", "options": "Packing Type", "label": "Inner Packing",
+	 "insert_after": "custom_packing_type", "read_only": 1},
+	{"fieldname": "custom_inner_per_pack", "fieldtype": "Float", "label": "Inner Packs per Pack",
+	 "insert_after": "custom_inner_packing", "read_only": 1, "depends_on": "custom_inner_packing"},
+	{"fieldname": "custom_pcs_per_unit", "fieldtype": "Float", "label": "Pieces per Pack / Inner Pack",
+	 "insert_after": "custom_inner_per_pack", "read_only": 1, "depends_on": "custom_packing_type"},
+]
+
 # The order a finished trailer was reserved against.
 CUSTOM_FIELDS["Trailer Serial"] = [
 	{
@@ -192,18 +206,27 @@ def after_migrate():
 
 
 def setup_purchase_units():
-	"""The average purchase price list BOMs cost from, and the pack units a
-	bill line can be bought in."""
+	"""The average purchase price list BOMs cost from, and the packing types a
+	bill line can be bought in (created once, while there are none, so changes
+	made in Desk are kept)."""
 	from a3_trading_management.api.avg_rate import ensure_price_list
 
 	ensure_price_list()
-	for uom in PURCHASE_UNITS:
-		if not frappe.db.exists("UOM", uom):
-			frappe.get_doc({"doctype": "UOM", "uom_name": uom, "must_be_whole_number": 1}).insert(ignore_permissions=True)
+	if not frappe.db.table_exists("Packing Type") or frappe.db.count("Packing Type"):
+		return
+	for i, (name, loose, uom) in enumerate(DEFAULT_PACKING_TYPES, 1):
+		frappe.get_doc({
+			"doctype": "Packing Type", "packing_type": name, "is_loose": loose, "uom": uom,
+			"enabled": 1, "sort_order": i * 10,
+		}).insert(ignore_permissions=True)
 
 
-# How a bill line can be bought; the portal form offers these plus the item's own units.
-PURCHASE_UNITS = ["Nos", "Box", "Pallet", "Carton", "Packet", "Roll", "Set"]
+# (name, is loose, UOM). Nos is a single piece of a cut item (a 6 m bar), whose
+# stock unit is cm; for an item kept in Nos it is the same as Loose.
+DEFAULT_PACKING_TYPES = [
+	("Loose", 1, None), ("Nos", 0, "Nos"), ("Box", 0, None), ("Packet", 0, None), ("Carton", 0, None),
+	("Pallet", 0, None), ("Bundle", 0, None), ("Roll", 0, None), ("Set", 0, None),
+]
 
 
 # The shapes a sheet piece can be cut in, created once (only while there are

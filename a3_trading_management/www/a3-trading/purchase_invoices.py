@@ -19,6 +19,10 @@ def get_context(context):
 	from a3_trading_management.api.invoice_delete import portal_context
 
 	context.can_request_delete, context.open_deletions = portal_context("Purchase Invoice")
+	# What the New Purchase Invoice form offers under Packing Type (set up in Desk).
+	from a3_trading_management.api.buying import list_packing_types
+
+	context.packing_types = list_packing_types() if frappe.db.table_exists("Packing Type") else []
 	context.page_count = len(context.invoices)
 	context.page_count_label = "invoices"
 	return context
