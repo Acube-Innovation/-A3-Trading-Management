@@ -89,6 +89,10 @@ override_doctype_class = {
 # Document Events (ERPNext / core doctypes only; this app's own doctypes have controllers)
 # ---------------
 doc_events = {
+	# Materials never bought on a bill are costed at valuation, not 0.
+	"BOM": {
+		"before_validate": "a3_trading_management.api.avg_rate.bom_before_validate",
+	},
 	# UAE VAT 201 reads VAT Emirate (sales) and Recoverable Standard Rated
 	# Expenses (purchases), which ERPNext otherwise leaves blank.
 	"Sales Invoice": {

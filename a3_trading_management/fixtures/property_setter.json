@@ -446,5 +446,37 @@
   "property_type": "Text",
   "row_name": null,
   "value": "RLI-TR-QT-.####"
+ },
+ {
+  "default_value": null,
+  "doc_type": "BOM Item",
+  "docstatus": 0,
+  "doctype": "Property Setter",
+  "doctype_or_field": "DocField",
+  "field_name": "rate",
+  "is_system_generated": 0,
+  "modified": "2026-11-19 11:30:00.000000",
+  "module": "A3 Trading Management",
+  "name": "BOM Item-rate-precision",
+  "property": "precision",
+  "property_type": "Select",
+  "row_name": null,
+  "value": "9"
+ },
+ {
+  "default_value": null,
+  "doc_type": "BOM Item",
+  "docstatus": 0,
+  "doctype": "Property Setter",
+  "doctype_or_field": "DocField",
+  "field_name": "base_rate",
+  "is_system_generated": 0,
+  "modified": "2026-11-19 11:30:00.000000",
+  "module": "A3 Trading Management",
+  "name": "BOM Item-base_rate-precision",
+  "property": "precision",
+  "property_type": "Select",
+  "row_name": null,
+  "value": "9"
  }
 ]

@@ -91,6 +91,34 @@ def _use_average(bom):
 	}, update_modified=False)
 
 
+def price_unbilled(item_codes):
+	"""Give an item that was never bought on a bill its stock valuation rate as its
+	price, so a BOM costs it the way the portal BOM form estimates it, not at 0
+	(19 Nov 2026: discs received as stock showed 29.42 on the form, 0 on the BOM)."""
+	from erpnext.manufacturing.doctype.bom.bom import get_valuation_rate
+
+	item_codes = {i for i in item_codes if i}
+	if not item_codes:
+		return
+	priced = set(frappe.get_all(
+		"Item Price", filters={"price_list": AVERAGE_PRICE_LIST, "item_code": ["in", list(item_codes)]},
+		pluck="item_code",
+	))
+	company = frappe.defaults.get_global_default("company") or frappe.db.get_value("Company", {}, "name")
+	for item_code in item_codes - priced:
+		if not frappe.db.exists("Item", item_code):
+			continue
+		rate = flt(get_valuation_rate({"item_code": item_code, "company": company}))
+		if rate:
+			_set_item_price(item_code, rate)
+
+
+def bom_before_validate(doc, method=None):
+	"""BOM before_validate: price unbilled materials before ERPNext costs the BOM."""
+	if doc.rm_cost_as_per == "Price List" and doc.buying_price_list == AVERAGE_PRICE_LIST:
+		price_unbilled([d.item_code for d in doc.items])
+
+
 def recost_boms(item_codes):
 	"""Re-cost every draft or approved BOM holding one of these items."""
 	if not item_codes:
@@ -103,8 +131,13 @@ def recost_boms(item_codes):
 	for name in boms:
 		bom = frappe.get_doc("BOM", name)
 		_use_average(bom)
+		price_unbilled([d.item_code for d in bom.items])
 		# Rewrites row rates, totals, and (if the cost moved) every parent BOM.
 		bom.update_cost(update_parent=True, from_child_bom=True, update_hour_rate=False, save=True)
+		# ERPNext writes a row back only when its rate changed, so a row whose
+		# amount moved for another reason (rounding) kept its old amount.
+		for row in bom.items:
+			row.db_update()
 	return boms
 
 
