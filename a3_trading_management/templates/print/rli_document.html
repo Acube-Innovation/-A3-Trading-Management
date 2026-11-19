@@ -36,7 +36,8 @@
 {%- set no_label = {"Tax Invoice": "Invoice No", "Tax Credit Note": "Credit Note No", "Purchase Invoice": "Invoice No", "Debit Note": "Debit Note No",
                     "Purchase Order": "PO No", "Goods Received Note": "GRN No", "Goods Return Note": "Return No",
                     "Material Requisition": "Requisition No", "Quotation": "Quotation No", "Sales Order": "Order No"}.get(title, "Voucher No") -%}
-{%- set draft = doc.docstatus == 0 -%}
+{#- A Quotation goes to the customer while still a draft, so it carries no DRAFT stamp. -#}
+{%- set draft = doc.docstatus == 0 and doc.doctype != "Quotation" -%}
 {%- set cancelled = doc.docstatus == 2 -%}
 {#- Prices sit on a permission level the Supervisor does not have. Desk's
     standard print drops such fields, a Jinja format does not, so ask here. -#}
@@ -152,9 +153,12 @@
 	.rp .rp-sign td { padding: 0 !important; }
 	/* Terms come from the Text Editor as HTML: keep its paragraphs, bold, lists and
 	   tables, but use one font size so pasted text does not jump in size. */
-	.rp-terms { font-size: 11px; line-height: 1.5; }
+	/* wkhtmltopdf prints long wrapped lines a little wider than it lays them out;
+	   the right padding keeps terms inside the page edge. */
+	.rp-terms { font-size: 13px; line-height: 1.6; padding-right: 40px; }
 	.rp-terms * { font-size: inherit !important; font-family: inherit !important; line-height: inherit !important; }
-	.rp-terms p { margin: 0 0 3px; }
+	.rp-terms p { margin: 0 0 8px; }
+	.rp-terms li { margin-bottom: 5px; }
 	.rp-terms h1, .rp-terms h2, .rp-terms h3, .rp-terms h4 { font-weight: bold; margin: 10px 0 4px; }
 	.rp-terms ol, .rp-terms ul { margin: 0 0 4px; padding-left: 18px; }
 	.rp-terms li[data-list="bullet"] { list-style-type: disc; }
@@ -166,8 +170,10 @@
 	/* The editor wraps terms in .ql-editor, which Frappe styles overflow-y:auto;
 	   wkhtmltopdf never splits such a block, so long terms jumped whole to the
 	   next page and left page 1 half empty. Let them flow across pages. */
-	.rp .rp-terms .ql-editor { overflow: visible !important; height: auto !important; padding: 0 !important; }
+	.rp .rp-terms .ql-editor { overflow: visible !important; height: auto !important; padding: 0 !important; white-space: normal !important; }
 	.rp .rp-terms p, .rp .rp-terms li { page-break-inside: avoid; }
+	.rp-terms-page { page-break-before: always; }
+	.rp .rp-terms-page h4 { margin: 0 0 10px; font-size: 14px; }
 </style>
 
 <div class="rp">
@@ -374,7 +380,8 @@
 	<h4>Remarks</h4>
 	<div style="white-space:pre-wrap">{{ note or "No Remarks" }}</div>
 	{%- endif %}
-	{%- if doc.get("terms") %}
+	{#- A Quotation prints its terms on a page of their own after the signatures. #}
+	{%- if doc.get("terms") and dt != "Quotation" %}
 	<h4>Terms &amp; Conditions</h4>
 	<div class="rp-terms">{{ doc.terms | safe }}</div>
 	{%- endif %}
@@ -406,4 +413,11 @@
 		<td style="text-align:{{ 'left' if loop.first else ('right' if loop.last else 'center') }}">{{ s }}</td>
 		{%- endfor %}
 	</tr></table>
+
+	{%- if doc.get("terms") and dt == "Quotation" %}
+	<div class="rp-terms-page">
+		<h4>Terms &amp; Conditions</h4>
+		<div class="rp-terms">{{ doc.terms | safe }}</div>
+	</div>
+	{%- endif %}
 </div>
