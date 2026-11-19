@@ -25,8 +25,8 @@ FONT = "'Redlines Agency FB', 'Agency FB', 'Arial Narrow', Arial, sans-serif"
 
 TRN = "105503411800003"
 # Layout after the client's letter head sample (12 Nov 2026): logo on the left; on
-# the right, in the logo's typeface: name, P.O. Box, TEL / FAX / email, and the TRN
-# in the logo's red.
+# the right, in the logo's typeface: name, P.O. Box (larger, in blue) and the TRN
+# in the logo's red. TEL / FAX, email and website are in the footer.
 LINE = f"font-family:{FONT};font-weight:700;letter-spacing:.4px;line-height:1.25"
 CONTENT = f"""<style>@font-face {{ font-family: 'Redlines Agency FB'; src:  url('{FONT_URL}') format('truetype'); font-weight: 700; font-style: normal; }}</style>
 <table style="width:100%;border-collapse:collapse;border:0">
@@ -38,16 +38,26 @@ CONTENT = f"""<style>@font-face {{ font-family: 'Redlines Agency FB'; src:  url(
 			<div style="{LINE};font-size:30px;line-height:1.1">
 				<span style="color:#FF0066">RED</span><span style="color:#00268A">LINES INTERNATIONAL TRADING LLC</span>
 			</div>
-			<div style="{LINE};font-size:15px;color:#1a1a1a;margin-top:6px">P.O.BOX 27969,DUBAI,UAE</div>
-			<div style="{LINE};font-size:15px;color:#1a1a1a;margin-top:2px">TEL: +971 4 3558595, 3596160 &nbsp;&nbsp; FAX: +971 4 3596181 &nbsp;&nbsp; <span style="color:#00268A">info@</span><span style="color:#EC2E5D">red</span><span style="color:#00268A">lines.ae</span></div>
+			<div style="{LINE};font-size:19px;color:#00268A;margin-top:6px">P.O.BOX 27969,DUBAI,UAE</div>
 			<div style="{LINE};font-size:15px;color:#EC2E5D;margin-top:2px">TRN : {TRN}</div>
 		</td>
 	</tr>
 </table>
 <div style="border-top:3px solid #EC2E5D;margin-top:8px"></div>"""
 
-# The contact line moved up into the header, so the footer is empty.
-FOOTER = ""
+# 19 Nov 2026 (user): the footer is four parts spread across one line in blue,
+# TEL, FAX, email and website, under a red rule.
+_FOOT = "padding:0;border:0;font-family:Arial, Helvetica, sans-serif;font-size:11px;font-weight:bold;color:#00268A;vertical-align:middle;white-space:nowrap"
+FOOTER = f"""<div style="border-top:2px solid #EC2E5D;padding-top:5px">
+<table style="width:100%;border-collapse:collapse;border:0">
+	<tr>
+		<td style="{_FOOT};text-align:left;width:28%">TEL: +971 4 3558595, 3596160</td>
+		<td style="{_FOOT};text-align:center;width:22%">FAX: +971 4 3596181</td>
+		<td style="{_FOOT};text-align:center;width:22%">info@<span style="color:#EC2E5D">red</span>lines.ae</td>
+		<td style="{_FOOT};text-align:right;width:28%">www.redlinesinternational.com</td>
+	</tr>
+</table>
+</div>"""
 
 
 def setup():
