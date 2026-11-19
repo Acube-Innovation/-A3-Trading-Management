@@ -150,6 +150,24 @@
 	.rp .rp-info td, .rp .rp-tot td { padding: 3px 8px !important; border: 0 !important; }
 	.rp .rp-tot tr.grand td { padding-top: 8px !important; }
 	.rp .rp-sign td { padding: 0 !important; }
+	/* Terms come from the Text Editor as HTML: keep its paragraphs, bold, lists and
+	   tables, but use one font size so pasted text does not jump in size. */
+	.rp-terms { font-size: 11px; line-height: 1.5; }
+	.rp-terms * { font-size: inherit !important; font-family: inherit !important; line-height: inherit !important; }
+	.rp-terms p { margin: 0 0 3px; }
+	.rp-terms h1, .rp-terms h2, .rp-terms h3, .rp-terms h4 { font-weight: bold; margin: 10px 0 4px; }
+	.rp-terms ol, .rp-terms ul { margin: 0 0 4px; padding-left: 18px; }
+	.rp-terms li[data-list="bullet"] { list-style-type: disc; }
+	.rp-terms .ql-indent-1 { padding-left: 2em; }
+	.rp-terms .ql-indent-2 { padding-left: 4em; }
+	.rp-terms table { width: 100%; border-collapse: collapse; margin: 4px 0 8px; }
+	.rp .rp-terms td, .rp .rp-terms th { border: 1px solid #ccc !important; padding: 3px 6px !important; vertical-align: top; text-align: left; }
+	.rp-terms img { max-width: 100%; }
+	/* The editor wraps terms in .ql-editor, which Frappe styles overflow-y:auto;
+	   wkhtmltopdf never splits such a block, so long terms jumped whole to the
+	   next page and left page 1 half empty. Let them flow across pages. */
+	.rp .rp-terms .ql-editor { overflow: visible !important; height: auto !important; padding: 0 !important; }
+	.rp .rp-terms p, .rp .rp-terms li { page-break-inside: avoid; }
 </style>
 
 <div class="rp">
@@ -358,7 +376,7 @@
 	{%- endif %}
 	{%- if doc.get("terms") %}
 	<h4>Terms &amp; Conditions</h4>
-	<div style="white-space:pre-wrap">{{ doc.terms | striptags | trim }}</div>
+	<div class="rp-terms">{{ doc.terms | safe }}</div>
 	{%- endif %}
 
 	{#- ------------------------------------------------ bank + words -#}
