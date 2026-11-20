@@ -92,7 +92,7 @@ function newPurchaseOrder() {
 	openNewDoc({
 		title: "New Purchase Order", subtitle: "An order to a supplier whose papers are in order. Approve it on the list once saved.",
 		head: [{ key: "supplier", label: "Supplier", party: "Supplier", required: true, placeholder: "Search supplier…" }, { key: "schedule_date", label: "Required by", type: "date", value: (function(){var d=new Date();d.setDate(d.getDate()+7);return d.toISOString().slice(0,10);})() }],
-		columns: [{ key: "item_code", label: "Item", pick: "item", placeholder: "Search item…" }, { key: "qty", label: "Qty", num: true, value: 1, width: "100px" }, { key: "rate", label: "Rate", num: true, width: "120px" }, { key: "warehouse", label: "To yard", default: "Stores - A3T" }],
+		columns: [{ key: "item_code", label: "Item", pick: "item", placeholder: "Search item…" }, { key: "qty", label: "Qty", num: true, value: 1, width: "100px" }, { key: "rate", label: "Rate", num: true, width: "120px" }, { key: "warehouse", label: "To yard", default: "Stores - RT" }],
 		priceList: "Standard Buying",
 		total: function (l) { return [["Total", l.reduce(function (s, r) { return s + (Number(r.qty) || 0) * (Number(r.rate) || 0); }, 0).toLocaleString(undefined, { minimumFractionDigits: 2 })]]; },
 		validate: function (h, l) { if (!h.supplier) return "Choose a supplier."; if (!l.length) return "Add at least one item."; if (l.some(function (r) { return !Number(r.rate); })) return "Every line needs a rate."; return null; },

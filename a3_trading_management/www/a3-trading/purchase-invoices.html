@@ -146,7 +146,7 @@ function newPurchaseInvoice() {
 				var per = piPerPack(l);
 				return per && piNum(l.packs) ? String(+(piNum(l.packs) * per).toFixed(3)) : "";
 			} },
-			{ key: "warehouse", label: "To yard", default: "Stores - A3T" }
+			{ key: "warehouse", label: "To yard", default: "Stores - RT" }
 		],
 		priceList: "Standard Buying",
 		onPick: function (tr, it) {

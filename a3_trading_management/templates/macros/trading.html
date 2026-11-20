@@ -296,7 +296,17 @@ function requestDeletion(doctype, name) {
 	}
 	function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
 	function money(v) { v = Number(v || 0); return v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
-	function errText(e) { var m = (e && e.message) || String(e); try { var arr = JSON.parse(m); if (arr.length) m = JSON.parse(arr[0]).message || m; } catch (x) {} return m.replace(/<[^>]+>/g, ""); }
+	// The error, not the first message: ERPNext can send info notes (e.g. "Item
+	// Price added…") before the message that actually stopped the save.
+	function errText(e) {
+		var m = (e && e.message) || String(e);
+		try {
+			var msgs = JSON.parse(m).map(function (s) { try { return JSON.parse(s); } catch (x) { return { message: s }; } });
+			var errs = msgs.filter(function (o) { return o.raise_exception || o.indicator === "red"; });
+			m = (errs.length ? errs : msgs).map(function (o) { return o.message || ""; }).join("\n") || m;
+		} catch (x) {}
+		return m.replace(/<br\s*\/?>/gi, "\n").replace(/<[^>]+>/g, "");
+	}
 	function dateLabel(v) { if (!v) return "—"; var d = new Date(v); return isNaN(d) ? v : d.toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" }); }
 	function show(id) { var m = document.getElementById(id); m.classList.add("is-open"); document.body.style.overflow = "hidden"; }
 	function hide(id) { var m = document.getElementById(id); m.classList.remove("is-open"); document.body.style.overflow = ""; }
