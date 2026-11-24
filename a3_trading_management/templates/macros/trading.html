@@ -477,7 +477,9 @@ function requestDeletion(doctype, name) {
 	function attachAC(input, source, onPick) {
 		var wrap = input.parentNode; wrap.classList.add("td-ac");
 		var list = document.createElement("div"); list.className = "td-ac__list"; wrap.appendChild(list);
-		var items = [], timer = null, active = -1;
+		var items = [], timer = null, active = -1, asked = 0;
+		// Only the answer to the latest search is shown; a slow earlier one is dropped.
+		function ask(q) { var n = ++asked; source(q).then(function (res) { if (n !== asked) return; items = res || []; render(); }); }
 		function close() { list.style.display = "none"; active = -1; }
 		function render() {
 			list.innerHTML = items.map(function (it, i) { return '<div class="td-ac__item' + (i === active ? " is-active" : "") + '" data-i="' + i + '">' + esc(it.label) + (it.sub ? "<small>" + esc(it.sub) + "</small>" : "") + "</div>"; }).join("");
@@ -498,9 +500,9 @@ function requestDeletion(doctype, name) {
 		function pick(i) { var it = items[i]; if (!it) return; input.value = it.label || it.value; input.dataset.value = it.value; input.title = it.value; close(); onPick(it); }
 		input.addEventListener("input", function () {
 			input.dataset.value = ""; clearTimeout(timer);
-			timer = setTimeout(function () { source(input.value).then(function (res) { items = res || []; render(); }); }, 150);
+			timer = setTimeout(function () { ask(input.value); }, 150);
 		});
-		input.addEventListener("focus", function () { if (!input.value) { source("").then(function (res) { items = res || []; render(); }); } });
+		input.addEventListener("focus", function () { if (!input.value) ask(""); });
 		input.addEventListener("keydown", function (e) {
 			if (list.style.display !== "block") return;
 			if (e.key === "ArrowDown") { active = Math.min(active + 1, items.length - 1); render(); e.preventDefault(); }

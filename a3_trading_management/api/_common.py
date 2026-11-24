@@ -220,14 +220,15 @@ def get_document(doctype, name):
 
 
 @frappe.whitelist()
-def search_items(search=None, price_list=None, limit=15):
-	"""Stock items for a line editor, with the price from `price_list` when given."""
+def search_items(search=None, price_list=None, limit=300):
+	"""Stock items for a line editor (the whole list while nothing is typed), with the
+	price from `price_list` when given."""
 	frappe.has_permission("Item", "read", throw=True)
 	like = "%{0}%".format((search or "").strip())
 	items = frappe.get_all(
 		"Item", filters={"disabled": 0, "is_stock_item": 1},
 		or_filters={"name": ["like", like], "item_name": ["like", like]},
-		fields=["name", "item_name", "stock_uom", "custom_is_trailer"], order_by="item_name", limit_page_length=cint(limit) or 15,
+		fields=["name", "item_name", "stock_uom", "custom_is_trailer"], order_by="item_name", limit_page_length=min(cint(limit) or 300, 500),
 	)
 	if price_list and items:
 		prices = {p.item_code: p.price_list_rate for p in frappe.get_all(
@@ -252,15 +253,15 @@ def search_accounts(search=None, limit=15):
 
 
 @frappe.whitelist()
-def search_party(doctype, search=None, limit=15):
-	"""Customers or suppliers for a header picker."""
+def search_party(doctype, search=None, limit=100):
+	"""Customers or suppliers for a header picker (the whole list while nothing is typed)."""
 	if doctype not in ("Customer", "Supplier"):
 		frappe.throw(_("Not a party"))
 	frappe.has_permission(doctype, "read", throw=True)
 	label = "customer_name" if doctype == "Customer" else "supplier_name"
 	like = "%{0}%".format((search or "").strip())
 	return frappe.get_all(doctype, filters={"disabled": 0}, or_filters={"name": ["like", like], label: ["like", like]},
-	                      fields=["name", f"{label} as label"], order_by=label, limit_page_length=cint(limit) or 15)
+	                      fields=["name", f"{label} as label"], order_by=label, limit_page_length=min(cint(limit) or 100, 200))
 
 
 @frappe.whitelist()

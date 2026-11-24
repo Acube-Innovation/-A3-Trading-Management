@@ -14,13 +14,27 @@ import frappe
 # 24 Nov 2026, later (user): Sales Invoice, Stock Entry and Quotation as well.
 DOCTYPES = ("Journal Entry", "Payment Entry", "Purchase Invoice", "Sales Invoice", "Stock Entry", "Quotation")
 # (ledger, column marking a reversed row)
-LEDGERS = (("GL Entry", "is_cancelled"), ("Payment Ledger Entry", "delinked"), ("Stock Ledger Entry", "is_cancelled"))
+LEDGERS = (("GL Entry", "is_cancelled"), ("Payment Ledger Entry", "delinked"), ("Advance Payment Ledger Entry", "delinked"),
+           ("Stock Ledger Entry", "is_cancelled"))
 
 
 def _deleted_original(dt, name):
 	"""An amendment ("<original>-N") whose original was deleted before."""
 	base = re.sub(r"-\d+$", "", name)
 	return base != name and bool(frappe.db.exists("Deleted Document", {"deleted_doctype": dt, "deleted_name": base}))
+
+
+# Free text that names a voucher ("... against Sales Invoice ACC-SINV-2026-00004-1").
+REMARKS = (("GL Entry", "remarks"), ("Payment Ledger Entry", "remarks"), ("Payment Entry", "remarks"),
+           ("Journal Entry", "user_remark"), ("Journal Entry", "remark"), ("Purchase Invoice", "remarks"), ("Sales Invoice", "remarks"))
+
+
+def _rename_in_remarks(old, new):
+	pat = re.escape(old) + "([^0-9]|$)"
+	for table, col in REMARKS:
+		if frappe.db.has_column(table, col):
+			frappe.db.sql("update `tab%s` set `%s` = regexp_replace(`%s`, %%s, %%s) where `%s` regexp %%s" % (table, col, col, col),
+			              (pat, new + "\\1", pat))
 
 
 def plan():
@@ -73,6 +87,7 @@ def execute(dry_run=False):
 			frappe.db.savepoint("clean_voucher")
 			try:
 				rename_doc(dt, old, new, force=True, ignore_permissions=True, show_alert=False, rebuild_search=False)
+				_rename_in_remarks(old, new)
 			except Exception:
 				frappe.db.rollback(save_point="clean_voucher")
 				frappe.log_error(title="clean_cancelled_vouchers: not renamed %s %s" % (dt, old))
