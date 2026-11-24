@@ -50,6 +50,11 @@ tr.open td { font-style: italic; background: #fbfbfc; }
 .sigs td { width: 50%; padding: 0 20px; text-align: center; }
 .sigs .line { border-top: 1px solid #555; padding-top: 4px; font-size: 10px; }
 .sigs .line .ar { display: block; font-size: 11px; }
+.sigs--stamped { margin-top: 10px; page-break-inside: avoid; }
+.sigs .stamp-row td { height: 92px; vertical-align: bottom; padding-bottom: 2px; }
+.sigs .rli-stamp { opacity: .92; }
+.sigs--one { width: 42%; margin-left: auto; }
+.sigs--one td { width: 100%; }
 .note { margin-top: 14px; font-size: 10px; color: #555; clear: both; }
 .note .ar { display: block; margin-top: 2px; font-size: 11px; }
 .foot { margin-top: 8px; font-size: 9px; color: #888; }
@@ -137,7 +142,9 @@ tr.open td { font-style: italic; background: #fbfbfc; }
 
 <div class="note">Please check this statement and tell us within 15 days of any difference; after that it is taken as agreed.
 	<span class="ar">يرجى مراجعة هذا الكشف وإبلاغنا بأي اختلاف خلال 15 يوماً، وإلا اعتُبر الكشف صحيحاً.</span></div>
-<table class="sigs"><tr>
+<table class="sigs sigs--stamped">
+<tr class="stamp-row"><td>{{ rli_stamp(88) }}</td><td></td></tr>
+<tr>
 	<td><div class="line">Authorized Signature <span class="ar">التوقيع المعتمد</span></div></td>
 	<td><div class="line">{{ d.party_type }} Confirmation <span class="ar">تأكيد {{ ar_name }}</span></div></td>
 </tr></table>
@@ -223,6 +230,13 @@ tr.open td { font-style: italic; background: #fbfbfc; }
 		<tr class="sum"><td colspan="4">Total <span class="ar" style="display:inline">الإجمالي</span></td>
 			<td class="num">{{ n(d.total_debit) }}</td><td class="num">{{ n(d.total_credit) }}</td><td class="num">{{ drcr(d.closing) }}</td></tr>
 	</tbody>
+</table>
+{%- endif %}
+
+{%- if mode != "statement" %}
+<table class="sigs sigs--stamped sigs--one">
+<tr class="stamp-row"><td>{{ rli_stamp(88) }}</td></tr>
+<tr><td><div class="line">Authorized Signature <span class="ar">التوقيع المعتمد</span></div></td></tr>
 </table>
 {%- endif %}
 

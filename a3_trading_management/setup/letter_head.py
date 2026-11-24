@@ -24,8 +24,11 @@ with open(FONT_FILE, "rb") as f:
 FONT = "'Redlines Agency FB', 'Agency FB', 'Arial Narrow', Arial, sans-serif"
 
 TRN = "105503411800003"
+# 24 Nov 2026 (user): grey-black for the P.O. Box and the footer; the company
+# name stays blue after the red "RED", and "red" is red in the email and website.
+GREY = "#333333"
 # Layout after the client's letter head sample (12 Nov 2026): logo on the left; on
-# the right, in the logo's typeface: name, P.O. Box (larger, in blue) and the TRN
+# the right, in the logo's typeface: name, P.O. Box (larger, grey-black) and the TRN
 # in the logo's red. TEL / FAX, email and website are in the footer.
 LINE = f"font-family:{FONT};font-weight:700;letter-spacing:.4px;line-height:1.25"
 CONTENT = f"""<style>@font-face {{ font-family: 'Redlines Agency FB'; src:  url('{FONT_URL}') format('truetype'); font-weight: 700; font-style: normal; }}</style>
@@ -38,23 +41,22 @@ CONTENT = f"""<style>@font-face {{ font-family: 'Redlines Agency FB'; src:  url(
 			<div style="{LINE};font-size:30px;line-height:1.1">
 				<span style="color:#FF0066">RED</span><span style="color:#00268A">LINES INTERNATIONAL TRADING LLC</span>
 			</div>
-			<div style="{LINE};font-size:19px;color:#00268A;margin-top:6px">P.O.BOX 27969,DUBAI,UAE</div>
+			<div style="{LINE};font-size:19px;color:{GREY};margin-top:6px">P.O.BOX 27969,DUBAI,UAE</div>
 			<div style="{LINE};font-size:15px;color:#EC2E5D;margin-top:2px">TRN : {TRN}</div>
 		</td>
 	</tr>
-</table>
-<div style="border-top:3px solid #EC2E5D;margin-top:8px"></div>"""
+</table>"""
 
-# 19 Nov 2026 (user): the footer is four parts spread across one line in blue,
-# TEL, FAX, email and website, under a red rule.
-_FOOT = "padding:0;border:0;font-family:Arial, Helvetica, sans-serif;font-size:11px;font-weight:bold;color:#00268A;vertical-align:middle;white-space:nowrap"
-FOOTER = f"""<div style="border-top:2px solid #EC2E5D;padding-top:5px">
+# 19 Nov 2026 (user): the footer is four parts spread across one line, TEL, FAX,
+# email and website. 24 Nov 2026: grey-black text under a grey-black rule.
+_FOOT = f"padding:0;border:0;font-family:Arial, Helvetica, sans-serif;font-size:11px;font-weight:bold;color:{GREY};vertical-align:middle;white-space:nowrap"
+FOOTER = f"""<div style="border-top:2px solid {GREY};padding-top:5px">
 <table style="width:100%;border-collapse:collapse;border:0">
 	<tr>
 		<td style="{_FOOT};text-align:left;width:28%">TEL: +971 4 3558595, 3596160</td>
 		<td style="{_FOOT};text-align:center;width:22%">FAX: +971 4 3596181</td>
 		<td style="{_FOOT};text-align:center;width:22%">info@<span style="color:#EC2E5D">red</span>lines.ae</td>
-		<td style="{_FOOT};text-align:right;width:28%">www.redlinesinternational.com</td>
+		<td style="{_FOOT};text-align:right;width:28%">www.<span style="color:#EC2E5D">red</span>linesinternational.com</td>
 	</tr>
 </table>
 </div>"""

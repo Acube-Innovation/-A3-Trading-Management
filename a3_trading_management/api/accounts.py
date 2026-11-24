@@ -620,7 +620,7 @@ def _render_pdf(mode, data, filename):
 	lh = frappe.db.get_value("Letter Head", {"is_default": 1}, ["content", "footer"], as_dict=True) or {}
 	html = frappe.render_template("templates/print/rli_statement.html", {
 		"mode": mode, "d": data, "letter_head": lh.get("content") or "", "footer": lh.get("footer") or "",
-		"font_css": _font_css(), "printed_on": now_datetime().strftime("%d %b %Y %H:%M"),
+		"font_css": _font_css(), "printed_on": now_datetime().strftime("%d-%m-%Y %H:%M"),
 		"printed_by": frappe.db.get_value("User", frappe.session.user, "full_name") or frappe.session.user,
 		"fmt_date": lambda v: formatdate(v, "dd-MM-yyyy") if v else "",
 	})

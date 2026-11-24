@@ -10,7 +10,7 @@
 {%- set dt = doc.doctype -%}
 {%- set U = frappe.utils -%}
 {%- set cur = doc.get("currency") or doc.get("paid_from_account_currency") or frappe.db.get_value("Company", doc.company, "default_currency") or "AED" -%}
-{%- macro d(v) -%}{{ U.formatdate(v, "yyyy-MM-dd") if v else "" }}{%- endmacro -%}
+{%- macro d(v) -%}{{ U.formatdate(v, "dd-MM-yyyy") if v else "" }}{%- endmacro -%}
 {%- macro m(v) -%}{{ U.fmt_money(v or 0, precision=2) }}{%- endmacro -%}
 {%- macro q(v) -%}{{ "%g" | format(v or 0) }}{%- endmacro -%}
 {%- macro words(v) -%}{{ U.money_in_words(v or 0, cur) }}{%- endmacro -%}
@@ -67,7 +67,7 @@
 {%- set addr = frappe.get_doc("Address", addr_name) if addr_name else None -%}
 {%- set party_trn = doc.get("tax_id") or (frappe.db.get_value(party_type, party, "tax_id") if party_type in ("Supplier", "Customer") and party else None) -%}
 {%- set party_phone = doc.get("contact_mobile") or doc.get("contact_phone") or (addr.phone if addr else None) or (frappe.db.get_value(party_type, party, "mobile_no") if party_type in ("Supplier", "Customer") and party else None) -%}
-{%- set party_label = {"Sales Invoice": "Billed To", "Purchase Invoice": "Supplier", "Purchase Order": "Supplier", "Purchase Receipt": "Supplier", "Quotation": "Quotation To", "Sales Order": "Customer"}.get(dt) -%}
+{%- set party_label = {"Sales Invoice": "Billed To", "Purchase Invoice": "Supplier", "Purchase Order": "Supplier", "Purchase Receipt": "Supplier", "Quotation": "To", "Sales Order": "Customer"}.get(dt) -%}
 {%- if dt == "Payment Entry" -%}{%- set party_label = "Received From" if doc.payment_type == "Receive" else "Paid To" -%}{%- endif -%}
 
 {#- ---------------------------------------------------------------- VAT per line -#}
@@ -158,6 +158,10 @@
 	.rp-big { font-size: 22px; font-weight: bold; color: #333; }
 	.rp-sign { width: 100%; border-collapse: collapse; margin-top: 110px; page-break-inside: avoid; }
 	.rp-sign td { font-weight: bold; color: #333; font-size: 12px; border: 0; }
+	/* With the stamp the space above the labels is the stamp's own row. */
+	.rp-sign.rp-sign--stamped { margin-top: 18px; }
+	.rp-sign .rp-stamp-row td { height: 96px; vertical-align: bottom; }
+	.rp-sign .rli-stamp { display: inline-block; opacity: .92; }
 	/* Desk's print styles pad and border every table cell; set them here. */
 	.rp .rp-lay > tbody > tr > td { padding: 0 !important; border: 0 !important; vertical-align: top; }
 	.rp .rp-ref td { padding: 1px 0 3px !important; border: 0 !important; }
@@ -176,7 +180,10 @@
 	.rp-terms li { margin-bottom: 5px; }
 	.rp-terms h1, .rp-terms h2, .rp-terms h3, .rp-terms h4 { font-weight: bold; margin: 10px 0 4px; }
 	.rp-terms ol, .rp-terms ul { margin: 0 0 4px; padding-left: 18px; }
-	.rp-terms li[data-list="bullet"] { list-style-type: disc; }
+	/* The editor (Quill) draws each list marker itself in span.ql-ui; a browser
+	   disc as well printed every bullet point twice. One marker, Quill's. */
+	.rp-terms li[data-list] { list-style-type: none; }
+	.rp-terms li[data-list="bullet"] > .ql-ui:before { content: "\2022"; }
 	.rp-terms .ql-indent-1 { padding-left: 2em; }
 	.rp-terms .ql-indent-2 { padding-left: 4em; }
 	.rp-terms table { width: 100%; border-collapse: collapse; margin: 4px 0 8px; }
@@ -425,7 +432,18 @@
 	{%- elif dt == "Purchase Order" %}{% set sigs = ["Authorized Signature", "Supplier Acceptance"] %}
 	{%- else %}{% set sigs = ["Prepared By", "Checked By", "Approved By"] %}
 	{%- endif %}
-	<table class="rp-sign"><tr>
+	{#- The company stamp sits over the company's own signature: Authorized
+	    Signature, or Approved By where a document has none. -#}
+	{%- set stamp_at = "Authorized Signature" if "Authorized Signature" in sigs else ("Approved By" if "Approved By" in sigs else None) %}
+	<table class="rp-sign{{ ' rp-sign--stamped' if stamp_at }}">
+		{%- if stamp_at %}
+		<tr class="rp-stamp-row">
+			{%- for s in sigs %}
+			<td style="text-align:{{ 'left' if loop.first else ('right' if loop.last else 'center') }}">{% if s == stamp_at %}{{ rli_stamp(92) }}{% endif %}</td>
+			{%- endfor %}
+		</tr>
+		{%- endif %}
+		<tr>
 		{%- for s in sigs %}
 		<td style="text-align:{{ 'left' if loop.first else ('right' if loop.last else 'center') }}">{{ s }}</td>
 		{%- endfor %}

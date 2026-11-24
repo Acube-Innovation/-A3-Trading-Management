@@ -86,6 +86,11 @@ override_doctype_class = {
 	"Quality Inspection": "a3_trading_management.integrations.quality_inspection.A3QualityInspection",
 }
 
+# Jinja: {{ rli_stamp() }} prints the company stamp at the Authorized Signature.
+jinja = {
+	"methods": ["a3_trading_management.print_helpers.rli_stamp"],
+}
+
 # Document Events (ERPNext / core doctypes only; this app's own doctypes have controllers)
 # ---------------
 doc_events = {
