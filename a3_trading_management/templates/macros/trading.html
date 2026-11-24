@@ -560,7 +560,7 @@ function requestDeletion(doctype, name) {
 			if (!c.pick) return;
 			var input = tr.querySelector('input[data-key="' + c.key + '"]');
 			attachAC(input, function (q) {
-				if (c.pick === "item") return call(COMMON + "search_items", { search: q, price_list: CFG.priceList || null }).then(function (rows) { return rows.map(function (r) { return { label: r.item_name || r.name, sub: r.name + (r.rate ? " · " + money(r.rate) : ""), value: r.name, rate: r.rate, uom: r.stock_uom }; }); });
+				if (c.pick === "item") return call(COMMON + "search_items", { search: q, price_list: CFG.priceList || null, purchase: CFG.purchaseItems ? 1 : 0 }).then(function (rows) { return rows.map(function (r) { return { label: r.item_name || r.name, sub: r.name + (r.rate ? " · " + money(r.rate) : ""), value: r.name, rate: r.rate, uom: r.stock_uom }; }); });
 				if (c.pick === "account") return call(COMMON + "search_accounts", { search: q }).then(function (rows) { return rows.map(function (r) { return { label: r.name, sub: r.root_type, value: r.name }; }); });
 				return Promise.resolve([]);
 			}, function (it) {

@@ -220,13 +220,16 @@ def get_document(doctype, name):
 
 
 @frappe.whitelist()
-def search_items(search=None, price_list=None, limit=300):
+def search_items(search=None, price_list=None, limit=300, purchase=0):
 	"""Stock items for a line editor (the whole list while nothing is typed), with the
-	price from `price_list` when given."""
+	price from `price_list` when given. `purchase`: every item that can be bought,
+	expenses such as stationery (non-stock items) included."""
 	frappe.has_permission("Item", "read", throw=True)
 	like = "%{0}%".format((search or "").strip())
+	filters = {"disabled": 0}
+	filters["is_purchase_item" if cint(purchase) else "is_stock_item"] = 1
 	items = frappe.get_all(
-		"Item", filters={"disabled": 0, "is_stock_item": 1},
+		"Item", filters=filters,
 		or_filters={"name": ["like", like], "item_name": ["like", like]},
 		fields=["name", "item_name", "stock_uom", "custom_is_trailer"], order_by="item_name", limit_page_length=min(cint(limit) or 300, 500),
 	)

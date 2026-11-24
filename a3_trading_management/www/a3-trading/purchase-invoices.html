@@ -149,6 +149,8 @@ function newPurchaseInvoice() {
 			{ key: "warehouse", label: "To yard", default: "Stores - RT" }
 		],
 		priceList: "Standard Buying",
+		// Bills also carry expenses (stationery, coupons): non-stock items are listed too.
+		purchaseItems: true,
 		onPick: function (tr, it) {
 			// The rate the search shows is per stock unit; it only fits a loose line.
 			var rate = tr.querySelector('[data-key="pack_rate"]');
