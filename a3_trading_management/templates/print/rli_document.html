@@ -10,6 +10,7 @@
 {%- set dt = doc.doctype -%}
 {%- set U = frappe.utils -%}
 {%- set cur = doc.get("currency") or doc.get("paid_from_account_currency") or frappe.db.get_value("Company", doc.company, "default_currency") or "AED" -%}
+{%- macro has_text(h) -%}{{ "1" if h and ((h | striptags | replace("&nbsp;", "") | trim) or "<img" in h) else "" }}{%- endmacro -%}
 {%- macro d(v) -%}{{ U.formatdate(v, "dd-MM-yyyy") if v else "" }}{%- endmacro -%}
 {%- macro m(v) -%}{{ U.fmt_money(v or 0, precision=2) }}{%- endmacro -%}
 {%- macro q(v) -%}{{ "%g" | format(v or 0) }}{%- endmacro -%}
@@ -149,7 +150,7 @@
 	.rp-info .k { text-transform: uppercase; }
 	.rp-tot { border-collapse: collapse; width: 100%; }
 	.rp-tot td { font-size: 10.5px; color: #555; }
-	.rp-tot td.lbl { color: #4a6a8a; }
+	.rp-tot td.lbl { color: #555; }  /* same grey as the amounts (24 Nov 2026, user) */
 	.rp-tot td.num { text-align: right; white-space: nowrap; }
 	.rp-tot tr.grand td { font-size: 11.5px; font-weight: bold; color: #333; }
 	.rp h4 { font-size: 12px; font-weight: bold; color: #333; margin: 22px 0 4px; }
@@ -195,7 +196,7 @@
 	.rp .rp-terms .ql-editor { overflow: visible !important; height: auto !important; padding: 0 !important; white-space: normal !important; }
 	.rp .rp-terms p, .rp .rp-terms li { page-break-inside: avoid; }
 	.rp-terms-page { page-break-before: always; }
-	.rp .rp-terms-page h4 { margin: 0 0 10px; font-size: 14px; }
+	.rp .rp-terms-page h4 { margin: 0 0 10px; font-size: 14px; text-decoration: underline; text-underline-offset: 3px; }  /* 24 Nov 2026 (user): underlined page headings */
 </style>
 
 <div class="rp">
@@ -405,7 +406,7 @@
 	<div style="white-space:pre-wrap">{{ note or "No Remarks" }}</div>
 	{%- endif %}
 	{#- A Quotation prints its terms on a page of their own after the signatures. #}
-	{%- if doc.get("terms") and dt != "Quotation" %}
+	{%- if has_text(doc.get("terms")) and dt != "Quotation" %}
 	<h4>Terms &amp; Conditions</h4>
 	<div class="rp-terms">{{ doc.terms | safe }}</div>
 	{%- endif %}
@@ -449,10 +450,20 @@
 		{%- endfor %}
 	</tr></table>
 
-	{%- if doc.get("terms") and dt == "Quotation" %}
+	{%- if has_text(doc.get("terms")) and dt == "Quotation" %}
 	<div class="rp-terms-page">
 		<h4>Terms &amp; Conditions</h4>
 		<div class="rp-terms">{{ doc.terms | safe }}</div>
 	</div>
 	{%- endif %}
+
+	{#- Print Sections (Quotation / Sales Order): terms, technical specification,
+	    warranty... each row on a page of its own, in the order of the table. #}
+	{%- for s in (doc.get("custom_print_sections") or []) if has_text(s.content) %}
+	{%- set sec = rli_section(s.title or s.terms_template or "", s.content) %}
+	<div class="rp-terms-page rp-section">
+		<h4>{{ sec[0] }}</h4>
+		<div class="rp-terms">{{ sec[1] }}</div>
+	</div>
+	{%- endfor %}
 </div>

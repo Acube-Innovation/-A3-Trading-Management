@@ -30,6 +30,9 @@ doctype_js = {
 	# "Request Deletion" on posted invoices (Invoice Deletion Request workflow).
 	"Sales Invoice": ["public/js/invoice_deletion.js", "public/js/invoice_rounding.js"],
 	"Purchase Invoice": ["public/js/invoice_deletion.js", "public/js/invoice_rounding.js"],
+	# Print Sections: a template fills its page title and text.
+	"Quotation": "public/js/print_sections.js",
+	"Sales Order": "public/js/print_sections.js",
 }
 
 # Supervisor-only users get part of the portal API, with prices taken out of every
@@ -88,7 +91,7 @@ override_doctype_class = {
 
 # Jinja: {{ rli_stamp() }} prints the company stamp at the Authorized Signature.
 jinja = {
-	"methods": ["a3_trading_management.print_helpers.rli_stamp"],
+	"methods": ["a3_trading_management.print_helpers.rli_stamp", "a3_trading_management.print_helpers.rli_section"],
 }
 
 # Document Events (ERPNext / core doctypes only; this app's own doctypes have controllers)
@@ -98,6 +101,14 @@ doc_events = {
 	# and journals (api/submit_guard.SUPER_ADMIN_SUBMIT); drafts are open to all.
 	"*": {
 		"before_submit": "a3_trading_management.api.submit_guard.before_submit",
+	},
+	# A Sales Order made from a quotation prints the same terms / specification pages.
+	"Sales Order": {
+		"before_insert": "a3_trading_management.integrations.print_sections.copy_from_quotation",
+		"validate": "a3_trading_management.integrations.print_sections.fill_from_templates",
+	},
+	"Quotation": {
+		"validate": "a3_trading_management.integrations.print_sections.fill_from_templates",
 	},
 	# Materials never bought on a bill are costed at valuation, not 0.
 	"BOM": {
@@ -160,6 +171,7 @@ doc_events = {
 	# Task 23: a dispatched trailer has left the yard and has a new owner.
 	"Delivery Note": {
 		"on_submit": "a3_trading_management.api.selling.mark_delivered",
+		"on_cancel": "a3_trading_management.api.selling.unmark_delivered",
 	},
 	# A Supervisor's own Employee record must not limit them to themselves.
 	"Employee": {

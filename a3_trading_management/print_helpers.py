@@ -21,3 +21,13 @@ def rli_stamp(height=92, style=""):
 		'<img class="rli-stamp" alt="Company stamp" src="data:image/png;base64,%s" style="height:%dpx;width:%dpx;%s">'
 		% (_STAMP, int(height), int(height), style)
 	)
+
+
+def rli_section(title, html):
+	"""[title, html] for a Print Section page, cleaned the way the tidy patch cleans
+	saved texts, so a text typed later prints the same way: no repeated heading,
+	one line per numbered point."""
+	from a3_trading_management.integrations.print_sections import tidy_section
+
+	title, html = tidy_section(title or "", html or "")
+	return [title, Markup(html)]

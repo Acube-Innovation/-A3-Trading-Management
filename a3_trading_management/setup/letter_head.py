@@ -24,9 +24,11 @@ with open(FONT_FILE, "rb") as f:
 FONT = "'Redlines Agency FB', 'Agency FB', 'Arial Narrow', Arial, sans-serif"
 
 TRN = "105503411800003"
-# 24 Nov 2026 (user): grey-black for the P.O. Box and the footer; the company
-# name stays blue after the red "RED", and "red" is red in the email and website.
+# 24 Nov 2026 (user): grey-black footer; the company name and P.O. Box in a
+# lighter grey after the red "RED"; "red" is red in the email and website.
 GREY = "#333333"
+# 24 Nov 2026 (user, after the blue was brought back): the heading in a lighter grey.
+HEAD_GREY = "#5A5A5A"
 # Layout after the client's letter head sample (12 Nov 2026): logo on the left; on
 # the right, in the logo's typeface: name, P.O. Box (larger, grey-black) and the TRN
 # in the logo's red. TEL / FAX, email and website are in the footer.
@@ -39,9 +41,9 @@ CONTENT = f"""<style>@font-face {{ font-family: 'Redlines Agency FB'; src:  url(
 		</td>
 		<td style="vertical-align:middle;text-align:right;padding:0;border:0">
 			<div style="{LINE};font-size:30px;line-height:1.1">
-				<span style="color:#FF0066">RED</span><span style="color:#00268A">LINES INTERNATIONAL TRADING LLC</span>
+				<span style="color:#FF0066">RED</span><span style="color:{HEAD_GREY}">LINES INTERNATIONAL TRADING LLC</span>
 			</div>
-			<div style="{LINE};font-size:19px;color:{GREY};margin-top:6px">P.O.BOX 27969,DUBAI,UAE</div>
+			<div style="{LINE};font-size:19px;color:{HEAD_GREY};margin-top:6px">P.O.BOX 27969,DUBAI,UAE</div>
 			<div style="{LINE};font-size:15px;color:#EC2E5D;margin-top:2px">TRN : {TRN}</div>
 		</td>
 	</tr>

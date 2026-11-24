@@ -66,6 +66,40 @@ SELLING_DOC_FIELDS = [
 for _dt in ("Sales Order", "Delivery Note", "Sales Invoice"):
 	CUSTOM_FIELDS[_dt] = [dict(f) for f in SELLING_DOC_FIELDS]
 
+# 24 Nov 2026 (user): terms, technical specifications, warranty... each on a page of
+# its own. A template carries the heading for its page; the document lists the
+# templates it prints, in order (Print Section rows, copied Quotation -> Sales Order).
+CUSTOM_FIELDS["Terms and Conditions"] = [
+	{
+		"fieldname": "custom_print_title",
+		"fieldtype": "Data",
+		"label": "Print Title",
+		"insert_after": "title",
+		"description": "The heading printed on its page, e.g. TERMS & CONDITIONS or TECHNICAL SPECIFICATION.",
+	},
+]
+PRINT_SECTION_FIELDS = [
+	{
+		"fieldname": "custom_print_sections_break",
+		"fieldtype": "Section Break",
+		"label": "Print Sections",
+		"insert_after": "terms",
+		"description": "Each row prints on a page of its own after the document, in this order: "
+		               "terms, technical specification, warranty... Pick a Terms and Conditions template; "
+		               "its title and text fill in and can be changed here for this document only.",
+	},
+	{
+		"fieldname": "custom_print_sections",
+		"fieldtype": "Table",
+		"options": "Print Section",
+		"label": "Print Sections",
+		"insert_after": "custom_print_sections_break",
+		"allow_on_submit": 1,
+	},
+]
+for _dt in ("Quotation", "Sales Order"):
+	CUSTOM_FIELDS[_dt] = CUSTOM_FIELDS.get(_dt, []) + [dict(f) for f in PRINT_SECTION_FIELDS]
+
 # The customer's own number for the trailer (fleet / plate sticker, e.g. TRK-SK-343),
 # printed next to our chassis number on the RLI Delivery Note (5 Nov 2026).
 CUSTOM_FIELDS["Delivery Note"].append({

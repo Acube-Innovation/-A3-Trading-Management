@@ -1,0 +1,54 @@
+{
+ "actions": [],
+ "creation": "2026-11-24 13:00:00.000000",
+ "custom": 0,
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "terms_template",
+  "title",
+  "content"
+ ],
+ "fields": [
+  {
+   "allow_on_submit": 1,
+   "columns": 4,
+   "description": "A Terms and Conditions template: terms, a technical specification, warranty...",
+   "fieldname": "terms_template",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Template",
+   "options": "Terms and Conditions"
+  },
+  {
+   "allow_on_submit": 1,
+   "columns": 3,
+   "description": "The heading on its page. Filled from the template's Print Title (else its name) when the template is picked; change it freely.",
+   "fieldname": "title",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Page Title"
+  },
+  {
+   "allow_on_submit": 1,
+   "description": "Filled from the template; change it here for this document only.",
+   "fieldname": "content",
+   "fieldtype": "Text Editor",
+   "in_list_view": 1,
+   "columns": 3,
+   "label": "Content"
+  }
+ ],
+ "istable": 1,
+ "links": [],
+ "modified": "2026-11-24 14:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "A3 Trading Management",
+ "name": "Print Section",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

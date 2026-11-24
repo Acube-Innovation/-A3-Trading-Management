@@ -306,14 +306,41 @@ def _stamp_serial_fields(doc, serials):
 		doc.remarks = (doc.get("remarks") or "") + "\n" + _("Chassis: {0}").format(", ".join(names))
 
 
+def delivered_serials(doc):
+	"""Every Trailer Serial on a Delivery Note: the serial field, plus each chassis
+	number listed (a note for several trailers keeps only the first serial in the
+	field and all the chassis numbers, comma-separated)."""
+	serials = []
+	first = doc.get("custom_trailer_serial")
+	if first and frappe.db.exists("Trailer Serial", first):
+		serials.append(first)
+	for chassis in (doc.get("custom_chassis_number") or "").replace("\n", ",").split(","):
+		chassis = chassis.strip()
+		if not chassis:
+			continue
+		name = frappe.db.get_value("Trailer Serial", {"chassis_number": chassis}, "name")
+		if name and name not in serials:
+			serials.append(name)
+	return serials
+
+
 def mark_delivered(doc, method=None):
-	"""On submitting a Delivery Note, the trailers on it have left the yard."""
-	serial = doc.get("custom_trailer_serial")
-	if not serial:
-		return
-	if frappe.db.exists("Trailer Serial", serial):
+	"""On submitting a Delivery Note, the trailers on it have left the yard: status
+	Delivered, owned by the customer, no longer in a warehouse of ours."""
+	for serial in delivered_serials(doc):
 		frappe.db.set_value("Trailer Serial", serial,
-		                    {"status": "Delivered", "current_owner": doc.get("customer")},
+		                    {"status": "Delivered", "current_owner": doc.get("customer"), "warehouse": None},
+		                    update_modified=False)
+
+
+def unmark_delivered(doc, method=None):
+	"""A cancelled Delivery Note puts its trailers back in the yard: Sold when they
+	are still on a sales order, else In Stock, in the warehouse they left from."""
+	yard = next((i.warehouse for i in doc.get("items") or [] if i.get("warehouse")), None)
+	for serial in delivered_serials(doc):
+		so = frappe.db.get_value("Trailer Serial", serial, "sales_order")
+		frappe.db.set_value("Trailer Serial", serial,
+		                    {"status": "Sold" if so else "In Stock", "current_owner": None, "warehouse": yard},
 		                    update_modified=False)
 
 
