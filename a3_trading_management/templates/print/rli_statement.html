@@ -1,0 +1,231 @@
+{#- Bilingual (English / Arabic) prints of the accounts reports: Statement of
+    Account, Accounts Receivable / Payable and the General Ledger. Rendered by
+    api/accounts._render_pdf with the default letter head as the repeating PDF
+    header and footer. Currency shows as "AED" in English and "درهم" in Arabic
+    (the Currency record's own symbol is the Arabic sign). -#}
+{%- macro n(v) -%}{{ "{:,.2f}".format(v or 0) }}{%- endmacro -%}
+{%- macro nz(v) -%}{% if v and (v > 0.004 or v < -0.004) %}{{ "{:,.2f}".format(v) }}{% endif %}{%- endmacro -%}
+{%- macro drcr(v) -%}{% if v > 0.004 %}{{ "{:,.2f}".format(v) }} Dr{% elif v < -0.004 %}{{ "{:,.2f}".format(-v) }} Cr{% else %}0.00{% endif %}{%- endmacro -%}
+{%- macro bi(en, ar) -%}<span class="en">{{ en }}</span><span class="ar">{{ ar }}</span>{%- endmacro -%}
+{%- set party_ar = {"Customer": "العميل", "Supplier": "المورد"} -%}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<style>
+{{ font_css }}
+body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #222; margin: 0; }
+.ar { font-family: 'RLI Arabic', 'Noto Naskh Arabic', 'Noto Sans Arabic', 'DejaVu Sans', sans-serif; direction: rtl; unicode-bidi: embed; }
+th .en, th .ar, .bi .en, .bi .ar { display: block; }
+th .ar, .bi .ar { font-size: 11px; font-weight: 700; color: #555; line-height: 1.3; }
+.title { text-align: center; margin: 4px 0 12px; }
+.title .en { display: block; font-size: 18px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: #333; }
+.title .ar { display: block; font-size: 18px; font-weight: 700; color: #333; margin-top: 2px; }
+.head { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
+.head td { vertical-align: top; padding: 0; }
+.box { border: 1px solid #cfd4dc; border-radius: 3px; padding: 8px 10px; }
+.box .lbl { color: #666; font-size: 10px; text-transform: uppercase; letter-spacing: .04em; }
+.box .lbl .ar { text-transform: none; font-size: 11px; }
+.box .name { font-size: 13px; font-weight: 700; margin: 2px 0 3px; }
+.kv { width: 100%; border-collapse: collapse; }
+.kv td { padding: 2px 0; font-size: 11px; }
+.kv td.k { color: #666; white-space: nowrap; padding-right: 8px; }
+.kv td.k .ar { display: inline; margin-left: 4px; font-size: 11px; }
+.kv td.v { text-align: right; font-weight: 700; white-space: nowrap; }
+td.vno { white-space: nowrap; font-size: 10px; }
+table.lines { width: 100%; border-collapse: collapse; margin-top: 4px; }
+table.lines th { background: #eceff3; color: #333; font-size: 10px; font-weight: 700; text-align: left; padding: 5px 6px; border-bottom: 1px solid #c9ced6; vertical-align: bottom; }
+table.lines td { padding: 4px 6px; border-bottom: 1px solid #e6e8ec; vertical-align: top; }
+table.lines tr { page-break-inside: avoid; }
+table.lines thead { display: table-header-group; }
+.num { text-align: right !important; white-space: nowrap; }
+.muted { color: #777; font-size: 10px; }
+tr.sum td { font-weight: 700; background: #f6f7f9; border-top: 1px solid #c9ced6; }
+tr.open td { font-style: italic; background: #fbfbfc; }
+.sec { font-size: 12px; font-weight: 700; margin: 16px 0 4px; color: #333; }
+.sec .ar { display: inline; margin-left: 8px; font-size: 12px; }
+.total-due { margin-top: 10px; float: right; border: 2px solid #00268A; padding: 6px 12px; font-size: 13px; font-weight: 700; color: #00268A; }
+.total-due .ar { display: inline; margin-left: 8px; font-size: 13px; }
+.sigs { width: 100%; margin-top: 46px; border-collapse: collapse; clear: both; }
+.sigs td { width: 50%; padding: 0 20px; text-align: center; }
+.sigs .line { border-top: 1px solid #555; padding-top: 4px; font-size: 10px; }
+.sigs .line .ar { display: block; font-size: 11px; }
+.note { margin-top: 14px; font-size: 10px; color: #555; clear: both; }
+.note .ar { display: block; margin-top: 2px; font-size: 11px; }
+.foot { margin-top: 8px; font-size: 9px; color: #888; }
+</style>
+</head>
+<body>
+<div id="header-html">{{ letter_head }}</div>
+{%- if footer %}<div id="footer-html">{{ footer }}</div>{% endif %}
+
+{# =============================================================== STATEMENT #}
+{%- if mode == "statement" %}
+{%- set ar_name = party_ar.get(d.party_type, "") %}
+<div class="title"><span class="en">Statement of Account</span><span class="ar">كشف حساب</span></div>
+<table class="head"><tr>
+	<td style="width:56%;padding-right:10px"><div class="box">
+		<div class="lbl">{{ d.party_type }} &nbsp;·&nbsp; <span class="ar" style="display:inline">{{ ar_name }}</span></div>
+		<div class="name">{{ d.party_name }}</div>
+		{%- if d.address %}<div>{{ d.address }}</div>{% endif %}
+		{%- if d.tax_id %}<div>TRN <span class="ar" style="display:inline">الرقم الضريبي</span>: <b>{{ d.tax_id }}</b></div>{% endif %}
+		{%- if d.mobile_no or d.email_id %}<div class="muted">{{ [d.mobile_no, d.email_id] | select | join(" · ") }}</div>{% endif %}
+	</div></td>
+	<td><div class="box"><table class="kv">
+		<tr><td class="k">Period <span class="ar">الفترة</span></td><td class="v">{{ fmt_date(d.from_date) }} – {{ fmt_date(d.to_date) }}</td></tr>
+		<tr><td class="k">Currency <span class="ar">العملة</span></td><td class="v">AED <span class="ar" style="display:inline">درهم</span></td></tr>
+		<tr><td class="k">Opening Balance <span class="ar">الرصيد الافتتاحي</span></td><td class="v">{{ drcr(d.opening) }}</td></tr>
+		<tr><td class="k">Total Debit <span class="ar">إجمالي المدين</span></td><td class="v">{{ n(d.total_debit) }}</td></tr>
+		<tr><td class="k">Total Credit <span class="ar">إجمالي الدائن</span></td><td class="v">{{ n(d.total_credit) }}</td></tr>
+		<tr><td class="k">Closing Balance <span class="ar">الرصيد الختامي</span></td><td class="v">{{ drcr(d.closing) }}</td></tr>
+	</table></div></td>
+</tr></table>
+
+<table class="lines">
+	<thead><tr>
+		<th style="width:11%">{{ bi("Date", "التاريخ") }}</th>
+		<th style="width:13%">{{ bi("Type", "نوع المستند") }}</th>
+		<th style="width:18%">{{ bi("Voucher No", "رقم المستند") }}</th>
+		<th>{{ bi("Details", "البيان") }}</th>
+		<th class="num" style="width:13%">{{ bi("Debit (AED)", "مدين (درهم)") }}</th>
+		<th class="num" style="width:13%">{{ bi("Credit (AED)", "دائن (درهم)") }}</th>
+		<th class="num" style="width:14%">{{ bi("Balance (AED)", "الرصيد (درهم)") }}</th>
+	</tr></thead>
+	<tbody>
+		<tr class="open"><td>{{ fmt_date(d.from_date) }}</td><td colspan="3">Opening Balance <span class="ar" style="display:inline">الرصيد الافتتاحي</span></td>
+			<td class="num"></td><td class="num"></td><td class="num">{{ drcr(d.opening) }}</td></tr>
+		{%- for l in d.lines %}
+		<tr><td>{{ fmt_date(l.date) }}</td><td>{{ l.label }}</td><td class="vno">{{ l.voucher_no }}</td><td>{{ l.description }}</td>
+			<td class="num">{{ nz(l.debit) }}</td><td class="num">{{ nz(l.credit) }}</td><td class="num">{{ drcr(l.balance) }}</td></tr>
+		{%- endfor %}
+		<tr class="sum"><td colspan="4">Total <span class="ar" style="display:inline">الإجمالي</span></td>
+			<td class="num">{{ n(d.total_debit) }}</td><td class="num">{{ n(d.total_credit) }}</td><td class="num">{{ drcr(d.closing) }}</td></tr>
+	</tbody>
+</table>
+
+{%- if d.open_items %}
+<div class="sec">Open items as on {{ fmt_date(d.to_date) }} <span class="ar">المبالغ المستحقة</span></div>
+<table class="lines">
+	<thead><tr>
+		<th>{{ bi("Voucher No", "رقم المستند") }}</th><th>{{ bi("Date", "التاريخ") }}</th><th>{{ bi("Due Date", "تاريخ الاستحقاق") }}</th>
+		<th class="num">{{ bi("Amount (AED)", "المبلغ (درهم)") }}</th><th class="num">{{ bi("Paid (AED)", "المدفوع (درهم)") }}</th>
+		<th class="num">{{ bi("Outstanding (AED)", "المستحق (درهم)") }}</th><th class="num">{{ bi("Days", "الأيام") }}</th>
+	</tr></thead>
+	<tbody>
+	{%- for i in d.open_items %}
+		<tr><td class="vno">{{ i.voucher_no }}</td><td>{{ fmt_date(i.posting_date) }}</td><td>{{ fmt_date(i.due_date) }}</td>
+			<td class="num">{{ n(i.invoiced) }}</td><td class="num">{{ n(i.paid + i.credit_note) }}</td>
+			<td class="num">{{ n(i.outstanding) }}</td><td class="num">{{ i.age if i.age > 0 else "—" }}</td></tr>
+	{%- endfor %}
+	</tbody>
+</table>
+<table class="lines" style="margin-top:8px">
+	<thead><tr>
+		<th class="num">{{ bi("Not due", "غير مستحق") }}</th><th class="num">{{ bi("1-30 days", "1-30 يوم") }}</th>
+		<th class="num">{{ bi("31-60 days", "31-60 يوم") }}</th><th class="num">{{ bi("61-90 days", "61-90 يوم") }}</th>
+		<th class="num">{{ bi("Over 90 days", "أكثر من 90 يوم") }}</th><th class="num">{{ bi("Total (AED)", "الإجمالي (درهم)") }}</th>
+	</tr></thead>
+	<tbody><tr class="sum">
+		<td class="num">{{ n(d.ageing["Not due"]) }}</td><td class="num">{{ n(d.ageing["1-30"]) }}</td><td class="num">{{ n(d.ageing["31-60"]) }}</td>
+		<td class="num">{{ n(d.ageing["61-90"]) }}</td><td class="num">{{ n(d.ageing["90+"]) }}</td><td class="num">{{ n(d.ageing["Total"]) }}</td>
+	</tr></tbody>
+</table>
+{%- endif %}
+
+<div class="total-due">{{ "Balance Due" if d.closing >= 0 else "Balance in your favour" }}: AED {{ n(d.closing if d.closing >= 0 else -d.closing) }}
+	<span class="ar">{{ "الرصيد المستحق" if d.closing >= 0 else "الرصيد لصالحكم" }}: {{ n(d.closing if d.closing >= 0 else -d.closing) }} درهم</span></div>
+
+<div class="note">Please check this statement and tell us within 15 days of any difference; after that it is taken as agreed.
+	<span class="ar">يرجى مراجعة هذا الكشف وإبلاغنا بأي اختلاف خلال 15 يوماً، وإلا اعتُبر الكشف صحيحاً.</span></div>
+<table class="sigs"><tr>
+	<td><div class="line">Authorized Signature <span class="ar">التوقيع المعتمد</span></div></td>
+	<td><div class="line">{{ d.party_type }} Confirmation <span class="ar">تأكيد {{ ar_name }}</span></div></td>
+</tr></table>
+
+{# ============================================================== RECEIVABLE #}
+{%- elif mode == "receivable" %}
+{%- set is_ar = d.party_type == "Customer" %}
+<div class="title">
+	<span class="en">{{ "Accounts Receivable" if is_ar else "Accounts Payable" }}</span>
+	<span class="ar">{{ "الذمم المدينة" if is_ar else "الذمم الدائنة" }}</span>
+</div>
+<table class="head"><tr><td style="width:58%"></td><td><div class="box"><table class="kv">
+	<tr><td class="k">As on <span class="ar">كما في</span></td><td class="v">{{ fmt_date(d.report_date) }}</td></tr>
+	<tr><td class="k">Currency <span class="ar">العملة</span></td><td class="v">AED <span class="ar" style="display:inline">درهم</span></td></tr>
+	<tr><td class="k">{{ "Customers" if is_ar else "Suppliers" }} <span class="ar">{{ "العملاء" if is_ar else "الموردون" }}</span></td><td class="v">{{ d.parties | length }}</td></tr>
+	<tr><td class="k">Total Outstanding <span class="ar">إجمالي المستحق</span></td><td class="v">AED {{ n(d.totals.outstanding) }}</td></tr>
+</table></div></td></tr></table>
+<table class="lines">
+	<thead><tr>
+		<th style="width:4%">#</th>
+		<th>{{ bi("Customer" if is_ar else "Supplier", "العميل" if is_ar else "المورد") }}</th>
+		<th class="num">{{ bi("Invoiced", "المفوتر") }}</th>
+		<th class="num">{{ bi("Paid / Notes", "المدفوع / الإشعارات") }}</th>
+		<th class="num">{{ bi("Not due", "غير مستحق") }}</th>
+		<th class="num">{{ bi("1-30 days", "1-30 يوم") }}</th>
+		<th class="num">{{ bi("31-60 days", "31-60 يوم") }}</th>
+		<th class="num">{{ bi("61-90 days", "61-90 يوم") }}</th>
+		<th class="num">{{ bi("Over 90", "أكثر من 90") }}</th>
+		<th class="num">{{ bi("Outstanding (AED)", "المستحق (درهم)") }}</th>
+	</tr></thead>
+	<tbody>
+	{%- for p in d.parties %}
+		<tr><td>{{ loop.index }}</td><td><b>{{ p.party_name }}</b>{% if p.party_name != p.party %}<div class="muted">{{ p.party }}</div>{% endif %}</td>
+			<td class="num">{{ n(p.invoiced) }}</td><td class="num">{{ n(p.paid + p.credit_note) }}</td>
+			<td class="num">{{ nz(p["Not due"]) }}</td><td class="num">{{ nz(p["1-30"]) }}</td><td class="num">{{ nz(p["31-60"]) }}</td>
+			<td class="num">{{ nz(p["61-90"]) }}</td><td class="num">{{ nz(p["90+"]) }}</td><td class="num"><b>{{ n(p.outstanding) }}</b></td></tr>
+	{%- else %}
+		<tr><td colspan="10" class="muted">Nothing outstanding. <span class="ar" style="display:inline">لا توجد مبالغ مستحقة.</span></td></tr>
+	{%- endfor %}
+		<tr class="sum"><td colspan="2">Total <span class="ar" style="display:inline">الإجمالي</span></td>
+			<td class="num">{{ n(d.totals.invoiced) }}</td><td class="num">{{ n(d.totals.paid + d.totals.credit_note) }}</td>
+			<td class="num">{{ n(d.totals["Not due"]) }}</td><td class="num">{{ n(d.totals["1-30"]) }}</td><td class="num">{{ n(d.totals["31-60"]) }}</td>
+			<td class="num">{{ n(d.totals["61-90"]) }}</td><td class="num">{{ n(d.totals["90+"]) }}</td><td class="num">{{ n(d.totals.outstanding) }}</td></tr>
+	</tbody>
+</table>
+<div class="note">Days are counted from each invoice's due date. Paid / Notes includes receipts, credit notes and advances set against the invoices.
+	<span class="ar">تُحسب الأيام من تاريخ استحقاق كل فاتورة. يشمل "المدفوع / الإشعارات" المقبوضات والإشعارات الدائنة والدفعات المقدمة.</span></div>
+
+{# ================================================================== LEDGER #}
+{%- elif mode == "ledger" %}
+<div class="title"><span class="en">General Ledger</span><span class="ar">دفتر الأستاذ العام</span></div>
+<table class="head"><tr>
+	<td style="width:56%;padding-right:10px"><div class="box">
+		<div class="lbl">Account &nbsp;·&nbsp; <span class="ar" style="display:inline">الحساب</span></div>
+		<div class="name">{{ d.account }}</div>
+		<div class="muted">{{ d.root_type }}{% if d.party %} · {{ d.party_type }}: {{ d.party }}{% endif %}</div>
+	</div></td>
+	<td><div class="box"><table class="kv">
+		<tr><td class="k">Period <span class="ar">الفترة</span></td><td class="v">{{ fmt_date(d.from_date) }} – {{ fmt_date(d.to_date) }}</td></tr>
+		<tr><td class="k">Currency <span class="ar">العملة</span></td><td class="v">AED <span class="ar" style="display:inline">درهم</span></td></tr>
+		<tr><td class="k">Opening <span class="ar">الرصيد الافتتاحي</span></td><td class="v">{{ drcr(d.opening) }}</td></tr>
+		<tr><td class="k">Closing <span class="ar">الرصيد الختامي</span></td><td class="v">{{ drcr(d.closing) }}</td></tr>
+	</table></div></td>
+</tr></table>
+<table class="lines">
+	<thead><tr>
+		<th style="width:10%">{{ bi("Date", "التاريخ") }}</th>
+		<th style="width:12%">{{ bi("Type", "النوع") }}</th>
+		<th style="width:16%">{{ bi("Voucher No", "رقم المستند") }}</th>
+		<th>{{ bi("Party / Against", "الطرف / مقابل") }}</th>
+		<th class="num" style="width:12%">{{ bi("Debit (AED)", "مدين (درهم)") }}</th>
+		<th class="num" style="width:12%">{{ bi("Credit (AED)", "دائن (درهم)") }}</th>
+		<th class="num" style="width:14%">{{ bi("Balance (AED)", "الرصيد (درهم)") }}</th>
+	</tr></thead>
+	<tbody>
+		<tr class="open"><td>{{ fmt_date(d.from_date) }}</td><td colspan="3">Opening Balance <span class="ar" style="display:inline">الرصيد الافتتاحي</span></td>
+			<td></td><td></td><td class="num">{{ drcr(d.opening) }}</td></tr>
+		{%- for l in d.lines %}
+		<tr><td>{{ fmt_date(l.date) }}</td><td>{{ l.label }}</td><td class="vno">{{ l.voucher_no }}</td>
+			<td>{{ l.party or l.against }}{% if l.description %}<div class="muted">{{ l.description }}</div>{% endif %}</td>
+			<td class="num">{{ nz(l.debit) }}</td><td class="num">{{ nz(l.credit) }}</td><td class="num">{{ drcr(l.balance) }}</td></tr>
+		{%- endfor %}
+		<tr class="sum"><td colspan="4">Total <span class="ar" style="display:inline">الإجمالي</span></td>
+			<td class="num">{{ n(d.total_debit) }}</td><td class="num">{{ n(d.total_credit) }}</td><td class="num">{{ drcr(d.closing) }}</td></tr>
+	</tbody>
+</table>
+{%- endif %}
+
+<div class="foot">Printed {{ printed_on }} by {{ printed_by }} · {{ d.company }}</div>
+</body>
+</html>

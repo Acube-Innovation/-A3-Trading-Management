@@ -1,0 +1,92 @@
+{% extends "templates/workshop_base.html" %}
+{% from "templates/macros/trading.html" import call_method_js, sup_kit, doc_modals %}
+{% from "templates/macros/accounts.html" import accounts_kit %}
+
+{% block page_content %}
+{#- Statement of Account: one customer's or supplier's ledger for a period, read
+    from GL Entry. Print gives the bilingual (English / Arabic) PDF in AED. -#}
+<div class="card"><div class="card__body">
+	<div class="ac-form">
+		<div class="field"><label>Account of</label>
+			<div class="ac-seg" id="soa-type">
+				<button type="button" data-v="Customer" class="{{ 'is-on' if party_type == 'Customer' }}">Customer</button>
+				<button type="button" data-v="Supplier" class="{{ 'is-on' if party_type == 'Supplier' }}">Supplier</button>
+			</div></div>
+		<div class="field field--wide"><label id="soa-party-label">{{ party_type }} <span class="req">*</span></label>
+			<div><input id="soa-party" placeholder="Search by name…" autocomplete="off" value="{{ party_label }}" data-value="{{ party }}"></div></div>
+		<div class="field"><label>From</label><input id="soa-from" type="date" value="{{ from_date }}"></div>
+		<div class="field"><label>To</label><input id="soa-to" type="date" value="{{ to_date }}"></div>
+		<button type="button" class="btn btn--primary" id="soa-go"><i class="fa-solid fa-magnifying-glass"></i> Show</button>
+		<button type="button" class="btn btn--outline" id="soa-print" disabled><i class="fa-solid fa-print"></i> Print</button>
+		<a class="btn btn--outline" id="soa-pdf" style="display:none" target="_blank" rel="noopener"><i class="fa-solid fa-file-pdf"></i> PDF</a>
+	</div>
+	<p class="ac-help">Dr means the party owes us; Cr means we owe them (or they paid in advance). The print is in English and Arabic, amounts in AED.</p>
+</div></div>
+
+<div id="soa-out"></div>
+
+{{ call_method_js() }}
+{{ sup_kit() }}
+{{ accounts_kit() }}
+{{ doc_modals() }}
+<script>
+(function () {
+	var TYPE = {{ party_type | tojson }}, last = null;
+	var party = document.getElementById("soa-party"), from = document.getElementById("soa-from"), to = document.getElementById("soa-to");
+	if (!from.value) from.value = AC.yearStart();
+	if (!to.value) to.value = AC.today();
+	SK.picker(party, function (q) { return AC.parties(TYPE)(q); }, function () { go(); });
+	document.querySelectorAll("#soa-type button").forEach(function (b) {
+		b.addEventListener("click", function () {
+			TYPE = b.dataset.v;
+			document.querySelectorAll("#soa-type button").forEach(function (x) { x.classList.toggle("is-on", x === b); });
+			document.getElementById("soa-party-label").innerHTML = TYPE + ' <span class="req">*</span>';
+			party.value = ""; party.dataset.value = ""; document.getElementById("soa-out").innerHTML = "";
+			document.getElementById("soa-print").disabled = true; document.getElementById("soa-pdf").style.display = "none";
+		});
+	});
+	function args() { return { party_type: TYPE, party: party.dataset.value, from_date: from.value, to_date: to.value }; }
+	function go() {
+		if (!party.dataset.value) { alert("Choose the " + TYPE.toLowerCase() + " from the list."); return; }
+		var out = document.getElementById("soa-out");
+		out.innerHTML = '<div class="card"><div class="card__body"><div class="empty">Loading…</div></div></div>';
+		tradingCall(AC.API + "statement_of_account", args()).then(function (d) {
+			last = d; render(d);
+			document.getElementById("soa-print").disabled = false;
+			var pdf = document.getElementById("soa-pdf"); pdf.href = AC.pdfLink(AC.API + "statement_pdf", args()); pdf.style.display = "";
+			history.replaceState(null, "", "?" + new URLSearchParams(args()).toString());
+		}).catch(function (e) { out.innerHTML = '<div class="card"><div class="card__body"><div class="sk-err" style="display:block">' + SK.esc(SK.err(e)) + "</div></div></div>"; });
+	}
+	function open(vt, vn) { return "<a href=\"#\" onclick=\"openDoc('" + vt + "','" + vn + "');return false\">" + SK.esc(vn) + "</a>"; }
+	function render(d) {
+		var rows = d.lines.map(function (l) {
+			return "<tr><td>" + AC.date(l.date) + "</td><td>" + SK.esc(l.label) + "</td><td>" + open(l.voucher_type, l.voucher_no) + "</td><td>" + SK.esc(l.description) +
+				'</td><td class="num">' + AC.nz(l.debit) + '</td><td class="num">' + AC.nz(l.credit) + '</td><td class="num">' + AC.drcr(l.balance) + "</td></tr>";
+		}).join("");
+		var openRows = d.open_items.map(function (i) {
+			return "<tr><td>" + open(i.voucher_type, i.voucher_no) + "</td><td>" + AC.date(i.posting_date) + "</td><td>" + AC.date(i.due_date) + '</td><td class="num">' + AC.n(i.invoiced) +
+				'</td><td class="num">' + AC.n(i.paid + i.credit_note) + '</td><td class="num"><b>' + AC.n(i.outstanding) + '</b></td><td class="num">' + (i.age > 0 ? i.age : "—") + "</td><td>" + SK.esc(i.bucket) + "</td></tr>";
+		}).join("");
+		var a = d.ageing;
+		document.getElementById("soa-out").innerHTML =
+			'<div class="card"><div class="card__body">' +
+			'<div class="section-title" style="margin-top:0">' + SK.esc(d.party_name) + (d.tax_id ? ' <span class="muted" style="font-weight:400">· TRN ' + SK.esc(d.tax_id) + "</span>" : "") + "</div>" +
+			'<div class="ac-sum"><div><span>Opening</span><b>' + AC.drcr(d.opening) + '</b></div><div><span>Debit</span><b>' + AC.n(d.total_debit) + '</b></div><div><span>Credit</span><b>' + AC.n(d.total_credit) +
+			'</b></div><div><span>Closing balance</span><b class="' + (d.closing > 0 ? "ac-dr" : "ac-cr") + '">' + AC.drcr(d.closing) + "</b></div></div>" +
+			'<div style="overflow-x:auto"><table class="table"><thead><tr><th>Date</th><th>Type</th><th>Voucher</th><th>Details</th><th class="num">Debit</th><th class="num">Credit</th><th class="num">Balance</th></tr></thead><tbody>' +
+			'<tr class="ac-open"><td>' + AC.date(d.from_date) + '</td><td colspan="3">Opening balance</td><td></td><td></td><td class="num">' + AC.drcr(d.opening) + "</td></tr>" + rows +
+			'<tr class="ac-total"><td colspan="4">Total</td><td class="num">' + AC.n(d.total_debit) + '</td><td class="num">' + AC.n(d.total_credit) + '</td><td class="num">' + AC.drcr(d.closing) + "</td></tr></tbody></table></div>" +
+			(d.lines.length ? "" : '<div class="empty">No entries in this period.</div>') +
+			"</div></div>" +
+			'<div class="card" style="margin-top:12px"><div class="card__body"><div class="section-title" style="margin-top:0">Open items and ageing (as on ' + AC.date(d.to_date) + ")</div>" +
+			'<div class="ac-sum"><div><span>Not due</span><b>' + AC.n(a["Not due"]) + '</b></div><div><span>1-30 days</span><b>' + AC.n(a["1-30"]) + '</b></div><div><span>31-60 days</span><b>' + AC.n(a["31-60"]) +
+			'</b></div><div><span>61-90 days</span><b>' + AC.n(a["61-90"]) + '</b></div><div><span>Over 90</span><b>' + AC.n(a["90+"]) + '</b></div><div><span>Total due</span><b>' + AC.n(a.Total) + "</b></div></div>" +
+			(openRows ? '<div style="overflow-x:auto"><table class="table"><thead><tr><th>Voucher</th><th>Date</th><th>Due</th><th class="num">Amount</th><th class="num">Paid / notes</th><th class="num">Outstanding</th><th class="num">Days late</th><th>Age</th></tr></thead><tbody>' + openRows + "</tbody></table></div>"
+			          : '<div class="empty">Nothing open.</div>') + "</div></div>";
+	}
+	document.getElementById("soa-go").addEventListener("click", go);
+	document.getElementById("soa-print").addEventListener("click", function () { AC.printPdf(this, AC.API + "statement_pdf", args()); });
+	if (party.dataset.value) go();
+})();
+</script>
+{% endblock %}

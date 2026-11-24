@@ -305,6 +305,7 @@ def receive_against_order(purchase_order, rows_json=None):
 	from erpnext.buying.doctype.purchase_order.purchase_order import make_purchase_receipt
 
 	pr = make_purchase_receipt(purchase_order)
+	_net_of_draft_receipts(pr, purchase_order)
 	supplied = frappe.parse_json(rows_json) if isinstance(rows_json, str) else (rows_json or {})
 	if supplied:
 		by_item = {r.get("item_code"): r for r in supplied if r.get("item_code")}
@@ -323,6 +324,37 @@ def receive_against_order(purchase_order, rows_json=None):
 	pr.insert(ignore_permissions=True)
 	frappe.db.commit()
 	return {"name": pr.name}
+
+
+def _net_of_draft_receipts(pr, purchase_order):
+	"""ERPNext fills a new receipt with what is left after POSTED receipts only.
+	Receipts wait as drafts until a Super Admin submits them, so a second receipt
+	would ask for the whole order again. Take the draft quantities off too:
+	order 100, a draft for 50 -> the next receipt asks for 50."""
+	drafts = frappe.db.sql(
+		"""select pri.purchase_order_item, sum(pri.received_qty) as qty
+		from `tabPurchase Receipt Item` pri join `tabPurchase Receipt` pr on pr.name = pri.parent
+		where pr.docstatus = 0 and pri.purchase_order = %s group by pri.purchase_order_item""",
+		purchase_order, as_dict=True)
+	held = {d.purchase_order_item: flt(d.qty) for d in drafts}
+	if not held:
+		return
+	keep = []
+	for item in pr.items:
+		left = flt(item.qty) - held.get(item.purchase_order_item, 0)
+		if left <= 0:
+			continue
+		item.qty = item.received_qty = left
+		item.stock_qty = left * flt(item.conversion_factor or 1)
+		item.amount = left * flt(item.rate)
+		keep.append(item)
+	if not keep:
+		names = frappe.get_all("Purchase Receipt Item", filters={"purchase_order": purchase_order, "docstatus": 0}, pluck="parent", distinct=True)
+		frappe.throw(_("Everything on {0} is already on draft receipt(s) {1}. Edit or submit those instead.").format(
+			purchase_order, ", ".join(sorted(set(names)))))
+	pr.set("items", keep)
+	for i, item in enumerate(pr.items, 1):
+		item.idx = i
 
 
 @frappe.whitelist()

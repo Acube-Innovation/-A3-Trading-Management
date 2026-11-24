@@ -109,8 +109,8 @@
 			{%- for r in additions.item_totals %}
 				<tr data-row data-s="{{ (r.item_code ~ ' ' ~ r.item_name ~ ' ' ~ r.where) | lower }}"
 					data-wh="{{ r.locations | map(attribute='warehouse') | join('|') }}">
-					<td><b>{{ r.item_code }}</b>
-						{%- if r.item_name != r.item_code %}<div class="muted" style="font-size:11px">{{ r.item_name }}</div>{% endif %}</td>
+					<td><b>{{ r.item_name or r.item_code }}</b>
+						{%- if r.item_name and r.item_name != r.item_code %}<div class="muted" style="font-size:11px">{{ r.item_code }}</div>{% endif %}</td>
 					<td class="num"><b>{{ "%g" | format(r.total_qty) }}</b></td>
 					<td>{{ r.uom }}</td>
 					<td class="num">{{ r.warehouse_count }}</td>

@@ -36,10 +36,10 @@
 		<tbody>
 		{%- for r in requisitions %}
 			<tr data-hay="{{ ((r.name or '') ~ ' ' ~ (r.title or '')) | lower }}" data-status="{{ r.status or '' }}">
-				<td><b>{{ r.name }}</b></td>
+				<td><b>{{ r.name }}</b>{% if r.title and (r.title or '').startswith('For ') %}<div class="muted" style="font-size:12px">{{ r.title }}</div>{% endif %}</td>
 				<td>{{ frappe.utils.formatdate(r.transaction_date, "dd MMM yyyy") }}</td>
 				<td>{{ frappe.utils.formatdate(r.schedule_date, "dd MMM yyyy") if r.schedule_date else "—" }}</td>
-				<td>{%- for i in r["items"][:3] %}{{ i.item_code }} &times;{{ i.qty | int }}{% if not loop.last %}, {% endif %}{%- endfor %}
+				<td>{%- for i in r["items"][:3] %}{{ i.item_name or i.item_code }} &times;{{ i.qty | int }}{% if not loop.last %}, {% endif %}{%- endfor %}
 					{%- if r["items"] | length > 3 %} <span class="muted">+{{ (r["items"] | length) - 3 }} more</span>{% endif %}</td>
 				<td>{{ status_pill(r.status, r.docstatus) }}</td>
 				<td class="num">{{ "%.0f%%" | format(r.per_ordered or 0) }}

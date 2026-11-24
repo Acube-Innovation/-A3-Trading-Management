@@ -48,9 +48,17 @@ GROUPS = [
 		"subtitle": "The standard ledger — no separate books are kept",
 		"tiles": [
 			{"label": "Payments & Receipts", "route": "/a3-trading/payments-receipts",
-			 "icon": "fa-right-left", "sub": "Money in and money out"},
+			 "icon": "fa-right-left", "sub": "Payment receipts, bank receipts, bank payments"},
+			{"label": "Credit & Debit Notes", "route": "/a3-trading/credit-debit-notes",
+			 "icon": "fa-file-circle-minus", "sub": "Against a customer or supplier invoice"},
 			{"label": "Journal Entries", "route": "/a3-trading/journal-entries",
 			 "icon": "fa-book", "sub": "Manual journals and adjustments"},
+			{"label": "Statement of Account", "route": "/a3-trading/statement-of-account",
+			 "icon": "fa-file-invoice-dollar", "sub": "A customer's or supplier's account, printable"},
+			{"label": "Accounts Receivable", "route": "/a3-trading/accounts-receivable",
+			 "icon": "fa-hand-holding-dollar", "sub": "Who owes what, by age (and payable)"},
+			{"label": "Ledger", "route": "/a3-trading/ledger",
+			 "icon": "fa-book-open", "sub": "Every posting to one account"},
 		],
 	},
 ]

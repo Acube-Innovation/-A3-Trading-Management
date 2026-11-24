@@ -41,6 +41,11 @@
 	.mfg-labour__card { border:1px solid #f5c9d6; background:#fdf6f8; border-radius:8px; padding:7px 11px; font-size:12px; line-height:1.45; }
 	.mfg-labour__card b { font-size:13px; }
 	.mfg-labour__none { color:#8a6100; }
+	.mfg-chips { display:flex; flex-wrap:wrap; gap:4px; align-items:center; }
+	.mfg-chip { display:inline-flex; align-items:center; gap:4px; background:#fdf6f8; border:1px solid #f5c9d6; border-radius:12px; padding:2px 4px 2px 9px; font-size:12px; white-space:nowrap; }
+	.mfg-chip button { border:0; background:none; color:#c0244f; cursor:pointer; font-size:14px; line-height:1; padding:0 3px; }
+	.mfg-chip-add { min-width:130px; max-width:170px; }
+	.mfg-hist-edit { border:0; background:none; color:#c0244f; cursor:pointer; padding:2px 6px; }
 	.mfg-note { width:100%; border:1px solid var(--border,#d8dde6); border-radius:8px; padding:8px 10px; font-size:13px; margin-top:12px; }
 </style>
 
@@ -271,6 +276,21 @@
 		</div>
 	</div>
 </div>
+<!-- Material short: leaving Material without enough stock -->
+<div class="modal-overlay" id="short-modal" role="dialog" aria-modal="true">
+	<div class="modal" style="width:min(720px,96vw);max-width:none">
+		<div class="modal__head">
+			<div><h3>Material short</h3><div class="sub" id="short-sub"></div></div>
+			<button type="button" class="modal__close" data-short-close><i class="fa-solid fa-xmark"></i></button>
+		</div>
+		<div class="modal__body" id="short-body"></div>
+		<div class="modal__foot">
+			<button type="button" class="btn btn--outline" data-short-close style="margin-right:auto">Cancel</button>
+			<button type="button" class="btn btn--outline" id="short-request"><i class="fa-solid fa-clipboard-list"></i> Raise Material Request</button>
+			<button type="button" class="btn btn--primary" id="short-continue"><i class="fa-solid fa-arrow-right"></i> Continue with negative stock</button>
+		</div>
+	</div>
+</div>
 <style>
 	.sh-row { border:1px solid var(--border); border-radius:10px; padding:12px; margin-bottom:12px; }
 	.sh-opts { display:flex; gap:14px; flex-wrap:wrap; margin:8px 0; font-size:13px; }
@@ -297,6 +317,8 @@
 	var current = null, search = "", detail = null;
 	var editRM = [], editOps = [];   // in-memory editable table state for the current draft WO
 	var seedTables = "";             // the tables as loaded, to tell unsaved edits
+	var roOps = [], seedLab = "";    // who worked on each step of a submitted WO, and as loaded
+	var histEdit = null;             // stage history row (idx) whose time is being corrected
 	// Only what is saved counts: the unit picked to type a quantity in does not.
 	function tablesJson() {
 		return JSON.stringify([editRM.map(function (r) { return [r.item_code, r.qty, r.rate, r.source_warehouse, r.cut]; }), editOps]);
@@ -316,20 +338,51 @@
 
 	// Operations are costed in minutes (ERPNext's unit) but entered and shown in hours.
 	function toHrs(mins) { return Math.round((Number(mins) || 0) / 60 * 100) / 100; }
+	var LABOUR_NAMES = {};           // names the server sent, for workers no longer active
 	function labourName(id) {
 		var e = LABOUR.filter(function (x) { return x.name === id; })[0];
-		return e ? (e.employee_name || e.name) : (id || "");
+		return e ? (e.employee_name || e.name) : (LABOUR_NAMES[id] || id || "");
 	}
-	// <select> of every employee, the current one selected, plus a way to add one.
-	function labourSelect(attrs, current) {
-		var known = LABOUR.some(function (e) { return e.name === current; });
-		return '<select class="cell-inp" ' + attrs + '>' +
-			'<option value="">' + (LABOUR.length ? "— Select labour —" : "— No employees yet —") + '</option>' +
-			LABOUR.map(function (e) {
-				return '<option value="' + esc(e.name) + '"' + (e.name === current ? " selected" : "") + '>' + esc(e.employee_name || e.name) + (e.designation ? " · " + esc(e.designation) : "") + '</option>';
+	// One chip per worker on the step (x removes), then a dropdown to add another.
+	function labourCell(list, i, canEdit) {
+		list = list || [];
+		var chips = list.map(function (id, j) {
+			return '<span class="mfg-chip">' + esc(labourName(id)) +
+				(canEdit ? '<button type="button" data-lab-x="' + i + ':' + j + '" title="Remove">&times;</button>' : '') + '</span>';
+		}).join("");
+		if (!canEdit) return list.length ? '<div class="mfg-chips">' + chips + '</div>' : '—';
+		var add = '<select class="cell-inp mfg-chip-add" data-lab-add="' + i + '">' +
+			'<option value="">' + (list.length ? "+ Add another" : (LABOUR.length ? "— Select labour —" : "— No employees yet —")) + '</option>' +
+			LABOUR.filter(function (e) { return list.indexOf(e.name) < 0; }).map(function (e) {
+				return '<option value="' + esc(e.name) + '">' + esc(e.employee_name || e.name) + (e.designation ? " · " + esc(e.designation) : "") + '</option>';
 			}).join("") +
-			(current && !known ? '<option value="' + esc(current) + '" selected>' + esc(current) + '</option>' : '') +
 			(SUP ? '' : '<option value="__new__">+ Add new labour…</option>') + '</select>';
+		return '<div class="mfg-chips">' + chips + add + '</div>';
+	}
+	// Wire the chips and add-dropdowns of `rows` (each with a `labours` list).
+	function wireLabour(rows, onChange) {
+		detailEl.querySelectorAll("[data-lab-x]").forEach(function (b) {
+			b.addEventListener("click", function () {
+				var p = b.dataset.labX.split(":");
+				rows[+p[0]].labours.splice(+p[1], 1); onChange(+p[0]);
+			});
+		});
+		detailEl.querySelectorAll("[data-lab-add]").forEach(function (sel) {
+			var i = +sel.dataset.labAdd;
+			sel.addEventListener("change", function () {
+				if (sel.value === "__new__") {
+					sel.value = "";
+					openMasterModal("labour", "", function (it) {
+						if (!LABOUR.some(function (e) { return e.name === it.value; })) LABOUR.push({ name: it.value, employee_name: it.label });
+						if (rows[i].labours.indexOf(it.value) < 0) rows[i].labours.push(it.value);
+						onChange(i);
+					});
+					return;
+				}
+				if (sel.value && rows[i].labours.indexOf(sel.value) < 0) rows[i].labours.push(sel.value);
+				onChange(i);
+			});
+		});
 	}
 	function loadLabour() {
 		return callMethod(API + "list_labour", {}).then(function (rows) { LABOUR = rows || []; }).catch(function () { LABOUR = []; });
@@ -342,10 +395,25 @@
 			body: JSON.stringify(args || {})
 		}).then(function (r) {
 			return r.json().then(function (data) {
-				if (!r.ok) { throw new Error((data && data._server_messages) || (data && data.exc) || r.statusText); }
+				if (!r.ok) { throw new Error(serverText(data) || r.statusText); }
 				return data.message;
 			});
 		});
+	}
+	// Frappe's error messages as plain text for alert(): one line per message,
+	// <br> as new lines, other tags dropped.
+	function serverText(data) {
+		if (!data) return "";
+		var msgs = [];
+		try {
+			JSON.parse(data._server_messages || "[]").forEach(function (m) {
+				try { m = JSON.parse(m); } catch (e) {}
+				msgs.push(typeof m === "object" && m ? (m.message || "") : String(m));
+			});
+		} catch (e) {}
+		var txt = msgs.join("\n\n") || data.exception || data.exc || "";
+		return String(txt).replace(/<br\s*\/?>/gi, "\n").replace(/<\/li>/gi, "\n").replace(/<[^>]+>/g, "")
+			.replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").trim();
 	}
 	function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
 	function money(n) { return CURRENCY + " " + (Number(n) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
@@ -390,6 +458,27 @@
 		return h + '</div></div>';
 	}
 	function kv(pairs) { return pairs.map(function (p) { return '<div class="kv-row"><span class="muted">' + esc(p[0]) + '</span><b style="text-align:right">' + esc(p[1]) + '</b></div>'; }).join(""); }
+	// Production stage "Delivery" = finished and in the yard. Whether the trailer
+	// has gone to the customer comes from its Delivery Note.
+	function deliveryStatus(o) {
+		var d = o.deliveries || [], gone = d.filter(function (x) { return x.delivered; });
+		if (gone.length && gone.length === d.length) {
+			var dns = gone.map(function (x) { return x.delivery_note; }).filter(function (v, i, a) { return a.indexOf(v) === i; });
+			return "Delivered to " + (gone[0].customer || "customer") + " · " + dns.join(", ") + " · " + gone[0].delivery_date;
+		}
+		if (gone.length) return gone.length + " of " + d.length + " delivered · " + (d.length - gone.length) + " in the yard";
+		if (o.stage === "Delivery") return o.stock_pending ? "Finished — stock not posted" : "Finished — in the yard, not yet delivered";
+		return o.stage === "QC" ? "Ready after QC" : "In production";
+	}
+	function deliveryTable(o) {
+		var d = o.deliveries || [];
+		if (!d.length) return "";
+		return roTable(["Chassis", "Where it is", "Delivery Note", "Date", "Invoice"], d.map(function (x) {
+			return [esc(x.chassis || x.serial),
+				x.delivered ? '<span class="badge badge--success">Delivered</span> ' + esc(x.customer || "") : '<span class="badge badge--soft">In yard</span> ' + esc(x.yard || ""),
+				esc(x.delivery_note || "—"), esc(x.delivery_date || "—"), esc(x.invoice || (x.delivered ? "Not invoiced" : "—"))];
+		}));
+	}
 	function roTable(cols, rows) {
 		var head = '<th class="sl">#</th>' + cols.map(function (c) { return "<th>" + esc(c) + "</th>"; }).join("");
 		var body = rows.length
@@ -439,7 +528,7 @@
 				'<td class="sl">' + (i + 1) + '</td>' +
 				'<td style="min-width:150px"><input class="cell-inp" data-op="operation" data-i="' + i + '" value="' + esc(r.operation || "") + '" placeholder="Operation" autocomplete="off"></td>' +
 				'<td style="min-width:130px"><input class="cell-inp" data-op="workstation" data-i="' + i + '" value="' + esc(r.workstation || "") + '" placeholder="Workstation" autocomplete="off"></td>' +
-				'<td style="min-width:170px">' + labourSelect('data-op-labour="' + i + '"', r.labour) +
+				'<td style="min-width:190px">' + labourCell(r.labours, i, true) +
 					(r.labour_from_bom ? '<div class="muted" style="font-size:10.5px;margin-top:2px">from BOM</div>' : '') + '</td>' +
 				'<td style="width:90px"><input class="cell-inp" type="number" step="0.25" min="0" data-op-hrs="' + i + '" value="' + toHrs(r.time_in_mins) + '"></td>' +
 				'<td' + PRICE + ' style="width:110px"><input class="cell-inp" type="number" step="any" data-op="hour_rate" data-i="' + i + '" value="' + (r.hour_rate || 0) + '"></td>' +
@@ -458,9 +547,12 @@
 		var byWho = {}, order = [], unassigned = [];
 		(ops || []).forEach(function (r) {
 			if (!r.operation) return;
-			if (!r.labour) { unassigned.push(r.operation); return; }
-			if (!byWho[r.labour]) { byWho[r.labour] = { name: r.labour_name || r.labour, ops: [], mins: 0 }; order.push(r.labour); }
-			byWho[r.labour].ops.push(r.operation); byWho[r.labour].mins += Number(r.time_in_mins) || 0;
+			var labs = r.labours || (r.labour ? [r.labour] : []);
+			if (!labs.length) { unassigned.push(r.operation); return; }
+			labs.forEach(function (who) {
+				if (!byWho[who]) { byWho[who] = { name: labourName(who), ops: [], mins: 0 }; order.push(who); }
+				byWho[who].ops.push(r.operation); byWho[who].mins += Number(r.time_in_mins) || 0;
+			});
 		});
 		if (!order.length && !unassigned.length) return "";
 		return '<div class="mfg-labour">' + order.map(function (k) {
@@ -471,8 +563,11 @@
 	}
 
 	function actionArea(o) {
+		if (o.stage === "Delivery" && o.stock_pending) {
+			return '<button class="btn btn--primary" style="width:100%;justify-content:center;margin-top:14px" id="post-stock-btn"><i class="fa-solid fa-boxes-stacked"></i> Post stock now</button>';
+		}
 		if (o.stage === "Delivery") {
-			return '<button class="btn btn--outline" style="width:100%;justify-content:center;margin-top:14px" disabled><i class="fa-solid fa-circle-check"></i> Delivered — added to stock</button>';
+			return '<button class="btn btn--outline" style="width:100%;justify-content:center;margin-top:14px" disabled><i class="fa-solid fa-circle-check"></i> Finished — added to stock</button>';
 		}
 		var label = o.next_stage === "Delivery"
 			? '<i class="fa-solid fa-truck-ramp-box"></i> Deliver &amp; Add to Stock'
@@ -487,9 +582,15 @@
 		detail = o;
 		titleEl.textContent = o.name;
 		tagEl.textContent = o.item_name;
+		if (seed !== false) {
+			(o.operations || []).forEach(function (r) { (r.labours || []).forEach(function (id, k) { LABOUR_NAMES[id] = (r.labour_names || [])[k] || id; }); });
+			roOps = (o.operations || []).map(function (r) { return { idx: r.idx, labours: (r.labours || []).slice(), time_in_mins: r.time_in_mins, operation: r.operation }; });
+			seedLab = JSON.stringify(roOps);
+			histEdit = null;
+		}
 		if (o.editable && seed !== false) {
 			editRM = (o.required_items || []).map(function (r) { return { item_code: r.item_code, item_name: r.item_name, uom: r.uom, qty: r.qty, rate: r.rate, source_warehouse: r.source_warehouse, is_sheet: !!r.is_sheet, cut: r.cut || null, cut_note: r.cut_note || "" }; });
-			editOps = (o.operations || []).map(function (r) { return { operation: r.operation, workstation: r.workstation, labour: r.labour, labour_name: r.labour_name, labour_from_bom: r.labour_from_bom, time_in_mins: r.time_in_mins, hour_rate: r.hour_rate }; });
+			editOps = (o.operations || []).map(function (r) { return { operation: r.operation, workstation: r.workstation, labours: (r.labours || []).slice(), labour_from_bom: r.labour_from_bom, time_in_mins: r.time_in_mins, hour_rate: r.hour_rate }; });
 			seedTables = tablesJson();
 			var forName = o.name;
 			Promise.all(editRM.map(function (r) { return r.item_code ? itemInfo(r.item_code) : null; })).then(function (infos) {
@@ -503,16 +604,33 @@
 		var rmSection = o.editable ? rmTableHtml()
 			: SUP ? roTable(["Item", "Qty"], (o.required_items || []).map(function (r) { return [esc(r.item_name), r.qty + " " + esc(r.uom || "")]; }))
 			: roTable(["Item", "Qty", "Rate", "Amount"], (o.required_items || []).map(function (r) { return [esc(r.item_name), r.qty + " " + esc(r.uom || ""), r.rate_fmt, r.amount_fmt]; }));
+		// After submit the steps are fixed, but who worked on them can still be set.
+		var canLab = o.docstatus !== 2;
 		var opSection = o.editable ? opTableHtml()
-			: SUP ? roTable(["Operation", "Workstation", "Labour", "Hrs"], (o.operations || []).map(function (r) { return [esc(r.operation), esc(r.workstation || "—"), esc(r.labour_name || r.labour || "—"), toHrs(r.time_in_mins)]; }))
-			: roTable(["Operation", "Workstation", "Labour", "Hrs", "Rate / hr", "Cost"], (o.operations || []).map(function (r) { return [esc(r.operation), esc(r.workstation || "—"), esc(r.labour_name || r.labour || "—"), toHrs(r.time_in_mins), r.hour_rate_fmt, r.operating_cost_fmt]; }));
-		opSection += labourSummary(o.editable ? editOps : o.operations);
+			: SUP ? roTable(["Operation", "Workstation", "Labour", "Hrs"], (o.operations || []).map(function (r, i) { return [esc(r.operation), esc(r.workstation || "—"), labourCell(roOps[i].labours, i, canLab), toHrs(r.time_in_mins)]; }))
+			: roTable(["Operation", "Workstation", "Labour", "Hrs", "Rate / hr", "Cost"], (o.operations || []).map(function (r, i) { return [esc(r.operation), esc(r.workstation || "—"), labourCell(roOps[i].labours, i, canLab), toHrs(r.time_in_mins), r.hour_rate_fmt, r.operating_cost_fmt]; }));
+		if (!o.editable && canLab && JSON.stringify(roOps) !== seedLab) {
+			opSection += '<button class="btn btn--sm mfg-btn-red" id="save-labour" style="margin-top:10px"><i class="fa-solid fa-floppy-disk"></i> Save labour</button>';
+		}
+		opSection += labourSummary(o.editable ? editOps : roOps);
 
 		var saveBtn = o.editable ? '<button class="btn btn--sm mfg-btn-red" id="save-tables" style="margin-top:10px"><i class="fa-solid fa-floppy-disk"></i> Save materials & operations</button>' : '';
 
+		// The time is stamped on each move; the pencil corrects it (and the note)
+		// when the move was recorded late.
+		var canHist = o.docstatus !== 2;
 		var history = (o.stage_history || []).length
-			? roTable(["Stage", "From", "When", "By", "Hrs", "Notes"], o.stage_history.map(function (h) {
-				return [esc(h.stage), esc(h.from_stage), esc(h.entered_on), esc(h.entered_by), h.duration_hours, esc(h.notes)];
+			? roTable(["Stage", "From", "When", "By", "Hrs", "Notes", ""], o.stage_history.map(function (h) {
+				if (histEdit === h.idx) {
+					return [esc(h.stage), esc(h.from_stage),
+						'<input type="datetime-local" class="cell-inp" id="hist-when" value="' + esc(h.entered_on_raw || "") + '">',
+						esc(h.entered_by), h.duration_hours,
+						'<input class="cell-inp" id="hist-notes" value="' + esc(h.notes) + '" placeholder="Note">',
+						'<span style="white-space:nowrap"><button type="button" class="mfg-hist-edit" id="hist-save" title="Save"><i class="fa-solid fa-check"></i></button>' +
+						'<button type="button" class="mfg-hist-edit" id="hist-cancel" title="Cancel"><i class="fa-solid fa-xmark"></i></button></span>'];
+				}
+				return [esc(h.stage), esc(h.from_stage), esc(h.entered_on), esc(h.entered_by), h.duration_hours, esc(h.notes),
+					canHist ? '<button type="button" class="mfg-hist-edit" data-hist-edit="' + h.idx + '" title="Change date / time"><i class="fa-solid fa-pen"></i></button>' : ''];
 			}))
 			: '<div class="empty">No transitions yet.</div>';
 
@@ -526,7 +644,6 @@
 			'<div class="fieldset-title">Work Order</div>' +
 			kv([["Item", o.item_name], ["For Sales Order", o.sales_order ? o.sales_order + (o.customer ? " · " + o.customer : "") : "Build to stock"], ["Specification", o.description || "—"], ["Quantity", o.qty], ["BOM", o.bom], ["Production Stage", o.stage], ["ERP Status", o.erp_status], ["Started", o.planned_start], ["Target Delivery", o.target], ["Raw material from", o.source_warehouse || "—"], ["FG Warehouse", o.fg_warehouse], ["Chassis Number", (o.chassis_numbers || []).join(", ") || "—"]]) +
 			'<div class="fieldset-title">BOM — Raw Materials' + (o.editable ? ' <span class="muted" style="font-weight:400">(editable)</span>' : '') + '</div>' + rmSection +
-			sheetPiecesBlock(o) +
 			'<div class="fieldset-title">BOM — Operations' + (o.editable ? ' <span class="muted" style="font-weight:400">(editable)</span>' : '') + '</div>' + opSection +
 			saveBtn +
 			(o.costing ? '<div class="fieldset-title">Costing</div>' +
@@ -537,17 +654,35 @@
 			kv([
 				["Produced", o.produced_qty + " / " + o.qty],
 				["Manufacture Entry", o.stock_entry || "—"],
-				["Delivery Status", o.stage === "Delivery" ? "Delivered — in stock" : (o.stage === "QC" ? "Ready for delivery" : "In production")],
+				["Delivery Status", deliveryStatus(o)],
 				["Quality Inspection", o.quality ? o.quality.name + " · " + o.quality.status : (o.stage === "QC" ? "Waiting — passed when moved to Delivery" : "—")]
 			]) +
+			deliveryTable(o) +
 			(o.stage === "QC" && o.quality && o.quality.status === "Rejected" ? '<div class="mfg-warn"><i class="fa-solid fa-triangle-exclamation"></i> Failed QC. Re-inspect it on the <a href="/a3-trading/quality">Quality</a> screen before delivery.</div>' : '') +
 			(o.stock_warning ? '<div class="mfg-warn"><i class="fa-solid fa-triangle-exclamation"></i> Stock not posted: ' + esc(o.stock_warning) + '</div>' : '') +
+			(o.stock_pending ? '<div class="mfg-warn"><i class="fa-solid fa-triangle-exclamation"></i> The finished trailer is not in stock yet: material was short when it was delivered.' +
+				((o.shortages || []).length
+					? ' Receive these, then press Post stock now:<ul style="margin:6px 0 0 18px">' + o.shortages.map(function (r) {
+						return '<li><b>' + esc(r.item_name) + '</b>: needs ' + r.required + ' ' + esc(r.uom || "") + ', ' + r.in_stock + ' in ' + esc(r.warehouse) + '</li>';
+					}).join("") + '</ul>'
+					: ' The material is in stock now: press Post stock now.') + '</div>' : '') +
 			actionArea(o) +
 			'<div class="fieldset-title">Stage History</div>' + history;
 
 		if (o.editable) wireEditable();
+		else if (canLab) wireLabour(roOps, function () { rerenderTables(); });
+		var sl = document.getElementById("save-labour");
+		if (sl) sl.addEventListener("click", saveLabour);
+		wireHistory();
 		var adv = document.getElementById("advance-btn");
 		if (adv) adv.addEventListener("click", advance);
+		var ps = document.getElementById("post-stock-btn");
+		if (ps) ps.addEventListener("click", function () {
+			ps.disabled = true; ps.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Posting…';
+			callMethod(API + "post_production_stock", { name: current })
+				.then(function (r) { renderDetail(r); refresh(true); })
+				.catch(function (e) { alert("Stock not posted: " + e.message); renderDetail(detail, false); });
+		});
 		var sv = document.getElementById("save-tables");
 		if (sv) sv.addEventListener("click", saveTables);
 	}
@@ -640,22 +775,8 @@
 				rerenderTables();
 			});
 		});
-		// labour dropdown: every employee, or add a new one
-		detailEl.querySelectorAll("[data-op-labour]").forEach(function (sel) {
-			var i = +sel.dataset.opLabour;
-			sel.addEventListener("change", function () {
-				if (sel.value === "__new__") {
-					sel.value = editOps[i].labour || "";
-					openMasterModal("labour", "", function (it) {
-						editOps[i].labour = it.value; editOps[i].labour_name = it.label; editOps[i].labour_from_bom = false;
-						rerenderTables();
-					});
-					return;
-				}
-				editOps[i].labour = sel.value; editOps[i].labour_name = labourName(sel.value); editOps[i].labour_from_bom = false;
-				rerenderTables();
-			});
-		});
+		// labour: any number of workers per step, or add a new one
+		wireLabour(editOps, function (i) { editOps[i].labour_from_bom = false; rerenderTables(); });
 		// hours in, minutes stored
 		detailEl.querySelectorAll("[data-op-hrs]").forEach(function (inp) {
 			inp.addEventListener("input", function () {
@@ -669,11 +790,36 @@
 		});
 		var opAdd = detailEl.querySelector("[data-op-add]");
 		if (opAdd) opAdd.addEventListener("click", function () {
-			editOps.push({ operation: "", workstation: "", labour: "", labour_name: "", time_in_mins: 0, hour_rate: 0 }); rerenderTables();
+			editOps.push({ operation: "", workstation: "", labours: [], time_in_mins: 0, hour_rate: 0 }); rerenderTables();
 		});
 	}
 	// re-render the panel WITHOUT re-seeding the editable tables (keeps in-memory edits)
 	function rerenderTables() { if (detail) renderDetail(detail, false); }
+
+	function saveLabour() {
+		var btn = document.getElementById("save-labour");
+		if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving…'; }
+		return callMethod(API + "set_operation_labour", { name: current, operations: roOps.map(function (r) { return { idx: r.idx, labours: r.labours }; }) })
+			.then(function (o) { renderDetail(o); })
+			.catch(function (e) { alert("Save failed: " + e.message); if (btn) { btn.disabled = false; btn.innerHTML = 'Save labour'; } });
+	}
+
+	function wireHistory() {
+		detailEl.querySelectorAll("[data-hist-edit]").forEach(function (b) {
+			b.addEventListener("click", function () { histEdit = +b.dataset.histEdit; rerenderTables(); });
+		});
+		var cancel = document.getElementById("hist-cancel");
+		if (cancel) cancel.addEventListener("click", function () { histEdit = null; rerenderTables(); });
+		var save = document.getElementById("hist-save");
+		if (save) save.addEventListener("click", function () {
+			var when = document.getElementById("hist-when").value;
+			if (!when) { alert("Enter the date and time"); return; }
+			save.disabled = true;
+			callMethod(API + "update_stage_entry", { name: current, idx: histEdit, entered_on: when, notes: document.getElementById("hist-notes").value })
+				.then(function (o) { detail.stage_history = o.stage_history; histEdit = null; rerenderTables(); })
+				.catch(function (e) { alert("Save failed: " + e.message); save.disabled = false; });
+		});
+	}
 
 	function saveTables() {
 		var btn = document.getElementById("save-tables");
@@ -683,10 +829,20 @@
 			.catch(function (e) { alert("Save failed: " + e.message); if (btn) { btn.disabled = false; btn.innerHTML = 'Save materials & operations'; } throw e; });
 	}
 
-	function advance() {
+	var ALLOW_SHORT = false;
+	function advance(checked) {
 		// Unsaved material edits are saved first, so the cut works from what is on screen.
 		if (detail && detail.editable && tablesJson() !== seedTables) {
-			saveTables().then(advance).catch(function () {});
+			saveTables().then(function () { advance(); }).catch(function () {});
+			return;
+		}
+		// Leaving Material: if anything is short, ask first (continue negative,
+		// raise a Material Request, or cancel).
+		if (detail && detail.stage_index === 0 && checked !== true) {
+			ALLOW_SHORT = false;
+			callMethod(API + "material_check", { name: current })
+				.then(function (res) { if ((res.rows || []).length) openShort(res); else advance(true); })
+				.catch(function (e) { alert("Could not check the material: " + e.message); });
 			return;
 		}
 		// Leaving the first stage (Material) the sheet pieces are cut: the user chooses
@@ -706,10 +862,51 @@
 		if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Working…'; }
 		var args = { name: current, notes: notes };
 		if (sheetChoices) args.sheet_choices = sheetChoices;
+		if (ALLOW_SHORT && detail && detail.stage_index === 0) args.allow_shortage = 1;
 		return callMethod(API + "advance_stage", args)
 			.then(function (o) { renderDetail(o); refresh(true); })
 			.catch(function (e) { alert("Could not advance: " + e.message); if (btn) { btn.disabled = false; renderDetail(detail, false); } });
 	}
+
+	// ---- material short pop-up ---------------------------------------------
+	var shortModal = document.getElementById("short-modal");
+	function fmtQ(v) { return (Math.round(Number(v || 0) * 1000) / 1000).toLocaleString(); }
+	function openShort(res) {
+		var rows = res.rows || [];
+		document.getElementById("short-sub").textContent = current + " — " + rows.length + " item" + (rows.length === 1 ? "" : "s") + " short to start fabrication";
+		var hasBatch = rows.some(function (r) { return r.batch; });
+		var html = '<div style="overflow-x:auto"><table class="table"><thead><tr><th>Item</th><th class="num">Needs</th><th class="num">Free</th><th class="num">Short</th><th>Already requested</th></tr></thead><tbody>' +
+			rows.map(function (r) {
+				return "<tr><td>" + esc(r.item_name) + (r.batch ? ' <span title="Batch item: cannot go negative">🔒</span>' : "") +
+					'<div class="muted" style="font-size:12px">' + esc(r.item_code) + " · " + esc(r.warehouse || "") + "</div></td>" +
+					'<td class="num">' + fmtQ(r.required) + " " + esc(r.uom || "") + '</td><td class="num">' + fmtQ(r.in_stock) +
+					'</td><td class="num"><b style="color:var(--danger,#c0392b)">' + fmtQ(r.short) + "</b></td><td>" +
+					(r.requested ? esc(r.requested) : "—") + "</td></tr>";
+			}).join("") + "</tbody></table></div>";
+		if (hasBatch) html += '<div class="alert" style="margin-top:10px">🔒 Sheets, channels, tubes and other batch items cannot go negative. This job can start only when they arrive — raise a Material Request.</div>';
+		else html += '<p class="muted" style="margin-top:10px;font-size:13px">Continue moves the job to Fabrication now; the shortage is noted in the stage history and these items go negative in stock when the trailer is delivered.</p>';
+		if (res.material_request) html += '<p style="margin-top:6px;font-size:13px">This work order already has an open request: <b>' + esc(res.material_request) + "</b>.</p>";
+		document.getElementById("short-body").innerHTML = html;
+		var cont = document.getElementById("short-continue");
+		cont.disabled = !res.can_continue;
+		cont.title = res.can_continue ? "" : "Batch items cannot go negative";
+		var req = document.getElementById("short-request");
+		req.disabled = false;
+		req.innerHTML = '<i class="fa-solid fa-clipboard-list"></i> ' + (res.material_request ? "Open " + esc(res.material_request) : "Raise Material Request");
+		shortModal.classList.add("is-open"); document.body.style.overflow = "hidden";
+	}
+	function closeShort() { shortModal.classList.remove("is-open"); document.body.style.overflow = ""; }
+	shortModal.querySelectorAll("[data-short-close]").forEach(function (b) { b.addEventListener("click", closeShort); });
+	shortModal.addEventListener("click", function (e) { if (e.target === shortModal) closeShort(); });
+	document.getElementById("short-continue").addEventListener("click", function () {
+		ALLOW_SHORT = true; closeShort(); advance(true);
+	});
+	document.getElementById("short-request").addEventListener("click", function () {
+		var b = this; b.disabled = true; b.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Raising…';
+		callMethod(API + "request_work_order_shortfall", { name: current })
+			.then(function (r) { window.location.href = "/a3-trading/purchase-requisitions?q=" + encodeURIComponent(r.material_request); })
+			.catch(function (e) { alert("Could not raise the request: " + e.message); b.disabled = false; b.innerHTML = '<i class="fa-solid fa-clipboard-list"></i> Raise Material Request'; });
+	});
 
 	// ---- cut size of a sheet row ------------------------------------------
 	var SHEET_API = "a3_trading_management.api.sheet_cut.", SHAPES = [], SHAPES_READY = null, INFO = {};
@@ -803,16 +1000,6 @@
 	});
 
 	// ---- sheet material --------------------------------------------------
-	function sheetPiecesBlock(o) {
-		var p = o.sheet_pieces || [];
-		if (!p.length) return "";
-		return '<div class="fieldset-title">Sheet pieces cut for this work order</div>' +
-			'<div style="font-size:13px;margin-bottom:12px">' + p.map(function (x) {
-				return '<div><i class="fa-solid fa-scissors" style="color:#ec2e5d"></i> ' + esc(x.item_name || x.item_code) + " — piece <b>" + esc(x.batch_no) + "</b> " +
-					x.length + "×" + x.width + " cm" + (x.shape && x.shape !== "Rectangle" ? " (" + esc(x.shape) + ")" : "") +
-					' <span class="muted">· ' + esc(x.warehouse) + (o.stage === "Delivery" ? " · used" : " · kept for this work order") + "</span></div>";
-			}).join("") + "</div>";
-	}
 	var sheetModal = document.getElementById("sheet-modal"), SHEET_ROWS = [];
 	// `cuts` ({x, y, l, w}) are drawn in red: the pieces this work order would take.
 	function sheetSvg(p, maxW, cuts, round) {
@@ -857,15 +1044,25 @@
 		if (src !== "new") r.leftovers.forEach(function (l) { if (lefts.indexOf(l.batch_no) >= 0) take(l, l.batch_no, "Leftover"); });
 		var short = src === "leftover" ? left : 0;
 		for (n = 1; src !== "leftover" && left > 0 && n <= Math.max(1, r.full_sheets); n++)
-			take({ length: r.sheet_length, width: r.sheet_width, cutouts: [] }, "New sheet" + (r.full_sheets > 1 ? " " + n : ""), "New");
+			take({ length: r.sheet_length, width: r.sheet_width, cutouts: [] }, "New sheet", "New");
+		// New sheets cut the same way are one line with a quantity, not one each.
+		var merged = [];
+		used.forEach(function (u) {
+			var last = merged[merged.length - 1];
+			if (u.kind === "New" && last && last.kind === "New" && JSON.stringify(last.cuts) === JSON.stringify(u.cuts)) last.qty++;
+			else { u.qty = 1; merged.push(u); }
+		});
+		used = merged;
 		var round = /circle|round/i.test(r.shape || "");
 		return '<div class="sh-prev"><div class="sh-prev__t">What will be cut</div><div class="sh-prev__row">' +
 			used.map(function (u) {
 				var area = u.cuts.length * L * W, before = Number(u.p.qty) || Number(u.p.length) * Number(u.p.width);
+				var each = u.qty > 1 ? " each" : "";
 				return '<div class="sh-prev__p">' + sheetSvg(u.p, 150, u.cuts, round) +
-					'<div><b>' + esc(u.label) + '</b> <span class="muted">· ' + u.kind + "</span><br>" +
-					u.cuts.length + " piece" + (u.cuts.length === 1 ? "" : "s") + " (" + Number(area).toLocaleString() + " cm²)<br>" +
-					'<span class="muted">Back to stock as one leftover: ' + Number(before - area).toLocaleString() + " cm²</span></div></div>";
+					'<div><b>' + esc(u.label) + '</b> <span class="muted">· ' + u.kind + "</span>" +
+					(u.qty > 1 ? ' &nbsp;<b>Qty ' + u.qty + '</b>' : '') + "<br>" +
+					u.cuts.length + " piece" + (u.cuts.length === 1 ? "" : "s") + " (" + Number(area).toLocaleString() + " cm²)" + each + "<br>" +
+					'<span class="muted">Back to stock as one leftover' + (u.qty > 1 ? " per sheet" : "") + ': ' + Number(before - area).toLocaleString() + " cm²</span></div></div>";
 			}).join("") + "</div>" +
 			(short > 0 || left > 0 ? '<div class="mfg-warn">' + (short || left) + " of " + r.pieces + " piece" + (r.pieces === 1 ? "" : "s") +
 				" do not fit in " + (src === "leftover" ? "the leftovers ticked. Tick more, or choose leftover + new sheet." : "the stock.") + "</div>" : "") +

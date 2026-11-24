@@ -1,0 +1,72 @@
+{% extends "templates/workshop_base.html" %}
+{% from "templates/macros/trading.html" import call_method_js, sup_kit, stat_row %}
+{% from "templates/macros/accounts.html" import accounts_kit %}
+{%- macro n(v) -%}{{ "{:,.2f}".format(v or 0) }}{%- endmacro -%}
+{%- macro nz(v) -%}{% if v and (v > 0.004 or v < -0.004) %}{{ "{:,.2f}".format(v) }}{% else %}<span class="muted">—</span>{% endif %}{%- endmacro -%}
+
+{% block page_content %}
+{#- ERPNext's own receivable / payable calculation (net of receipts, credit notes
+    and advances), aged on the due date and summed per party. -#}
+{%- set t = data.totals %}
+{%- set is_ar = party_type == "Customer" %}
+{{ stat_row([
+	{"label": "Total Outstanding", "value": "AED " ~ n(t.outstanding), "sub": ("Owed to us" if is_ar else "Owed by us")},
+	{"label": "Not Yet Due", "value": "AED " ~ n(t["Not due"]), "sub": "Within credit terms"},
+	{"label": "Overdue", "value": "AED " ~ n(t.outstanding - t["Not due"]), "sub": "Past the due date"},
+	{"label": "Over 90 Days", "value": "AED " ~ n(t["90+"]), "sub": "Chase first"},
+]) }}
+
+<div class="card"><div class="card__body">
+	<div class="ac-form">
+		<div class="field"><label>Show</label>
+			<div class="ac-seg">
+				<button type="button" class="{{ 'is-on' if is_ar }}" onclick="location.href='?type=Customer&as_on={{ report_date }}'">Receivable (customers)</button>
+				<button type="button" class="{{ 'is-on' if not is_ar }}" onclick="location.href='?type=Supplier&as_on={{ report_date }}'">Payable (suppliers)</button>
+			</div></div>
+		<div class="field"><label>As on</label><input id="ar-date" type="date" value="{{ report_date }}" onchange="location.href='?type={{ party_type }}&as_on=' + this.value"></div>
+		<input id="ar-search" placeholder="Search {{ 'customer' if is_ar else 'supplier' }}…" style="max-width:240px" oninput="arFilter(this.value)">
+		<button type="button" class="btn btn--outline" onclick="AC.printPdf(this, AC.API + 'receivable_pdf', { party_type: '{{ party_type }}', report_date: '{{ report_date }}' })"><i class="fa-solid fa-print"></i> Print</button>
+		<a class="btn btn--outline" target="_blank" rel="noopener" href="/api/method/a3_trading_management.api.accounts.receivable_pdf?party_type={{ party_type }}&report_date={{ report_date }}"><i class="fa-solid fa-file-pdf"></i> PDF</a>
+	</div>
+	<p class="ac-help">Days are counted from each invoice's due date. Click a name for its full Statement of Account.</p>
+</div></div>
+
+<div class="card" style="margin-top:12px"><div class="card__body" style="overflow-x:auto">
+	{%- if data.parties %}
+	<table class="table" id="ar-table">
+		<thead><tr>
+			<th>{{ "Customer" if is_ar else "Supplier" }}</th><th class="num">Invoices</th><th class="num">Invoiced</th><th class="num">Paid / notes</th>
+			<th class="num">Not due</th><th class="num">1-30</th><th class="num">31-60</th><th class="num">61-90</th><th class="num">90+</th><th class="num">Outstanding</th>
+		</tr></thead>
+		<tbody>
+		{%- for p in data.parties %}
+			<tr data-hay="{{ (p.party ~ ' ' ~ p.party_name) | lower }}">
+				<td><a href="/a3-trading/statement-of-account?party_type={{ party_type }}&party={{ p.party | urlencode }}"><b>{{ p.party_name }}</b></a></td>
+				<td class="num">{{ p.count }}</td>
+				<td class="num">{{ n(p.invoiced) }}</td><td class="num">{{ n(p.paid + p.credit_note) }}</td>
+				<td class="num">{{ nz(p["Not due"]) }}</td><td class="num">{{ nz(p["1-30"]) }}</td><td class="num">{{ nz(p["31-60"]) }}</td>
+				<td class="num">{{ nz(p["61-90"]) }}</td><td class="num">{{ nz(p["90+"]) }}</td><td class="num"><b>{{ n(p.outstanding) }}</b></td>
+			</tr>
+		{%- endfor %}
+		</tbody>
+		<tfoot><tr class="ac-total">
+			<td>Total</td><td></td><td class="num">{{ n(t.invoiced) }}</td><td class="num">{{ n(t.paid + t.credit_note) }}</td>
+			<td class="num">{{ n(t["Not due"]) }}</td><td class="num">{{ n(t["1-30"]) }}</td><td class="num">{{ n(t["31-60"]) }}</td>
+			<td class="num">{{ n(t["61-90"]) }}</td><td class="num">{{ n(t["90+"]) }}</td><td class="num">{{ n(t.outstanding) }}</td>
+		</tr></tfoot>
+	</table>
+	{%- else %}
+	<div class="empty">Nothing outstanding as on {{ frappe.utils.formatdate(report_date, "dd MMM yyyy") }}.</div>
+	{%- endif %}
+</div></div>
+
+{{ call_method_js() }}
+{{ sup_kit() }}
+{{ accounts_kit() }}
+<script>
+function arFilter(q) {
+	q = (q || "").toLowerCase();
+	document.querySelectorAll("#ar-table tbody tr").forEach(function (tr) { tr.style.display = !q || tr.dataset.hay.indexOf(q) >= 0 ? "" : "none"; });
+}
+</script>
+{% endblock %}

@@ -171,6 +171,31 @@ def _labour(employee):
     return employee
 
 
+def _labour_ids(row):
+    """Every worker on an operation row: Labour first, then More Labour."""
+    ids = [row.get("custom_labour")] + (row.get("custom_more_labour") or "").split(",")
+    out = []
+    for e in ids:
+        e = (e or "").strip()
+        if e and e not in out:
+            out.append(e)
+    return out
+
+
+def _labour_fields(labours=None, single=None):
+    """A list of workers (or the old single one) as the two row fields."""
+    if labours is None:
+        labours = [single] if single else []
+    elif isinstance(labours, str):
+        labours = labours.split(",")
+    ids = []
+    for e in labours:
+        e = _labour(e)
+        if e and e not in ids:
+            ids.append(e)
+    return {"custom_labour": ids[0] if ids else None, "custom_more_labour": ", ".join(ids[1:]) or None}
+
+
 def _copy_labour_from_bom(wo):
     """ERPNext copies BOM operations field by field and knows nothing of the
     labour column, so carry it across: matched by BOM row order, else by name."""
@@ -178,7 +203,7 @@ def _copy_labour_from_bom(wo):
         return
     bom_ops = frappe.get_all(
         "BOM Operation", filters={"parent": wo.bom_no, "parenttype": "BOM"},
-        fields=["idx", "operation", "custom_labour"], order_by="idx",
+        fields=["idx", "operation", "custom_labour", "custom_more_labour"], order_by="idx",
     )
     by_idx = {r.idx: r for r in bom_ops}
     by_op = {}
@@ -190,6 +215,7 @@ def _copy_labour_from_bom(wo):
             src = by_op.get(d.operation)
         if src and src.custom_labour and not d.get("custom_labour"):
             d.custom_labour = src.custom_labour
+            d.custom_more_labour = src.get("custom_more_labour")
 
 
 # ---------------------------------------------------------------------------
@@ -1099,19 +1125,29 @@ def get_work_order(name):
     bom_labour = {}
     if wo.bom_no:
         for b in frappe.get_all("BOM Operation", filters={"parent": wo.bom_no, "parenttype": "BOM"},
-                                fields=["idx", "operation", "custom_labour"], order_by="idx"):
+                                fields=["idx", "operation", "custom_labour", "custom_more_labour"],
+                                order_by="idx"):
             if b.custom_labour:
-                bom_labour.setdefault(("idx", b.idx, b.operation), b.custom_labour)
-                bom_labour.setdefault(("op", b.operation), b.custom_labour)
+                bom_labour.setdefault(("idx", b.idx, b.operation), _labour_ids(b))
+                bom_labour.setdefault(("op", b.operation), _labour_ids(b))
 
     def _op_labour(d):
         if d.get("custom_labour"):
-            return d.custom_labour, False
+            return _labour_ids(d), False
         found = bom_labour.get(("idx", d.idx, d.operation)) or bom_labour.get(("op", d.operation))
-        return (found, True) if found else ("", False)
+        return (found, True) if found else ([], False)
 
-    operations = [
-        {
+    names = {}
+
+    def _name(e):
+        if e not in names:
+            names[e] = frappe.db.get_value("Employee", e, "employee_name") or e
+        return names[e]
+
+    operations = []
+    for d in wo.operations:
+        labs, from_bom = _op_labour(d)
+        operations.append({
             "idx": d.idx,
             "operation": d.operation,
             "workstation": d.workstation,
@@ -1121,13 +1157,12 @@ def get_work_order(name):
             "hour_rate_fmt": _money(d.hour_rate, currency),
             "operating_cost": flt(d.planned_operating_cost),
             "operating_cost_fmt": _money(d.planned_operating_cost, currency),
-            "labour": _op_labour(d)[0],
-            "labour_from_bom": _op_labour(d)[1],
-            "labour_name": (frappe.db.get_value("Employee", _op_labour(d)[0], "employee_name")
-                            if _op_labour(d)[0] else "") or "",
-        }
-        for d in wo.operations
-    ]
+            "labour": labs[0] if labs else "",
+            "labours": labs,
+            "labour_names": [_name(e) for e in labs],
+            "labour_name": ", ".join(_name(e) for e in labs),
+            "labour_from_bom": from_bom,
+        })
 
     chassis_numbers = frappe.get_all(
         "Trailer Serial", filters={"work_order": wo.name}, pluck="chassis_number", order_by="creation asc"
@@ -1141,6 +1176,8 @@ def get_work_order(name):
 
     history = [
         {
+            "idx": h.idx,
+            "entered_on_raw": h.entered_on and get_datetime(h.entered_on).strftime("%Y-%m-%dT%H:%M"),
             "stage": h.stage,
             "from_stage": h.from_stage or "—",
             "entered_on": frappe.utils.format_datetime(h.entered_on, "dd MMM yyyy, HH:mm")
@@ -1187,6 +1224,7 @@ def get_work_order(name):
         "wip_warehouse": wo.wip_warehouse,
         "fg_warehouse": wo.fg_warehouse,
         "chassis_numbers": [c for c in chassis_numbers if c],
+        "deliveries": _trailer_deliveries(wo.name),
         "planned_start": frappe.utils.format_datetime(wo.planned_start_date, "dd MMM yyyy")
         if wo.planned_start_date
         else "—",
@@ -1197,6 +1235,9 @@ def get_work_order(name):
         "required_items": required_items,
         "operations": operations,
         "stage_history": history,
+        # Reached Delivery but nothing posted (material was short): offer to post it.
+        "stock_pending": bool(wo.docstatus == 1 and stage == "Delivery" and not stock_entry),
+        "shortages": _shortages(wo) if (wo.docstatus == 1 and stage == "Delivery" and not stock_entry) else [],
         "costing": {
             "raw_material": _money(rm_cost, currency),
             "operating": _money(op_cost, currency),
@@ -1307,12 +1348,71 @@ def update_work_order_tables(name, required_items=None, operations=None):
                     "workstation": workstation,
                     "time_in_mins": flt(r.get("time_in_mins")),
                     "hour_rate": hour_rate,
-                    "custom_labour": _labour(r.get("labour")),
+                    **_labour_fields(r.get("labours"), r.get("labour")),
                 },
             )
 
     wo.flags.ignore_permissions = True
     wo.save(ignore_permissions=True)
+    return get_work_order(name)
+
+
+@frappe.whitelist()
+def set_operation_labour(name, operations):
+    """Who worked on each operation, at any stage: also after the work order is
+    submitted (the labour fields are allow_on_submit). `operations` is
+    [{idx, labours: [employee, ...]}]."""
+    wo = frappe.get_doc("Work Order", name)
+    if wo.docstatus == 2:
+        frappe.throw(_("Work order {0} is cancelled").format(name))
+    rows = operations if isinstance(operations, list) else json.loads(operations)
+    by_idx = {d.idx: d for d in wo.operations}
+    for r in rows:
+        d = by_idx.get(cint(r.get("idx")))
+        if not d:
+            continue
+        vals = _labour_fields(r.get("labours") or [])
+        vals["custom_labour_name"] = (frappe.db.get_value("Employee", vals["custom_labour"], "employee_name")
+                                      if vals["custom_labour"] else None)
+        frappe.db.set_value("Work Order Operation", d.name, vals)
+    frappe.db.commit()
+    return get_work_order(name)
+
+
+@frappe.whitelist()
+def update_stage_entry(name, idx, entered_on, notes=None):
+    """Correct when a stage was entered (and its note). The time is stamped
+    automatically on each move; this is for when the move was recorded late.
+    Hours are re-worked for this stage and the one after it."""
+    wo = frappe.get_doc("Work Order", name)
+    if wo.docstatus == 2:
+        frappe.throw(_("Work order {0} is cancelled").format(name))
+    rows = list(wo.custom_stage_history)
+    pos = next((i for i, h in enumerate(rows) if h.idx == cint(idx)), None)
+    if pos is None:
+        frappe.throw(_("Stage history row {0} not found").format(idx))
+    when = get_datetime(str(entered_on).replace("T", " "))
+    if when > now_datetime():
+        frappe.throw(_("The time cannot be in the future"))
+    if pos > 0 and rows[pos - 1].entered_on and when < get_datetime(rows[pos - 1].entered_on):
+        frappe.throw(_("{0} cannot start before {1} ({2})").format(
+            rows[pos].stage, rows[pos - 1].stage, frappe.utils.format_datetime(rows[pos - 1].entered_on, "dd MMM yyyy, HH:mm")))
+    if pos < len(rows) - 1 and rows[pos + 1].entered_on and when > get_datetime(rows[pos + 1].entered_on):
+        frappe.throw(_("{0} cannot start after {1} ({2})").format(
+            rows[pos].stage, rows[pos + 1].stage, frappe.utils.format_datetime(rows[pos + 1].entered_on, "dd MMM yyyy, HH:mm")))
+    rows[pos].entered_on = when
+    if notes is not None:
+        rows[pos].notes = notes
+    for i in (pos, pos + 1):
+        if i >= len(rows):
+            continue
+        h = rows[i]
+        dur = round(time_diff_in_hours(h.entered_on, rows[i - 1].entered_on), 2) if i > 0 and rows[i - 1].entered_on else 0
+        vals = {"entered_on": h.entered_on, "duration_hours": dur}
+        if i == pos:
+            vals["notes"] = h.notes
+        frappe.db.set_value("Workshop Work Order Stage Log", h.name, vals)
+    frappe.db.commit()
     return get_work_order(name)
 
 
@@ -1342,7 +1442,7 @@ def _append_stage_log(wo, to_stage, notes):
 
 
 @frappe.whitelist()
-def advance_stage(name, notes=None, sheet_choices=None):
+def advance_stage(name, notes=None, sheet_choices=None, allow_shortage=0):
     """Move the Work Order to the next production stage. Advancing into the final
     Delivery stage submits the Work Order and posts a Manufacture Stock Entry so
     the finished item lands in stock.
@@ -1357,6 +1457,24 @@ def advance_stage(name, notes=None, sheet_choices=None):
         frappe.throw(_("Work order is already at the final stage"))
 
     nxt = STAGES[idx + 1]
+    if cur == STAGES[0]:
+        # Production starts only when all the material is there, counting what
+        # other work orders already in production will use -- unless the user
+        # chose "Continue with negative stock" in the shortage pop-up. Items that
+        # can never go negative (batch items) still block.
+        short = _shortages(wo, reserve=True)
+        if short and cint(allow_shortage):
+            hard = _blocking(short, all_rows=False)
+            if hard:
+                frappe.throw(_("These are batch items and cannot go negative. Receive them first.")
+                             + "<br><br>" + _shortage_text(hard), title=_("Material short"))
+            line = _("Started short (stock will go negative): {0}").format(
+                ", ".join("{0} {1} {2}".format(r["item_name"], r["short"], r["uom"] or "") for r in short))
+            notes = (notes + " | " + line) if notes else line
+        elif short:
+            frappe.throw(_("Not enough material to start this work order (after what other work orders in "
+                           "production need). Receive it first, then move it to Fabrication.")
+                         + "<br><br>" + _shortage_text(short), title=_("Material short"))
     _sheet_material(wo, cur, nxt, sheet_choices)
     if cur == "QC":
         # Leaving QC is the QC sign-off: it lands on the Quality screen's list,
@@ -1371,6 +1489,9 @@ def advance_stage(name, notes=None, sheet_choices=None):
 
     result = {"stock_entry": None, "stock_warning": None}
     if nxt == "Delivery":
+        # Safety net (checked at Fabrication already): never deliver half-posted.
+        # With Allow Negative Stock on, only items that cannot go negative block.
+        _check_stock(wo, blocking_only=True)
         result = _complete_production(wo)
 
     detail = get_work_order(name)
@@ -1404,12 +1525,189 @@ def _sheet_material(wo, cur, nxt, sheet_choices):
     wo.custom_sheet_plan = json.dumps({"choices": choices, "cut": []})
 
 
+def _held_by_others(wo):
+    """Material other work orders in production (past Material, stock not yet
+    posted) still need: {(item, warehouse): qty}."""
+    held = {}
+    for r in frappe.db.sql("""
+            select wi.item_code, coalesce(wi.source_warehouse, w.source_warehouse) as wh,
+                sum(wi.required_qty - wi.consumed_qty) as qty
+            from `tabWork Order Item` wi join `tabWork Order` w on w.name = wi.parent
+            where w.name != %s and w.docstatus < 2
+                and w.custom_production_stage in ('Fabrication', 'Assembly', 'Paint', 'QC', 'Delivery')
+                and not exists (select 1 from `tabStock Entry` se where se.work_order = w.name
+                    and se.purpose = 'Manufacture' and se.docstatus = 1)
+            group by wi.item_code, wh""", wo.name, as_dict=True):
+        held[(r.item_code, r.wh)] = flt(r.qty)
+    return held
+
+
+def _trailer_deliveries(work_order):
+    """Each trailer built on this work order and where it went: the submitted
+    Delivery Note it left on (by its serial, or by chassis number for a note
+    carrying several trailers), the customer, and the invoice raised on it.
+    The production stage "Delivery" only means finished and handed to the yard."""
+    out = []
+    for t in frappe.get_all("Trailer Serial", filters={"work_order": work_order},
+                            fields=["name", "chassis_number", "status", "current_owner", "warehouse"],
+                            order_by="creation asc"):
+        dn = frappe.db.sql(
+            """select name, posting_date, customer_name from `tabDelivery Note`
+            where docstatus = 1 and (custom_trailer_serial = %(s)s
+                or (%(c)s != '' and concat(', ', ifnull(custom_chassis_number, ''), ',') like %(like)s))
+            order by posting_date desc, creation desc limit 1""",
+            {"s": t.name, "c": t.chassis_number or "", "like": "%, " + (t.chassis_number or "") + ",%"}, as_dict=True)
+        dn = dn[0] if dn else None
+        invoice = None
+        if dn:
+            invoice = frappe.db.sql(
+                """select sii.parent from `tabSales Invoice Item` sii join `tabSales Invoice` si on si.name = sii.parent
+                where si.docstatus = 1 and si.is_return = 0 and sii.delivery_note = %s limit 1""", dn.name)
+            invoice = invoice[0][0] if invoice else None
+        out.append({
+            "serial": t.name, "chassis": t.chassis_number, "status": t.status,
+            "delivered": bool(dn), "customer": (dn.customer_name if dn else None) or (t.current_owner if dn else None),
+            "delivery_note": dn.name if dn else None,
+            "delivery_date": frappe.utils.formatdate(dn.posting_date, "dd MMM yyyy") if dn else None,
+            "invoice": invoice, "yard": None if dn else t.warehouse,
+        })
+    return out
+
+
+def _shortages(wo, reserve=False):
+    """Raw material the work order still needs but its warehouse does not have.
+    With `reserve`, what other work orders in production need is set aside first.
+    Checked even with Allow Negative Stock on: that setting is there so past
+    shortages can show as negative stock, not to start jobs without material."""
+    held = _held_by_others(wo) if reserve else {}
+    out = []
+    for d in wo.required_items:
+        need = flt(d.required_qty) - flt(d.consumed_qty)
+        if need <= 0 or not frappe.get_cached_value("Item", d.item_code, "is_stock_item"):
+            continue
+        wh = d.source_warehouse or wo.source_warehouse or wo.wip_warehouse
+        have = flt(frappe.db.get_value("Bin", {"item_code": d.item_code, "warehouse": wh}, "actual_qty"))
+        have = max(0.0, have - held.get((d.item_code, wh), 0))
+        if have + 1e-6 < need:
+            out.append({"item_code": d.item_code, "item_name": d.item_name or d.item_code, "warehouse": wh,
+                        "uom": d.stock_uom, "required": flt(need, 3), "in_stock": flt(have, 3),
+                        "short": flt(need - have, 3)})
+    return out
+
+
+def _shortage_text(rows):
+    return "<br>".join("{0}: needs {1} {2}, {3} available in {4}".format(
+        frappe.bold(r["item_name"]), r["required"], r["uom"] or "", r["in_stock"], r["warehouse"]) for r in rows)
+
+
+def _blocking(rows, all_rows=None):
+    """The shortages that stop a move: batch items always (ERPNext never lets a
+    batch go negative); every row when Allow Negative Stock is off."""
+    if all_rows is None:
+        all_rows = not cint(frappe.db.get_single_value("Stock Settings", "allow_negative_stock"))
+    if all_rows:
+        return rows
+    return [r for r in rows if frappe.get_cached_value("Item", r["item_code"], "has_batch_no")]
+
+
+def _check_stock(wo, reserve=False, blocking_only=False):
+    rows = _shortages(wo, reserve)
+    if blocking_only:
+        rows = _blocking(rows)
+    if rows:
+        msg = (_("Not enough material to start this work order (after what other work orders in production "
+                 "need). Receive it first, then move it to Fabrication.") if reserve
+               else _("Not enough material to finish this work order. Receive it first."))
+        frappe.throw(msg + "<br><br>" + _shortage_text(rows), title=_("Material short"))
+
+
+def _open_wo_request(wo_name):
+    """The open Purchase Material Request raised for this work order, if any."""
+    return frappe.db.get_value("Material Request", {
+        "work_order": wo_name, "material_request_type": "Purchase", "docstatus": ["<", 2],
+        "status": ["not in", ["Cancelled", "Stopped", "Received"]]}, "name")
+
+
+@frappe.whitelist()
+def material_check(name):
+    """What the shortage pop-up shows before leaving Material: each short item
+    (after what other work orders in production need), whether it is a batch
+    item (cannot go negative), and any open request already holding it."""
+    wo = frappe.get_doc("Work Order", name)
+    from a3_trading_management.api.live_stock import _open_mr_by_item
+
+    on_mr = _open_mr_by_item()
+    rows = _shortages(wo, reserve=True)
+    for r in rows:
+        r["batch"] = bool(frappe.get_cached_value("Item", r["item_code"], "has_batch_no"))
+        r["requested"] = on_mr.get(r["item_code"])
+    return {"rows": rows, "material_request": _open_wo_request(name),
+            "can_continue": bool(rows) and not any(r["batch"] for r in rows)}
+
+
+@frappe.whitelist()
+def request_work_order_shortfall(name):
+    """One Purchase Material Request per work order for what it is short of.
+    If the order already has an open one, that one is returned instead."""
+    frappe.has_permission("Material Request", "create", throw=True)
+    existing = _open_wo_request(name)
+    if existing:
+        return {"material_request": existing, "existing": True}
+    wo = frappe.get_doc("Work Order", name)
+    rows = _shortages(wo, reserve=True)
+    if not rows:
+        frappe.throw(_("Nothing is short for {0}").format(name))
+    from a3_trading_management.api.live_stock import _company, _mr_warehouse
+
+    mr = frappe.new_doc("Material Request")
+    mr.material_request_type = "Purchase"
+    mr.company = wo.company or _company()
+    mr.transaction_date = frappe.utils.nowdate()
+    mr.schedule_date = frappe.utils.nowdate()
+    mr.work_order = wo.name
+    mr.title = _("For {0}: {1}").format(wo.name, wo.item_name or wo.production_item)[:140]
+    for r in rows:
+        mr.append("items", {"item_code": r["item_code"], "qty": r["short"], "schedule_date": frappe.utils.nowdate(),
+                            "warehouse": r["warehouse"] or _mr_warehouse()})
+    mr.flags.ignore_mandatory = True
+    mr.insert(ignore_permissions=True)
+    return {"material_request": mr.name, "existing": False, "items": len(rows)}
+
+
+@frappe.whitelist()
+def post_production_stock(name):
+    """For a work order that reached Delivery without its stock being posted
+    (material was short then): post the Manufacture entry now."""
+    wo = frappe.get_doc("Work Order", name)
+    if wo.docstatus != 1 or (wo.custom_production_stage or "") != "Delivery":
+        frappe.throw(_("Only a delivered work order can post its stock here"))
+    if frappe.db.exists("Stock Entry", {"work_order": wo.name, "purpose": "Manufacture", "docstatus": 1}):
+        frappe.throw(_("Stock for {0} is already posted").format(name))
+    _check_stock(wo, blocking_only=True)
+    result = _post_manufacture(wo)
+    if result["stock_warning"]:
+        frappe.throw(result["stock_warning"], title=_("Stock not posted"))
+    frappe.db.commit()
+    detail = get_work_order(name)
+    detail.update(result)
+    return detail
+
+
 def _complete_production(wo):
-    """Submit the Work Order and post a Manufacture Stock Entry. Stock posting is
-    best-effort: if raw material isn't on hand the entry is rolled back (via a
-    savepoint) and a warning is returned, but the stage still reads Delivery."""
+    """Submit the Work Order and post a Manufacture Stock Entry. Stock is checked
+    first (_check_stock); should the entry still fail, the whole move to Delivery
+    is undone so the screen never shows a delivered order with nothing in stock."""
     wo.flags.ignore_permissions = True
     wo.submit()
+    result = _post_manufacture(wo)
+    if result["stock_warning"]:
+        frappe.throw(_("Stock could not be posted, so the work order stays at QC: {0}").format(result["stock_warning"]),
+                     title=_("Stock not posted"))
+    return result
+
+
+def _post_manufacture(wo):
+    """Post the Manufacture Stock Entry; returns {stock_entry, stock_warning}."""
 
     # The portal tracks operations through the stage stepper rather than ERPNext
     # Job Cards, so mark every operation complete for the produced qty; otherwise

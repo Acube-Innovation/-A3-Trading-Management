@@ -34,11 +34,11 @@
 		<tbody>
 		{%- for m in moves %}
 			{%- set st = "Submitted" if m.docstatus == 1 else "Cancelled" if m.docstatus == 2 else "Draft" %}
-			<tr data-hay="{{ (m.name ~ ' ' ~ (m["items"] | map(attribute='item_code') | join(' ')) ~ ' ' ~ (m.from_warehouse or '') ~ ' ' ~ (m.to_warehouse or '')) | lower }}" data-status="{{ st }}">
+			<tr data-hay="{{ (m.name ~ ' ' ~ (m["items"] | map(attribute='item_code') | join(' ')) ~ ' ' ~ (m["items"] | map(attribute='item_name') | join(' ')) ~ ' ' ~ (m.from_warehouse or '') ~ ' ' ~ (m.to_warehouse or '')) | lower }}" data-status="{{ st }}">
 				<td><b>{{ m.name }}</b></td>
 				<td>{{ m.stock_entry_type or m.purpose }}</td>
 				<td>{{ frappe.utils.formatdate(m.posting_date, "dd MMM yyyy") }}</td>
-				<td>{%- for i in m["items"][:3] %}{{ i.item_code }} &times;{{ "%g" | format(i.qty) }}{% if not loop.last %}, {% endif %}{%- endfor %}
+				<td>{%- for i in m["items"][:3] %}{{ i.item_name or i.item_code }} &times;{{ "%g" | format(i.qty) }}{% if not loop.last %}, {% endif %}{%- endfor %}
 					{%- if m["items"] | length > 3 %} <span class="muted">+{{ (m["items"] | length) - 3 }} more</span>{% endif %}</td>
 				<td>{{ m.from_warehouse or (m["items"][0].s_warehouse if m["items"] else "") or "—" }}</td>
 				<td>{{ m.to_warehouse or (m["items"][0].t_warehouse if m["items"] else "") or "—" }}</td>

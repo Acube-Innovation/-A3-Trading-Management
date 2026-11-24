@@ -1,0 +1,62 @@
+{% extends "templates/workshop_base.html" %}
+{% from "templates/macros/trading.html" import call_method_js, sup_kit, doc_modals %}
+{% from "templates/macros/accounts.html" import accounts_kit %}
+
+{% block page_content %}
+{#- General Ledger for one account (a group account takes in its children),
+    read from GL Entry, with opening and running balance. -#}
+<div class="card"><div class="card__body">
+	<div class="ac-form">
+		<div class="field field--wide"><label>Account <span class="req">*</span></label>
+			<div><input id="gl-account" placeholder="Search any account: bank, cash, sales, rent…" autocomplete="off" value="{{ account }}" data-value="{{ account }}"></div></div>
+		<div class="field"><label>Quick pick</label>
+			<select id="gl-quick"><option value="">—</option>
+			{%- for a in quick %}<option value="{{ a.name }}">{{ a.account_type }} · {{ a.name }}</option>{% endfor %}</select></div>
+		<div class="field"><label>From</label><input id="gl-from" type="date" value="{{ from_date }}"></div>
+		<div class="field"><label>To</label><input id="gl-to" type="date" value="{{ to_date }}"></div>
+		<button type="button" class="btn btn--primary" id="gl-go"><i class="fa-solid fa-magnifying-glass"></i> Show</button>
+		<button type="button" class="btn btn--outline" id="gl-print" disabled><i class="fa-solid fa-print"></i> Print</button>
+	</div>
+	<p class="ac-help">Dr balance on an asset or expense account is normal (money in the bank, cost incurred); Cr balance is normal on liability, income and capital accounts.</p>
+</div></div>
+<div id="gl-out"></div>
+
+{{ call_method_js() }}
+{{ sup_kit() }}
+{{ accounts_kit() }}
+{{ doc_modals() }}
+<script>
+(function () {
+	var acc = document.getElementById("gl-account"), from = document.getElementById("gl-from"), to = document.getElementById("gl-to");
+	if (!from.value) from.value = AC.yearStart();
+	if (!to.value) to.value = AC.today();
+	SK.picker(acc, AC.accounts, function () { go(); });
+	document.getElementById("gl-quick").addEventListener("change", function () { if (this.value) { acc.value = this.value; acc.dataset.value = this.value; go(); } });
+	function args() { return { account: acc.dataset.value, from_date: from.value, to_date: to.value }; }
+	function go() {
+		if (!acc.dataset.value) { alert("Choose an account from the list."); return; }
+		var out = document.getElementById("gl-out");
+		out.innerHTML = '<div class="card" style="margin-top:12px"><div class="card__body"><div class="empty">Loading…</div></div></div>';
+		tradingCall(AC.API + "general_ledger", args()).then(function (d) {
+			document.getElementById("gl-print").disabled = false;
+			history.replaceState(null, "", "?" + new URLSearchParams(args()).toString());
+			var rows = d.lines.map(function (l) {
+				return "<tr><td>" + AC.date(l.date) + "</td><td>" + SK.esc(l.label) + "</td><td><a href=\"#\" onclick=\"openDoc('" + l.voucher_type + "','" + l.voucher_no + "');return false\">" + SK.esc(l.voucher_no) +
+					"</a></td><td>" + SK.esc(l.party || l.against) + (l.description ? '<div class="muted" style="font-size:11px">' + SK.esc(l.description) + "</div>" : "") +
+					'</td><td class="num">' + AC.nz(l.debit) + '</td><td class="num">' + AC.nz(l.credit) + '</td><td class="num">' + AC.drcr(l.balance) + "</td></tr>";
+			}).join("");
+			out.innerHTML = '<div class="card" style="margin-top:12px"><div class="card__body">' +
+				'<div class="section-title" style="margin-top:0">' + SK.esc(d.account) + ' <span class="muted" style="font-weight:400">· ' + SK.esc(d.root_type) + "</span></div>" +
+				'<div class="ac-sum"><div><span>Opening</span><b>' + AC.drcr(d.opening) + '</b></div><div><span>Debit</span><b>' + AC.n(d.total_debit) + '</b></div><div><span>Credit</span><b>' + AC.n(d.total_credit) + '</b></div><div><span>Closing</span><b>' + AC.drcr(d.closing) + "</b></div></div>" +
+				'<div style="overflow-x:auto"><table class="table"><thead><tr><th>Date</th><th>Type</th><th>Voucher</th><th>Party / against</th><th class="num">Debit</th><th class="num">Credit</th><th class="num">Balance</th></tr></thead><tbody>' +
+				'<tr class="ac-open"><td>' + AC.date(d.from_date) + '</td><td colspan="3">Opening balance</td><td></td><td></td><td class="num">' + AC.drcr(d.opening) + "</td></tr>" + rows +
+				'<tr class="ac-total"><td colspan="4">Total</td><td class="num">' + AC.n(d.total_debit) + '</td><td class="num">' + AC.n(d.total_credit) + '</td><td class="num">' + AC.drcr(d.closing) + "</td></tr></tbody></table></div>" +
+				(d.lines.length ? "" : '<div class="empty">No postings in this period.</div>') + "</div></div>";
+		}).catch(function (e) { out.innerHTML = '<div class="card"><div class="card__body"><div class="sk-err" style="display:block">' + SK.esc(SK.err(e)) + "</div></div></div>"; });
+	}
+	document.getElementById("gl-go").addEventListener("click", go);
+	document.getElementById("gl-print").addEventListener("click", function () { AC.printPdf(this, AC.API + "ledger_pdf", args()); });
+	if (acc.dataset.value) go();
+})();
+</script>
+{% endblock %}

@@ -20,6 +20,10 @@ def require_login(context=None):
 
 	if context is not None:
 		context.csrf_token = _csrf_token()
+		# Only a Super Admin submits (api/submit_guard); the pages say so up front.
+		from a3_trading_management.api.submit_guard import can_submit
+
+		context.can_submit = can_submit()
 	return context
 
 

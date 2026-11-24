@@ -1,0 +1,66 @@
+{#- Shared bits for the Accounts pages (statement, receivable, ledger, vouchers,
+    notes). Needs call_method_js() and sup_kit() first. -#}
+{%- macro accounts_kit() -%}
+<style>
+	.ac-form { display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end; }
+	.ac-form .field { margin:0; min-width:150px; }
+	.ac-form .field--wide { flex:1 1 260px; }
+	.ac-seg { display:inline-flex; border:1px solid var(--border); border-radius:8px; overflow:hidden; }
+	.ac-seg button { border:0; background:var(--surface); padding:7px 12px; font:inherit; font-size:13px; cursor:pointer; color:var(--muted); }
+	.ac-seg button.is-on { background:var(--navy, #00268A); color:#fff; }
+	.ac-sum { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; margin:12px 0; }
+	.ac-sum div { background:var(--bg); border-radius:8px; padding:8px 12px; }
+	.ac-sum span { display:block; font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; }
+	.ac-sum b { font-size:16px; }
+	tr.ac-open td { font-style:italic; background:var(--bg); }
+	tr.ac-total td { font-weight:700; border-top:2px solid var(--border); }
+	.ac-dr { color:#b3261e; } .ac-cr { color:#1e7b3a; }
+	.ac-help { font-size:12.5px; color:var(--muted); margin:4px 0 0; }
+	/* .field sets its own display, which beats the hidden attribute. */
+	.field[hidden], .modal [hidden] { display:none !important; }
+</style>
+<script>
+window.AC = {
+	API: "a3_trading_management.api.accounts.",
+	n: function (v) { return (Number(v) || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); },
+	nz: function (v) { return Math.abs(Number(v) || 0) < 0.005 ? "" : AC.n(v); },
+	drcr: function (v) { v = Number(v) || 0; return Math.abs(v) < 0.005 ? "0.00" : AC.n(Math.abs(v)) + (v > 0 ? " Dr" : " Cr"); },
+	date: function (s) { if (!s) return ""; var p = String(s).slice(0, 10).split("-"); return p[2] + "-" + p[1] + "-" + p[0]; },
+	today: function () { var d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); },
+	yearStart: function () { return new Date().getFullYear() + "-01-01"; },
+	parties: function (type) {
+		return function (q) {
+			return tradingCall("a3_trading_management.api._common.search_party", { doctype: type, search: q })
+				.then(function (r) { return (r || []).map(function (p) { return { label: p.label || p.name, sub: p.label && p.label !== p.name ? p.name : "", value: p.name }; }); });
+		};
+	},
+	accounts: function (q) {
+		return tradingCall("a3_trading_management.api._common.search_accounts", { search: q })
+			.then(function (r) { return (r || []).map(function (a) { return { label: a.name, sub: a.root_type, value: a.name }; }); });
+	},
+	// Fetch the PDF and open the print dialog on it; a new tab if the browser
+	// will not print a PDF from a frame.
+	printPdf: function (btn, method, args) {
+		var url = "/api/method/" + method + "?" + Object.keys(args).filter(function (k) { return args[k] != null && args[k] !== ""; })
+			.map(function (k) { return encodeURIComponent(k) + "=" + encodeURIComponent(args[k]); }).join("&");
+		var label = btn.innerHTML; btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Preparing…';
+		fetch(url, { credentials: "same-origin" }).then(function (r) {
+			if (!r.ok) return r.json().then(function (d) { throw new Error(tradingErrText(d) || r.statusText); }, function () { throw new Error(r.statusText); });
+			return r.blob();
+		}).then(function (blob) {
+			var u = URL.createObjectURL(new Blob([blob], { type: "application/pdf" }));
+			var old = document.getElementById("ac-pdf-frame"); if (old) old.remove();
+			var f = document.createElement("iframe"); f.id = "ac-pdf-frame";
+			f.style.cssText = "position:fixed;right:0;bottom:0;width:1px;height:1px;border:0;opacity:0";
+			f.onload = function () { setTimeout(function () { try { f.contentWindow.focus(); f.contentWindow.print(); } catch (e) { window.open(u, "_blank"); } }, 300); };
+			f.src = u; document.body.appendChild(f);
+		}).catch(function (e) { alert("Could not make the PDF: " + e.message); })
+			.then(function () { btn.disabled = false; btn.innerHTML = label; });
+	},
+	pdfLink: function (method, args) {
+		return "/api/method/" + method + "?" + Object.keys(args).filter(function (k) { return args[k] != null && args[k] !== ""; })
+			.map(function (k) { return encodeURIComponent(k) + "=" + encodeURIComponent(args[k]); }).join("&");
+	}
+};
+</script>
+{%- endmacro -%}

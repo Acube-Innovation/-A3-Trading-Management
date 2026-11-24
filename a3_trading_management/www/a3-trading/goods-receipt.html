@@ -72,7 +72,7 @@
 				<td>{{ r.supplier_name or r.supplier }}</td>
 				<td>{%- for po in r.purchase_orders %}<div>{{ po }}</div>{% endfor %}{%- for mr in r.material_requests %}<div><a href="/a3-trading/purchase-orders?material_request={{ mr | urlencode }}" style="font-size:12px">{{ mr }}</a></div>{% endfor %}{% if not r.purchase_orders and not r.material_requests %}<span class="muted">direct</span>{% endif %}</td>
 				<td>{{ frappe.utils.formatdate(r.posting_date, "dd MMM yyyy") }}</td>
-				<td>{%- for i in r["items"][:2] %}{{ i.item_code }}{% if i.serial_no %}
+				<td>{%- for i in r["items"][:2] %}{{ i.item_name or i.item_code }}{% if i.serial_no %}
 						<span class="muted" style="font-size:11px">(serialised)</span>{% endif %}{% if not loop.last %}, {% endif %}{%- endfor %}
 					{%- if r["items"] | length > 2 %} <span class="muted">+{{ (r["items"] | length) - 2 }}</span>{% endif %}</td>
 				<td class="num">{{ accepted | round(2) }}</td>

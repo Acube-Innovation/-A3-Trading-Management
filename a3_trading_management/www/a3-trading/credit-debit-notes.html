@@ -1,0 +1,151 @@
+{% extends "templates/workshop_base.html" %}
+{% from "templates/macros/trading.html" import status_pill, filter_bar, filter_script, call_method_js, stat_row, doc_modals, sup_kit %}
+{% from "templates/macros/accounts.html" import accounts_kit %}
+
+{% block page_content %}
+{#- A Credit Note (to a customer) is a Sales Invoice return; a Debit Note (to a
+    supplier) is a Purchase Invoice return. Both are raised against the invoice
+    they correct, carry its VAT, and reduce what is due on it. Drafts; a Super
+    Admin submits. -#}
+{%- set cn = notes | selectattr("kind", "equalto", "Credit Note") | list %}
+{%- set dn = notes | selectattr("kind", "equalto", "Debit Note") | list %}
+{{ stat_row([
+	{"label": "Credit Notes", "value": cn | length, "sub": "To customers"},
+	{"label": "Debit Notes", "value": dn | length, "sub": "To suppliers"},
+	{"label": "Drafts", "value": notes | selectattr("docstatus", "equalto", 0) | list | length, "sub": "Waiting to be submitted"},
+]) }}
+
+<div class="toolbar">
+	<div class="section-title" style="margin:0">Notes</div>
+	<div class="toolbar__right" style="display:flex;gap:8px">
+		<button type="button" class="btn btn--primary btn--sm" onclick="newNote('Sales Invoice')"><i class="fa-solid fa-plus"></i> Credit Note (customer)</button>
+		<button type="button" class="btn btn--outline btn--sm" onclick="newNote('Purchase Invoice')"><i class="fa-solid fa-plus"></i> Debit Note (supplier)</button>
+	</div>
+</div>
+
+{{ filter_bar("Search note, party, invoice…", [
+	{"key": "kind", "label": "Credit and debit notes", "options": ["Credit Note", "Debit Note"]},
+	{"key": "status", "label": "All statuses", "options": ["Draft", "Submitted", "Cancelled"]}
+]) }}
+
+<div class="card"><div class="card__body" style="overflow-x:auto">
+	{%- if notes %}
+	<table class="table" id="tf-table">
+		<thead><tr><th>Note</th><th>Type</th><th>Party</th><th>Against invoice</th><th>Date</th><th class="num">Amount incl. VAT</th><th>Status</th><th>Action</th></tr></thead>
+		<tbody>
+		{%- for n in notes %}
+			{%- set st = "Draft" if n.docstatus == 0 else ("Cancelled" if n.docstatus == 2 else "Submitted") %}
+			<tr data-hay="{{ (n.name ~ ' ' ~ (n.party or '') ~ ' ' ~ (n.against or '') ~ ' ' ~ n.remarks) | lower }}" data-kind="{{ n.kind }}" data-status="{{ st }}">
+				<td><b>{{ n.name }}</b>{% if n.remarks %}<div class="muted" style="font-size:11px">{{ n.remarks | truncate(50) }}</div>{% endif %}</td>
+				<td>{{ status_pill(n.kind) }}</td>
+				<td>{{ n.party }}</td>
+				<td>{% if n.against %}<a href="#" onclick="openDoc('{{ n.doctype }}', '{{ n.against }}');return false">{{ n.against }}</a>{% else %}—{% endif %}</td>
+				<td>{{ frappe.utils.formatdate(n.posting_date, "dd MMM yyyy") }}</td>
+				<td class="num">{{ frappe.utils.fmt_money(n.amount, currency="AED") }}</td>
+				<td>{{ status_pill(n.status, n.docstatus) }}</td>
+				<td style="white-space:nowrap">
+					<button type="button" class="btn btn--outline btn--sm" onclick="openDoc('{{ n.doctype }}', '{{ n.name }}')">Open</button>
+					{%- if n.docstatus == 0 and can_submit %}
+					<button class="btn btn--primary btn--sm" onclick="submitNote('{{ n.doctype }}', '{{ n.name }}')">Submit</button>{% endif %}</td>
+			</tr>
+		{%- endfor %}
+		</tbody>
+	</table>
+	{%- else %}<div class="empty">No credit or debit notes yet.</div>{% endif %}
+</div></div>
+
+<div class="modal-overlay" id="nt-modal" role="dialog" aria-modal="true">
+	<div class="modal" style="max-width:820px">
+		<div class="modal__head">
+			<div><h3 id="nt-title">Credit Note</h3><div class="sub" id="nt-sub"></div></div>
+			<button type="button" class="modal__close" data-sk-close><i class="fa-solid fa-xmark"></i></button>
+		</div>
+		<div class="modal__body">
+			<div class="form-grid">
+				<div class="field field--full"><label id="nt-inv-label">Against invoice <span class="req">*</span></label>
+					<div><input id="nt-inv" placeholder="Search invoice no. or party…" autocomplete="off"></div></div>
+				<div class="field"><label>Date <span class="req">*</span></label><input id="nt-date" type="date" value="{{ today }}"></div>
+				<div class="field"><label>Reason <span class="req">*</span></label><input id="nt-reason" placeholder="e.g. 2 pcs returned damaged / price agreed lower"></div>
+			</div>
+			<div id="nt-lines" style="margin-top:10px"></div>
+			<div class="sk-err" id="nt-err"></div>
+		</div>
+		<div class="modal__foot">
+			<span class="muted" id="nt-total" style="margin-right:auto"></span>
+			<button type="button" class="btn btn--outline" data-sk-close>Cancel</button>
+			<button type="button" class="btn btn--primary" id="nt-save"><i class="fa-solid fa-floppy-disk"></i> Save note</button>
+		</div>
+	</div>
+</div>
+
+{{ call_method_js() }}
+{{ sup_kit() }}
+{{ accounts_kit() }}
+<script>
+function submitNote(doctype, name) {
+	if (!confirm("Submit " + name + "? It posts to the ledger and reduces what is due on the invoice.")) return;
+	tradingAction(AC.API + "submit_voucher", { doctype: doctype, name: name }, name + " submitted.");
+}
+(function () {
+	var DT = null, INV = null;
+	var $ = function (id) { return document.getElementById(id); };
+	SK.picker($("nt-inv"), function (q) {
+		return tradingCall(AC.API + "search_invoices", { doctype: DT, search: q }).then(function (r) {
+			return r.map(function (i) { return { label: i.name + " · " + (i.party_name || i.party), sub: AC.date(i.posting_date) + " · AED " + AC.n(i.grand_total), value: i.name }; });
+		});
+	}, function (it) { load(it.value); });
+	window.newNote = function (dt) {
+		DT = dt; INV = null;
+		var credit = dt === "Sales Invoice";
+		$("nt-title").textContent = credit ? "Credit Note (to a customer)" : "Debit Note (to a supplier)";
+		$("nt-sub").textContent = credit
+			? "Reduces what a customer owes: goods returned, or a price allowance. VAT is reversed with it."
+			: "Reduces what we owe a supplier: goods sent back, or a price the supplier agreed to lower. VAT is reversed with it.";
+		$("nt-inv-label").innerHTML = (credit ? "Against sales invoice" : "Against purchase invoice") + ' <span class="req">*</span>';
+		$("nt-inv").value = ""; $("nt-inv").dataset.value = ""; $("nt-reason").value = ""; $("nt-lines").innerHTML = ""; $("nt-total").textContent = "";
+		$("nt-err").style.display = "none";
+		SK.open("nt-modal");
+		setTimeout(function () { $("nt-inv").focus(); }, 50);
+	};
+	function load(name) {
+		$("nt-lines").innerHTML = '<div class="muted">Loading…</div>';
+		tradingCall(AC.API + "invoice_lines", { doctype: DT, name: name }).then(function (d) {
+			INV = d;
+			$("nt-lines").innerHTML = '<div class="section-title" style="margin:4px 0">Lines <span class="muted" style="font-weight:400">— qty to credit, and the value per unit. For goods returned keep the invoice rate; for a price allowance put qty 1 and the amount off.</span></div>' +
+				'<table class="sk-lines"><thead><tr><th>Item</th><th class="num">Invoiced</th><th class="num">Already credited</th><th style="width:100px">Qty</th><th style="width:130px">Rate (AED)</th><th class="num">Amount</th></tr></thead><tbody>' +
+				d.lines.map(function (l) {
+					return '<tr data-row="' + SK.esc(l.name) + '"><td>' + SK.esc(l.item_name) + '<div class="muted" style="font-size:11px">' + SK.esc(l.item_code) + "</div></td>" +
+						'<td class="num">' + l.qty + " " + SK.esc(l.uom || "") + '</td><td class="num">' + (l.returned || "—") + "</td>" +
+						'<td><input class="nt-q num" type="number" min="0" step="any" max="' + (l.qty - l.returned) + '" value="0"></td>' +
+						'<td><input class="nt-r num" type="number" min="0" step="0.01" value="' + l.rate + '"></td><td class="num nt-a">—</td></tr>';
+				}).join("") + "</tbody></table>" +
+				'<p class="ac-help">Invoice total AED ' + AC.n(d.grand_total) + ", still due AED " + AC.n(d.outstanding_amount) + ". VAT is added on top of the amounts here, as on the invoice.</p>";
+			$("nt-lines").querySelectorAll("input").forEach(function (i) { i.addEventListener("input", total); });
+			total();
+		}).catch(function (e) { $("nt-lines").innerHTML = '<div class="sk-err" style="display:block">' + SK.esc(SK.err(e)) + "</div>"; });
+	}
+	function lines() {
+		return Array.prototype.map.call(document.querySelectorAll("#nt-lines tr[data-row]"), function (tr) {
+			return { name: tr.dataset.row, qty: Number(tr.querySelector(".nt-q").value) || 0, rate: tr.querySelector(".nt-r").value, tr: tr };
+		});
+	}
+	function total() {
+		var s = 0;
+		lines().forEach(function (l) { var a = l.qty * (Number(l.rate) || 0); s += a; l.tr.querySelector(".nt-a").textContent = l.qty ? AC.n(a) : "—"; });
+		$("nt-total").textContent = s ? "Before VAT: AED " + AC.n(s) : "";
+	}
+	$("nt-save").addEventListener("click", function () {
+		var err = $("nt-err"); err.style.display = "none";
+		var ls = lines().filter(function (l) { return l.qty > 0; }).map(function (l) { return { name: l.name, qty: l.qty, rate: l.rate }; });
+		var problem = (!INV && "Choose the invoice.") || (!ls.length && "Enter the quantity on at least one line.") || (!$("nt-reason").value.trim() && "Give the reason; it prints on the note.");
+		if (problem) { err.textContent = problem; err.style.display = "block"; return; }
+		var b = this; b.disabled = true;
+		tradingCall(AC.API + "create_note", { doctype: DT, against: INV.name, lines: JSON.stringify(ls), posting_date: $("nt-date").value, reason: $("nt-reason").value.trim() })
+			.then(function (r) { alert(r.name + " saved as a draft (AED " + AC.n(Math.abs(r.grand_total)) + " incl. VAT)." + (window.A3_CAN_SUBMIT ? "" : " Submission is for a Super Admin.")); location.reload(); })
+			.catch(function (e) { err.textContent = SK.err(e); err.style.display = "block"; b.disabled = false; });
+	});
+})();
+</script>
+{{ doc_modals() }}
+{{ filter_script() }}
+{% endblock %}

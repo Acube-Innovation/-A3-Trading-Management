@@ -89,6 +89,11 @@ override_doctype_class = {
 # Document Events (ERPNext / core doctypes only; this app's own doctypes have controllers)
 # ---------------
 doc_events = {
+	# Only a Super Admin submits quotations, orders, invoices, receipts, payments
+	# and journals (api/submit_guard.SUPER_ADMIN_SUBMIT); drafts are open to all.
+	"*": {
+		"before_submit": "a3_trading_management.api.submit_guard.before_submit",
+	},
 	# Materials never bought on a bill are costed at valuation, not 0.
 	"BOM": {
 		"before_validate": "a3_trading_management.api.avg_rate.bom_before_validate",

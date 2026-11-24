@@ -142,7 +142,7 @@ def list_stock_moves(limit=100):
 	               limit=limit, order_by="posting_date desc, modified desc")
 	lines = {}
 	for d in frappe.get_all("Stock Entry Detail", filters={"parent": ["in", [e.name for e in entries] or [""]]},
-	                        fields=["parent", "item_code", "qty", "uom", "s_warehouse", "t_warehouse"], order_by="idx"):
+	                        fields=["parent", "item_code", "item_name", "qty", "uom", "s_warehouse", "t_warehouse"], order_by="idx"):
 		lines.setdefault(d.parent, []).append(d)
 	for e in entries:
 		e["items"] = lines.get(e.name, [])

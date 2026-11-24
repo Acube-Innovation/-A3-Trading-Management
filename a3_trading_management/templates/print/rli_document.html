@@ -29,15 +29,27 @@
 {%- elif dt == "Quotation" -%}{%- set title = "Quotation" -%}
 {%- elif dt == "Sales Order" -%}{%- set title = "Sales Order" -%}
 {%- elif dt == "Payment Entry" -%}
-	{%- set title = {"Receive": "Receipt Voucher", "Pay": "Payment Voucher"}.get(doc.payment_type, "Transfer Voucher") -%}
-{%- elif dt == "Journal Entry" -%}{%- set title = "Journal Voucher" -%}
+	{#- Bank / Cash by the account the money went through (24 Nov 2026). -#}
+	{%- set via = frappe.db.get_value("Account", doc.paid_to if doc.payment_type == "Receive" else doc.paid_from, "account_type") if doc.payment_type in ("Receive", "Pay") else None -%}
+	{%- set via = (via ~ " ") if via in ("Bank", "Cash") else "" -%}
+	{%- set title = {"Receive": via ~ "Receipt Voucher", "Pay": via ~ "Payment Voucher"}.get(doc.payment_type, "Transfer Voucher") -%}
+{%- elif dt == "Journal Entry" -%}
+	{%- set title = "Journal Voucher" -%}
+	{%- if doc.voucher_type in ("Bank Entry", "Cash Entry") -%}
+		{%- set money = doc.accounts | selectattr("account_type", "in", ["Bank", "Cash"]) | list -%}
+		{%- set word = "Bank" if doc.voucher_type == "Bank Entry" else "Cash" -%}
+		{%- set title = word ~ (" Receipt Voucher" if money and money[0].debit_in_account_currency else " Payment Voucher") -%}
+	{%- elif doc.voucher_type in ("Credit Note", "Debit Note", "Contra Entry") -%}
+		{%- set title = doc.voucher_type -%}
+	{%- endif -%}
 {%- else -%}{%- set title = dt -%}
 {%- endif -%}
 {%- set no_label = {"Tax Invoice": "Invoice No", "Tax Credit Note": "Credit Note No", "Purchase Invoice": "Invoice No", "Debit Note": "Debit Note No",
                     "Purchase Order": "PO No", "Goods Received Note": "GRN No", "Goods Return Note": "Return No",
                     "Material Requisition": "Requisition No", "Quotation": "Quotation No", "Sales Order": "Order No"}.get(title, "Voucher No") -%}
-{#- A Quotation goes to the customer while still a draft, so it carries no DRAFT stamp. -#}
-{%- set draft = doc.docstatus == 0 and doc.doctype != "Quotation" -%}
+{#- No DRAFT stamp on any print: drafts go out (to suppliers, customers) before a
+    Super Admin submits them. A cancelled document is still stamped. -#}
+{%- set draft = false -%}
 {%- set cancelled = doc.docstatus == 2 -%}
 {#- Prices sit on a permission level the Supervisor does not have. Desk's
     standard print drops such fields, a Jinja format does not, so ask here. -#}
@@ -123,8 +135,11 @@
 	.rp-ref td.c { width: 22px; text-align: center; color: #777; }
 	.rp-ref td.v { color: #555; font-size: 11px; }
 	.rp-t { width: 100%; border-collapse: collapse; margin-top: 16px; }
-	.rp-t th { background: #f5f5f5; font-weight: bold; color: #333; font-size: 11px; text-align: left; vertical-align: middle; border: 0; }
-	.rp-t td { font-size: 10.5px; color: #555; vertical-align: top; border: 0; }
+	.rp-t.rp-priced { table-layout: fixed; }
+	.rp-t th { background: #f5f5f5; font-weight: bold; color: #333; font-size: 11px; text-align: left; vertical-align: bottom; border: 0; line-height: 1.3; }
+	.rp-t td { font-size: 10.5px; color: #555; vertical-align: top; border: 0; border-bottom: 1px solid #eee; word-wrap: break-word; }
+	.rp-t th.num, .rp-t td.num { text-align: right; }
+	.rp-t th.ctr, .rp-t td.ctr { text-align: center; }
 	.rp-t .num { text-align: right; white-space: nowrap; }
 	.rp-t .ctr { text-align: center; white-space: nowrap; }
 	.rp-t .sub { color: #999; font-size: 9.5px; }
@@ -213,10 +228,11 @@
 	{#- ------------------------------------------------ lines -#}
 	{%- if dt in ("Sales Invoice", "Sales Order", "Purchase Invoice", "Purchase Order", "Quotation") and show_price %}
 	{%- set ns = namespace(qty=0) %}
-	<table class="rp-t">
+	<table class="rp-t rp-priced">
 		<thead><tr>
-			<th style="width:19%">Items</th><th>Description</th><th class="ctr">Qty</th><th class="num">Rate</th><th class="num">Amount</th>
-			<th class="ctr">VAT</th><th class="num" style="width:62px;text-align:center">VAT<br>Amount</th><th class="num" style="width:62px;text-align:center">Total<br>Amount</th>
+			<th class="ctr" style="width:4%">#</th><th style="width:27%">Items</th><th style="width:20%">Description</th><th class="ctr" style="width:7%">Qty</th>
+			<th class="num" style="width:10%">Rate</th><th class="num" style="width:11%">Amount</th><th class="ctr" style="width:6%">VAT</th>
+			<th class="num" style="width:7%">VAT<br>Amount</th><th class="num" style="width:11%">Total<br>Amount</th>
 		</tr></thead>
 		<tbody>
 		{%- for it in doc.items %}
@@ -227,14 +243,15 @@
 			{%- set ns.qty = ns.qty + ((it.stock_qty if packed else it.qty) or 0) -%}
 			{%- set desc = it.description | striptags | trim if it.description else "" -%}
 			<tr>
-				<td>{{ it.item_name }}</td>
+				<td class="ctr">{{ loop.index }}</td>
+				<td><b>{{ it.item_name }}</b></td>
 				<td>{{ desc if desc and desc != it.item_name else it.item_code }}{% if dt == "Purchase Order" and it.schedule_date and it.schedule_date != doc.schedule_date %}<div class="sub">by {{ d(it.schedule_date) }}</div>{% endif %}</td>
 				<td class="ctr">{{ q(it.qty) }}{% if it.uom and it.uom != "Nos" %} {{ it.uom }}{% endif %}{% if packed %}<div class="sub">{{ q(it.stock_qty) }} Nos</div>{% endif %}</td>
 				<td class="num">{{ m(it.net_rate if it.net_rate is not none else it.rate) }}</td>
 				<td class="num">{{ m(net) }}</td>
 				<td class="ctr">{{ q(rate) }}%</td>
-				<td class="num" style="text-align:center">{{ m(tax) }}</td>
-				<td class="num" style="text-align:center">{{ m((net or 0) + tax) }}</td>
+				<td class="num">{{ m(tax) }}</td>
+				<td class="num"><b>{{ m((net or 0) + tax) }}</b></td>
 			</tr>
 		{%- endfor %}
 		</tbody>

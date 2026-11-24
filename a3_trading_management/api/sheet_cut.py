@@ -363,12 +363,16 @@ def _plan(value):
 
 
 def reserved_pieces(exclude_wo=None):
-	"""{batch_no: work order} for pieces cut for a work order not yet delivered."""
+	"""{batch_no: work order} for pieces cut for a work order whose stock is not
+	yet posted. A work order at Delivery whose Manufacture entry failed (material
+	short) still holds its pieces until it is posted."""
 	out = {}
+	posted = set(frappe.get_all("Stock Entry", filters={"purpose": "Manufacture", "docstatus": 1,
+	                                                    "work_order": ["is", "set"]}, pluck="work_order"))
 	for wo in frappe.get_all("Work Order", filters={"custom_sheet_plan": ["like", '%"cut": [[%'],
-	                                                  "docstatus": ["!=", 2], "custom_production_stage": ["!=", "Delivery"]},
+	                                                  "docstatus": ["!=", 2]},
 	                         fields=["name", "custom_sheet_plan"]):
-		if wo.name == exclude_wo:
+		if wo.name == exclude_wo or wo.name in posted:
 			continue
 		for c in plan_doc(wo.custom_sheet_plan)["cut"]:
 			out[c[1]] = wo.name
@@ -421,7 +425,11 @@ def cut_for_work_order(wo, plan):
 				if source == "leftover":
 					frappe.throw(_("{0}: the leftovers chosen hold only {1} of the {2} pieces of {3} x {4} cm. "
 					               "Choose leftover + new sheet.").format(r.item_name, k, r.pieces, r.length, r.width))
-				sheets = full_sheets(r.item_code, r.warehouse)
+				# A piece the size of a whole sheet takes that sheet as it is (no Repack),
+				# so it still shows as a full sheet: keep it, and sheets other open work
+				# orders hold, out of the pick or every piece lands on the same sheet.
+				taken = {u[1] for u in used} | set(reserved_pieces(exclude_wo=wo.name))
+				sheets = full_sheets(r.item_code, r.warehouse, exclude=taken)
 				if not sheets:
 					frappe.throw(_("{0}: no full sheet left in {1} for piece {2} of {3}")
 					             .format(r.item_name, r.warehouse, k + 1, r.pieces))
@@ -518,7 +526,7 @@ def sheet_needs(work_order):
 		out.append({
 			**r, "choice": saved.get(r.row),
 			"leftovers": [_piece_out(p) for p in fitting_leftovers(r.item_code, r.warehouse, r.length, r.width)],
-			"full_sheets": len(full_sheets(r.item_code, r.warehouse)),
+			"full_sheets": len(full_sheets(r.item_code, r.warehouse, exclude=set(reserved_pieces(exclude_wo=wo.name)))),
 			"sheet_length": sheet_size(r.item_code)[0], "sheet_width": sheet_size(r.item_code)[1],
 		})
 	return out

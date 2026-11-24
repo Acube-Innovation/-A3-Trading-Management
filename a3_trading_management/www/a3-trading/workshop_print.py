@@ -10,6 +10,13 @@ from a3_trading_management.website_utils import require_login
 no_cache = 1
 
 
+def _labour_names(op):
+	"""Every worker on the operation, by name: Labour, then More Labour."""
+	from a3_trading_management.api.manufacturing import _labour_ids
+
+	return ", ".join(frappe.db.get_value("Employee", e, "employee_name") or e for e in _labour_ids(op))
+
+
 def _fmt_date(v):
 	return formatdate(v, "dd MMM yyyy") if v else "—"
 
@@ -62,7 +69,7 @@ def _workorder(context, name):
 		],
 		"operations": [
 			{"operation": o.operation, "workstation": o.workstation or "—",
-			 "labour": o.get("custom_labour_name") or o.get("custom_labour") or "",
+			 "labour": _labour_names(o),
 			 "mins": flt(o.time_in_mins), "status": o.get("status") or "—"}
 			for o in (doc.get("operations") or [])
 		],

@@ -161,6 +161,16 @@ LABOUR_FIELDS = [
 		"read_only": 1,
 		"allow_on_submit": 1,
 	},
+	{
+		# A step often takes more than one worker: the first is Labour above, the
+		# rest are kept here as Employee IDs separated by commas.
+		"fieldname": "custom_more_labour",
+		"fieldtype": "Small Text",
+		"label": "More Labour",
+		"insert_after": "custom_labour_name",
+		"allow_on_submit": 1,
+		"description": "Other workers on this step: Employee IDs separated by commas.",
+	},
 ]
 for _dt in ("BOM Operation", "Work Order Operation"):
 	CUSTOM_FIELDS[_dt] = [dict(f) for f in LABOUR_FIELDS]

@@ -1,74 +1,82 @@
 {% extends "templates/workshop_base.html" %}
-{% from "templates/macros/trading.html" import status_pill, filter_bar, filter_script, call_method_js, stat_row, doc_modals %}
+{% from "templates/macros/trading.html" import status_pill, filter_bar, filter_script, call_method_js, stat_row, doc_modals, sup_kit %}
+{% from "templates/macros/accounts.html" import accounts_kit %}
 
 {% block page_content %}
-{#- Money in and money out, allocated against the invoices it settles, for both
-    customers and suppliers. Both sides are read from the real Payment Entry and
-    the real outstanding amounts. -#}
+{#- Money in and money out. With a customer / supplier it is a Payment Entry set
+    against their open invoices; without one (bank charges, rent, a loan) it is a
+    Bank / Cash journal against the account chosen. Saved as drafts; a Super
+    Admin submits. -#}
 
 {{ stat_row([
-	{"label": "Owed to Us", "value": frappe.utils.fmt_money(total_in), "sub": "Customer receivables"},
-	{"label": "Owed by Us", "value": frappe.utils.fmt_money(total_out), "sub": "Supplier payables"},
-	{"label": "Payments & Receipts", "value": payments | length, "sub": "Recorded"},
+	{"label": "Owed to Us", "value": frappe.utils.fmt_money(total_in, currency="AED"), "sub": "Customer receivables"},
+	{"label": "Owed by Us", "value": frappe.utils.fmt_money(total_out, currency="AED"), "sub": "Supplier payables"},
+	{"label": "Vouchers", "value": vouchers | length, "sub": "Recorded"},
+	{"label": "Drafts", "value": drafts, "sub": "Waiting to be submitted"},
 ]) }}
 
 <div class="toolbar">
-	<div class="section-title" style="margin:0">Payments &amp; Receipts</div>
-	<div class="toolbar__right">
+	<div class="section-title" style="margin:0">Vouchers</div>
+	<div class="toolbar__right" style="display:flex;gap:8px;flex-wrap:wrap">
+		<button type="button" class="btn btn--primary btn--sm" onclick="newVoucher('receipt')"><i class="fa-solid fa-hand-holding-dollar"></i> Payment Receipt</button>
+		<button type="button" class="btn btn--outline btn--sm" onclick="newVoucher('bank_receipt')"><i class="fa-solid fa-building-columns"></i> Bank Receipt</button>
+		<button type="button" class="btn btn--outline btn--sm" onclick="newVoucher('bank_payment')"><i class="fa-solid fa-money-bill-transfer"></i> Bank Payment</button>
 	</div>
 </div>
 
 <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:12px;margin-bottom:14px">
 	<div class="card"><div class="card__body">
-		<div class="section-title" style="margin-top:0">Receivable &middot; money in</div>
+		<div class="section-title" style="margin-top:0">Receivable &middot; money in <a href="/a3-trading/accounts-receivable" style="font-size:12px;font-weight:400;margin-left:6px">full list</a></div>
 		{%- if receivables %}
 		<table class="table"><tbody>
 		{%- for r in receivables[:8] %}
-			<tr><td>{{ r.customer_name or r.customer }}</td>
-				<td class="num">{{ frappe.utils.fmt_money(r.total, currency=r.currency) }}</td></tr>
+			<tr><td><a href="/a3-trading/statement-of-account?party_type=Customer&party={{ r.customer | urlencode }}">{{ r.customer_name or r.customer }}</a></td>
+				<td class="num">{{ frappe.utils.fmt_money(r.total, currency="AED") }}</td></tr>
 		{%- endfor %}
 		</tbody></table>
 		{%- else %}<div class="empty">Nothing outstanding from customers.</div>{% endif %}
 	</div></div>
 	<div class="card"><div class="card__body">
-		<div class="section-title" style="margin-top:0">Payable &middot; money out</div>
+		<div class="section-title" style="margin-top:0">Payable &middot; money out <a href="/a3-trading/accounts-receivable?type=Supplier" style="font-size:12px;font-weight:400;margin-left:6px">full list</a></div>
 		{%- if payables %}
 		<table class="table"><tbody>
 		{%- for p in payables[:8] %}
-			<tr><td>{{ p.supplier_name or p.supplier }}</td>
-				<td class="num">{{ frappe.utils.fmt_money(p.total, currency=p.currency) }}</td></tr>
+			<tr><td><a href="/a3-trading/statement-of-account?party_type=Supplier&party={{ p.supplier | urlencode }}">{{ p.supplier_name or p.supplier }}</a></td>
+				<td class="num">{{ frappe.utils.fmt_money(p.total, currency="AED") }}</td></tr>
 		{%- endfor %}
 		</tbody></table>
 		{%- else %}<div class="empty">Nothing outstanding to suppliers.</div>{% endif %}
 	</div></div>
 </div>
 
-{{ filter_bar("Search entry or party…", [
-	{"key": "ptype", "label": "Payments and receipts", "options": ["Receive", "Pay", "Internal Transfer"]},
+{{ filter_bar("Search voucher, party, reference…", [
+	{"key": "kind", "label": "All vouchers", "options": ["Bank Receipt", "Cash Receipt", "Bank Payment", "Cash Payment", "Receipt", "Payment", "Transfer"]},
 	{"key": "status", "label": "All statuses", "options": ["Draft", "Submitted", "Cancelled"]}
 ]) }}
 
 <div class="card"><div class="card__body" style="overflow-x:auto">
-	{%- if payments %}
+	{%- if vouchers %}
 	<table class="table" id="tf-table">
 		<thead><tr>
-			<th>Entry</th><th>Direction</th><th>Party</th><th>Date</th>
-			<th class="num">Amount</th><th class="num">Unallocated</th><th>Status</th><th>Action</th>
+			<th>Voucher</th><th>Type</th><th>Party / account</th><th>Through</th><th>Date</th>
+			<th class="num">Amount</th><th class="num">On account</th><th>Status</th><th>Action</th>
 		</tr></thead>
 		<tbody>
-		{%- for p in payments %}
-			<tr data-hay="{{ ((p.name or '') ~ ' ' ~ (p.party or '') ~ ' ' ~ (p.party_name or '')) | lower }}"
-				data-ptype="{{ p.payment_type or '' }}" data-status="{{ p.status or '' }}">
-				<td><b>{{ p.name }}</b></td>
-				<td>{{ status_pill("Receive" if p.payment_type == "Receive" else p.payment_type) }}</td>
-				<td>{{ p.party_name or p.party or "—" }}</td>
-				<td>{{ frappe.utils.formatdate(p.posting_date, "dd MMM yyyy") }}</td>
-				<td class="num">{{ frappe.utils.fmt_money(p.paid_amount if p.payment_type == "Pay" else p.received_amount) }}</td>
-				<td class="num">{{ frappe.utils.fmt_money(p.unallocated_amount) if p.unallocated_amount else "—" }}</td>
-				<td>{{ status_pill(p.status, p.docstatus) }}</td>
-				<td>{%- if p.docstatus == 0 %}
-					<button class="btn btn--primary btn--sm" onclick="submitEntry('{{ p.name }}')">Submit</button>
-					{%- else %}<button type="button" class="btn btn--outline btn--sm" onclick="openDoc('Payment Entry', '{{ p.name }}')">Open</button>{% endif %}</td>
+		{%- for v in vouchers %}
+			{%- set st = "Draft" if v.docstatus == 0 else ("Cancelled" if v.docstatus == 2 else "Submitted") %}
+			<tr data-hay="{{ (v.name ~ ' ' ~ v.party ~ ' ' ~ v.reference_no ~ ' ' ~ (v.remark or '')) | lower }}" data-kind="{{ v.kind }}" data-status="{{ st }}">
+				<td><b>{{ v.name }}</b>{% if v.reference_no %}<div class="muted" style="font-size:11px">Ref {{ v.reference_no }}</div>{% endif %}</td>
+				<td>{{ status_pill(v.kind) }}</td>
+				<td>{{ v.party or "—" }}</td>
+				<td style="font-size:12.5px">{{ v.through }}</td>
+				<td>{{ frappe.utils.formatdate(v.posting_date, "dd MMM yyyy") }}</td>
+				<td class="num">{{ frappe.utils.fmt_money(v.amount, currency="AED") }}</td>
+				<td class="num">{{ frappe.utils.fmt_money(v.unallocated, currency="AED") if v.unallocated else "—" }}</td>
+				<td>{{ status_pill(v.status, v.docstatus) }}</td>
+				<td style="white-space:nowrap">
+					<button type="button" class="btn btn--outline btn--sm" onclick="openDoc('{{ v.doctype }}', '{{ v.name }}')">Open</button>
+					{%- if v.docstatus == 0 and can_submit %}
+					<button class="btn btn--primary btn--sm" onclick="submitVoucher('{{ v.doctype }}', '{{ v.name }}')">Submit</button>{% endif %}</td>
 			</tr>
 		{%- endfor %}
 		</tbody>
@@ -78,12 +86,142 @@
 	{%- endif %}
 </div></div>
 
+{#- ------------------------------------------------------------ new voucher -#}
+<div class="modal-overlay" id="vc-modal" role="dialog" aria-modal="true">
+	<div class="modal" style="max-width:760px">
+		<div class="modal__head">
+			<div><h3 id="vc-title">Payment Receipt</h3><div class="sub" id="vc-sub"></div></div>
+			<button type="button" class="modal__close" data-sk-close><i class="fa-solid fa-xmark"></i></button>
+		</div>
+		<div class="modal__body">
+			<div class="form-grid">
+				<div class="field field--full"><label id="vc-who-label">Received from</label>
+					<div class="ac-seg" id="vc-who">
+						<button type="button" data-v="Customer">Customer</button>
+						<button type="button" data-v="Supplier">Supplier</button>
+						<button type="button" data-v="Account">Other (account)</button>
+					</div></div>
+				<div class="field field--full" id="vc-party-wrap"><label id="vc-party-label">Customer <span class="req">*</span></label>
+					<div><input id="vc-party" placeholder="Search by name…" autocomplete="off"></div></div>
+				<div class="field field--full" id="vc-account-wrap" hidden><label>Account <span class="req">*</span> <span class="muted" style="font-weight:400">— what the money is for, e.g. Bank Charges, Rent, Loan</span></label>
+					<div><input id="vc-account" placeholder="Search account…" autocomplete="off"></div></div>
+				<div class="field"><label id="vc-money-label">Into <span class="req">*</span></label>
+					<select id="vc-money">
+					{%- for a in money_accounts %}<option value="{{ a.name }}" data-type="{{ a.account_type }}">{{ a.account_type }} · {{ a.account_name }}</option>{% endfor %}</select></div>
+				<div class="field"><label>Amount (AED) <span class="req">*</span></label><input id="vc-amount" type="number" min="0" step="0.01" class="num"></div>
+				<div class="field"><label>Date <span class="req">*</span></label><input id="vc-date" type="date" value="{{ today }}"></div>
+				<div class="field"><label>Mode</label>
+					<select id="vc-mode"><option value="">—</option>{%- for m in modes %}<option value="{{ m.name }}" data-type="{{ m.type }}">{{ m.name }}</option>{% endfor %}</select></div>
+				<div class="field"><label>Cheque / transfer ref <span class="req" id="vc-ref-req">*</span></label><input id="vc-ref" placeholder="e.g. cheque 004512"></div>
+				<div class="field"><label>Reference date</label><input id="vc-refdate" type="date"></div>
+				<div class="field field--full"><label>Remark</label><input id="vc-remark" placeholder="What it is for"></div>
+			</div>
+			<div id="vc-inv" style="margin-top:10px"></div>
+			<div class="sk-err" id="vc-err"></div>
+		</div>
+		<div class="modal__foot">
+			<button type="button" class="btn btn--outline" data-sk-close>Cancel</button>
+			<button type="button" class="btn btn--primary" id="vc-save"><i class="fa-solid fa-floppy-disk"></i> Save voucher</button>
+		</div>
+	</div>
+</div>
+
 {{ call_method_js() }}
+{{ sup_kit() }}
+{{ accounts_kit() }}
 <script>
-function submitEntry(name) {
-	if (!confirm("Submit " + name + "?")) return;
-	tradingAction("a3_trading_management.api.buying.submit_payment", { name: name }, "Entry submitted.");
+function submitVoucher(doctype, name) {
+	if (!confirm("Submit " + name + "? It posts to the ledger.")) return;
+	tradingAction(AC.API + "submit_voucher", { doctype: doctype, name: name }, name + " submitted.");
 }
+(function () {
+	var KINDS = {
+		receipt: { title: "Payment Receipt", sub: "Money received from a customer, in cash or into the bank. It is set against their open invoices.", dir: "Receive", money: null, who: "Customer" },
+		bank_receipt: { title: "Bank Receipt", sub: "Money that came into a bank account: from a customer, a supplier refund, or anything else (loan, interest, capital).", dir: "Receive", money: "Bank", who: "Customer" },
+		bank_payment: { title: "Bank Payment", sub: "Money paid out of a bank account: to a supplier against their bills, or for an expense (rent, charges, salaries).", dir: "Pay", money: "Bank", who: "Supplier" }
+	};
+	var K = null, WHO = "Customer";
+	var $ = function (id) { return document.getElementById(id); };
+	var party = $("vc-party"), account = $("vc-account");
+	SK.picker(party, function (q) { return AC.parties(WHO)(q); }, loadInvoices);
+	SK.picker(account, AC.accounts, function () {});
+	function setWho(w) {
+		WHO = w;
+		document.querySelectorAll("#vc-who button").forEach(function (b) { b.classList.toggle("is-on", b.dataset.v === w); });
+		$("vc-party-wrap").hidden = w === "Account"; $("vc-account-wrap").hidden = w !== "Account";
+		$("vc-party-label").innerHTML = w + ' <span class="req">*</span>';
+		party.value = ""; party.dataset.value = ""; $("vc-inv").innerHTML = "";
+	}
+	document.querySelectorAll("#vc-who button").forEach(function (b) { b.addEventListener("click", function () { setWho(b.dataset.v); }); });
+	function refRequired() {
+		var o = $("vc-money").selectedOptions[0];
+		$("vc-ref-req").style.display = o && o.dataset.type === "Bank" ? "" : "none";
+	}
+	$("vc-money").addEventListener("change", refRequired);
+	window.newVoucher = function (kind) {
+		K = KINDS[kind];
+		$("vc-title").textContent = K.title; $("vc-sub").textContent = K.sub;
+		$("vc-who-label").textContent = K.dir === "Receive" ? "Received from" : "Paid to";
+		$("vc-money-label").innerHTML = (K.dir === "Receive" ? "Into" : "Paid from") + ' <span class="req">*</span>';
+		// Bank vouchers only offer bank accounts; a payment receipt offers both.
+		var first = null;
+		Array.prototype.forEach.call($("vc-money").options, function (o) {
+			o.hidden = K.money ? o.dataset.type !== K.money : false;
+			if (!o.hidden && !first) first = o;
+		});
+		var rak = Array.prototype.find.call($("vc-money").options, function (o) { return !o.hidden && /RAK/i.test(o.value); });
+		$("vc-money").value = (rak || first || {}).value || "";
+		["vc-amount", "vc-ref", "vc-refdate", "vc-remark"].forEach(function (id) { $(id).value = ""; });
+		$("vc-mode").value = K.money === "Bank" ? "Wire Transfer" : "";
+		account.value = ""; account.dataset.value = "";
+		$("vc-err").style.display = "none";
+		setWho(K.who); refRequired();
+		SK.open("vc-modal");
+		setTimeout(function () { party.focus(); }, 50);
+	};
+	function loadInvoices() {
+		var box = $("vc-inv");
+		var natural = (WHO === "Customer" && K.dir === "Receive") || (WHO === "Supplier" && K.dir === "Pay");
+		if (!party.dataset.value || !natural) { box.innerHTML = party.dataset.value ? '<p class="ac-help">This is a refund: it is kept on the account, not set against invoices.</p>' : ""; return; }
+		box.innerHTML = '<div class="muted">Loading open invoices…</div>';
+		tradingCall(AC.API + "open_invoices", { party_type: WHO, party: party.dataset.value }).then(function (rows) {
+			if (!rows.length) { box.innerHTML = '<p class="ac-help">No open invoices: the whole amount is kept as an advance on the account.</p>'; return; }
+			var total = rows.reduce(function (s, r) { return s + r.outstanding_amount; }, 0);
+			box.innerHTML = '<div class="section-title" style="margin:4px 0">Open invoices <span class="muted" style="font-weight:400">— tick the ones this pays; none ticked = oldest first. Anything left over stays on account.</span></div>' +
+				'<table class="sk-lines"><thead><tr><th></th><th>Invoice</th><th>Date</th><th>Due</th><th class="num">Total</th><th class="num">Outstanding</th></tr></thead><tbody>' +
+				rows.map(function (r) {
+					return '<tr><td><input type="checkbox" class="vc-pick" value="' + SK.esc(r.name) + '" data-amt="' + r.outstanding_amount + '" style="width:auto"></td><td>' + SK.esc(r.name) + "</td><td>" + AC.date(r.posting_date) + "</td><td>" + AC.date(r.due_date) +
+						'</td><td class="num">' + AC.n(r.grand_total) + '</td><td class="num">' + AC.n(r.outstanding_amount) + "</td></tr>";
+				}).join("") + '</tbody><tfoot><tr><td colspan="5"><b>Total outstanding</b></td><td class="num"><b>' + AC.n(total) + "</b></td></tr></tfoot></table>";
+			if (!$("vc-amount").value) $("vc-amount").value = total.toFixed(2);
+			box.querySelectorAll(".vc-pick").forEach(function (c) {
+				c.addEventListener("change", function () {
+					var s = 0; box.querySelectorAll(".vc-pick:checked").forEach(function (x) { s += Number(x.dataset.amt); });
+					if (s) $("vc-amount").value = s.toFixed(2);
+				});
+			});
+		});
+	}
+	$("vc-save").addEventListener("click", function () {
+		var err = $("vc-err"); err.style.display = "none";
+		var o = $("vc-money").selectedOptions[0];
+		var args = {
+			direction: K.dir, money_account: $("vc-money").value, amount: $("vc-amount").value, posting_date: $("vc-date").value,
+			mode_of_payment: $("vc-mode").value, reference_no: $("vc-ref").value.trim(), reference_date: $("vc-refdate").value, remark: $("vc-remark").value.trim()
+		};
+		if (WHO === "Account") args.account = account.dataset.value; else { args.party_type = WHO; args.party = party.dataset.value; }
+		args.invoices = JSON.stringify(Array.prototype.map.call(document.querySelectorAll("#vc-inv .vc-pick:checked"), function (c) { return c.value; }));
+		var problem = WHO === "Account" ? (!args.account && "Choose the account the money is for.") : (!args.party && "Choose the " + WHO.toLowerCase() + " from the list.");
+		problem = problem || (!(Number(args.amount) > 0) && "Enter the amount.") || (!args.money_account && "Choose the bank or cash account.") ||
+			(o && o.dataset.type === "Bank" && !args.reference_no && "Enter the cheque / transfer reference.");
+		if (problem) { err.textContent = problem; err.style.display = "block"; return; }
+		var b = this; b.disabled = true;
+		tradingCall(AC.API + "create_voucher", args).then(function (r) {
+			alert(K.title + " " + r.name + " saved as a draft." + (r.unallocated ? " AED " + AC.n(r.unallocated) + " is kept on account (advance)." : "") + (window.A3_CAN_SUBMIT ? "" : " Submission is for a Super Admin."));
+			location.reload();
+		}).catch(function (e) { err.textContent = SK.err(e); err.style.display = "block"; b.disabled = false; });
+	});
+})();
 </script>
 {{ doc_modals() }}
 {{ filter_script() }}

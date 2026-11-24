@@ -57,11 +57,15 @@
 				<td class="num">{{ "%.0f%%" | format(o.per_billed or 0) }}</td>
 				<td>{{ status_pill(o.status, o.docstatus) }}</td>
 				<td style="white-space:nowrap">
+					{#- Open (print view + details) on every order, so a PO can be printed
+					    and sent to the supplier from draft onwards. -#}
 					{%- if o.docstatus == 0 %}
+					<button type="button" class="btn btn--outline btn--sm" onclick="openDoc('Purchase Order', '{{ o.name }}')"><i class="fa-solid fa-print"></i> Open</button>
 					<button class="btn btn--primary btn--sm" onclick="submitPO('{{ o.name }}')">Approve</button>
 					{%- elif o.docstatus == 1 and (o.per_received or 0) < 100 %}
+					<button type="button" class="btn btn--outline btn--sm" onclick="openDoc('Purchase Order', '{{ o.name }}')"><i class="fa-solid fa-print"></i> Open</button>
 					<button class="btn btn--outline btn--sm" onclick="receivePO('{{ o.name }}')">Receive</button>
-					{%- else %}<button type="button" class="btn btn--outline btn--sm" onclick="openDoc('Purchase Order', '{{ o.name }}', { edit: { fields: ['qty', 'rate'], method: 'a3_trading_management.api.buying.update_order_rates', label: 'Save rates' } })">Open</button>{% endif %}
+					{%- else %}<button type="button" class="btn btn--outline btn--sm" onclick="openDoc('Purchase Order', '{{ o.name }}', { edit: { fields: ['qty', 'rate'], method: 'a3_trading_management.api.buying.update_order_rates', label: 'Save rates' } })"><i class="fa-solid fa-print"></i> Open</button>{% endif %}
 				</td>
 			</tr>
 		{%- endfor %}

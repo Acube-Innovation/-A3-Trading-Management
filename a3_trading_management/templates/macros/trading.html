@@ -91,10 +91,20 @@ function tradingCall(method, args) {
 		body: JSON.stringify(args || {})
 	}).then(function (r) {
 		return r.json().then(function (data) {
-			if (!r.ok) throw new Error((data && data._server_messages) || (data && data.exc) || r.statusText);
+			if (!r.ok) throw new Error(tradingErrText(data) || r.statusText);
 			return data.message;
 		});
 	});
+}
+// A failed call as plain text: the error messages (not info notes such as
+// "Item Price added"), one per line, tags stripped.
+function tradingErrText(data) {
+	if (!data) return "";
+	var msgs = [];
+	try { msgs = JSON.parse(data._server_messages || "[]").map(function (s) { try { return JSON.parse(s); } catch (x) { return { message: s }; } }); } catch (x) {}
+	var errs = msgs.filter(function (o) { return o.raise_exception || o.indicator === "red"; });
+	var txt = (errs.length ? errs : msgs).map(function (o) { return o.message || ""; }).join("\n") || data.exception || data.exc || "";
+	return String(txt).replace(/<br\s*\/?>/gi, "\n").replace(/<[^>]+>/g, "");
 }
 function tradingAction(method, args, okMsg) {
 	return tradingCall(method, args).then(function (res) {
@@ -421,6 +431,8 @@ function requestDeletion(doctype, name) {
 				return "<tr data-row=\"" + esc(r.name) + "\">" + cols.map(function (c) {
 					var v = r[c[0]];
 					if (edit && edit.fields.indexOf(c[0]) >= 0) return '<td class="num"><input class="num" type="number" step="any" data-field="' + c[0] + '" value="' + esc(v == null ? "" : v) + '"></td>';
+					// Items read by name; the code sits small underneath.
+					if (c[0] === "item_code" && r.item_name && r.item_name !== v) return "<td>" + esc(r.item_name) + '<div class="muted" style="font-size:11px">' + esc(v) + "</div></td>";
 					if (c[2] === "money") v = money(v); else if (v == null) v = "—";
 					return "<td" + (c[2] ? ' class="num"' : "") + ">" + esc(v) + "</td>";
 				}).join("") + "</tr>";
@@ -591,6 +603,8 @@ function requestDeletion(doctype, name) {
 		if (problem) { err.textContent = problem; err.style.display = "block"; return; }
 		var b = this; b.disabled = true; b.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving…';
 		call(CFG.method, CFG.build(head, lines())).then(function (r) {
+			// Saved as a draft; only a Super Admin can submit it.
+			if (window.A3_CAN_SUBMIT === false) alert("Saved as draft" + (r && r.name ? " " + r.name : "") + ".\n\nSubmission only for Super Admin: ask a Super Admin to approve it.");
 			if (CFG.onDone) CFG.onDone(r); else location.reload();
 		}).catch(function (e) { err.textContent = errText(e); err.style.display = "block"; b.disabled = false; b.innerHTML = '<i class="fa-solid fa-check"></i> Save'; });
 	});

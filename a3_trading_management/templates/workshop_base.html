@@ -241,6 +241,7 @@
     them out, and anything marked `.price` is hidden as well. -#}
 {%- set is_sup = supervisor is defined and supervisor -%}
 <body class="workshop{% if embed %} is-embed{% endif %}{% if is_sup %} is-supervisor{% endif %}">
+	<script>window.A3_CAN_SUBMIT = {{ "true" if (can_submit is defined and can_submit) else "false" }};</script>
 	{%- if is_sup %}
 	<style>.is-supervisor .price, .is-supervisor .not-sup { display: none !important; }
 </style>
@@ -275,7 +276,8 @@
 			"/a3-trading/delivery-invoice", "/a3-trading/awaiting-dispatch",
 			"/a3-trading/delivery-notes", "/a3-trading/sales-invoices",
 			"/a3-trading/payments-receipts",
-			"/a3-trading/journal-entries",
+			"/a3-trading/journal-entries", "/a3-trading/credit-debit-notes",
+			"/a3-trading/statement-of-account", "/a3-trading/accounts-receivable", "/a3-trading/ledger",
 		 ]},
 		{"label": "Live Stock", "route": "/a3-trading/live-stock", "icon": "fa-boxes-stacked"},
 		{"label": "Stock Moves", "route": "/a3-trading/stock-moves", "icon": "fa-right-left"},
