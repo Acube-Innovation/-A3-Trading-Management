@@ -9,7 +9,7 @@ each action calls that document's own submit. No balance is recomputed here.
 
 import frappe
 from frappe import _
-from frappe.utils import flt, getdate, nowdate, date_diff
+from frappe.utils import cint, flt, getdate, nowdate, date_diff
 
 from a3_trading_management.api._common import (
 	rows, status_counts, submit_document, cancel_document, default_company, ageing_bucket, apply_taxes,
@@ -683,14 +683,21 @@ def create_purchase_invoice(supplier, items, bill_no=None, bill_date=None, posti
 		pi.set_posting_time = 1
 	pi.bill_no = (bill_no or "").strip() or None
 	pi.bill_date = getdate(bill_date) if bill_date else None
-	pi.update_stock = 1
 	pi.disable_rounded_total = 1
 	default_yard = _mr_warehouse()
+	# Expenses bought on a bill (stationery, coupons) are non-stock items: they take
+	# no warehouse, and a bill of only those does not update stock (as on the Desk).
+	in_stock = {}
+	for row in items:
+		item_code = row["item_code"].strip()
+		found = frappe.get_cached_value("Item", item_code, ["stock_uom", "is_stock_item"])
+		if not found or not found[0]:
+			frappe.throw(_("Item {0} not found").format(item_code))
+		in_stock[item_code] = cint(found[1])
+	pi.update_stock = 1 if any(in_stock.values()) else 0
 	for row in items:
 		item_code = row["item_code"].strip()
 		stock_uom = frappe.get_cached_value("Item", item_code, "stock_uom")
-		if not stock_uom:
-			frappe.throw(_("Item {0} not found").format(item_code))
 		packing = (row.get("packing_type") or "").strip() or None
 		loose, uom = _packing(packing)
 		uom = stock_uom if loose else uom
@@ -733,7 +740,7 @@ def create_purchase_invoice(supplier, items, bill_no=None, bill_date=None, posti
 			"uom": uom,
 			"conversion_factor": per_pack,
 			"rate": flt(row.get("pack_rate")),
-			"warehouse": row.get("warehouse") or default_yard,
+			"warehouse": (row.get("warehouse") or default_yard) if in_stock[item_code] else None,
 			"custom_packing_type": packing,
 			"custom_inner_packing": inner,
 			"custom_inner_per_pack": inner_per,

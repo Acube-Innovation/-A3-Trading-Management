@@ -266,6 +266,62 @@ def dispatch_serial(sales_order, serials=None):
 	return {"name": dn.name}
 
 
+def _stock_by_warehouse(item_code):
+	return {b.warehouse: flt(b.actual_qty) for b in frappe.get_all(
+		"Bin", filters={"item_code": item_code, "actual_qty": [">", 0]}, fields=["warehouse", "actual_qty"])}
+
+
+def _pick_warehouse(item_code, qty, preferred=None):
+	"""Where `qty` of the item can come from: the order's warehouse when it holds
+	enough, else the warehouse holding the most. None when no warehouse has enough
+	(negative stock is allowed on this site, so ERPNext would not stop it)."""
+	stock = _stock_by_warehouse(item_code)
+	if preferred and stock.get(preferred, 0) >= qty:
+		return preferred
+	best = max(stock.items(), key=lambda kv: kv[1], default=(None, 0))
+	return best[0] if best[1] >= qty else None
+
+
+@frappe.whitelist()
+def order_stock(sales_order):
+	"""What an order still has to deliver and whether stock covers it, for a
+	trailer held in stock without a serial (opening stock)."""
+	frappe.has_permission("Sales Order", "read", doc=sales_order, throw=True)
+	so = frappe.get_doc("Sales Order", sales_order)
+	lines = []
+	for it in so.items:
+		pending = flt(it.stock_qty) - flt(it.delivered_qty) * flt(it.conversion_factor or 1)
+		if pending <= 0 or not frappe.get_cached_value("Item", it.item_code, "is_stock_item"):
+			continue
+		stock = _stock_by_warehouse(it.item_code)
+		lines.append({"item_code": it.item_code, "item_name": it.item_name, "pending": pending,
+		              "in_stock": sum(stock.values()), "warehouse": _pick_warehouse(it.item_code, pending, it.warehouse)})
+	return {"docstatus": so.docstatus, "lines": lines,
+	        "covered": bool(lines) and all(l["warehouse"] for l in lines)}
+
+
+@frappe.whitelist()
+def dispatch_from_stock(sales_order):
+	"""A draft Delivery Note for an order, taken from stock without a serial: each
+	line from a warehouse that actually holds it."""
+	frappe.has_permission("Delivery Note", "create", throw=True)
+	from erpnext.selling.doctype.sales_order.sales_order import make_delivery_note
+
+	dn = make_delivery_note(sales_order)
+	for it in dn.items:
+		if not frappe.get_cached_value("Item", it.item_code, "is_stock_item"):
+			continue
+		wh = _pick_warehouse(it.item_code, flt(it.stock_qty) or flt(it.qty), it.warehouse)
+		if not wh:
+			frappe.throw(_("{0}: not enough in stock to dispatch {1}.").format(it.item_name or it.item_code, it.qty))
+		it.warehouse = wh
+	apply_taxes(dn)
+	dn.flags.ignore_permissions = True
+	dn.insert(ignore_permissions=True)
+	frappe.db.commit()
+	return {"name": dn.name}
+
+
 @frappe.whitelist()
 def invoice_delivery(delivery_note):
 	"""Invoice the dispatch, carrying the serial and chassis onto the bill."""

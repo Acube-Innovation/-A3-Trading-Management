@@ -87,13 +87,29 @@ function submitSO(name) {
 	tradingAction("a3_trading_management.api.selling.submit_sales_order", { name: name }, "Sales order confirmed.");
 }
 function reserve(so) {
-	if (!FREE_SERIALS.length) { alert("No trailer is in stock to reserve. Use Build to raise a work order."); return; }
+	// No numbered trailer free: a serial is not required — trailers held in stock
+	// without one (opening stock) can go out on a Delivery Note straight away.
+	if (!FREE_SERIALS.length) { fromStock(so); return; }
 	var list = FREE_SERIALS.map(function (s) { return s.chassis_number + "  (" + s.name + ")"; }).join("\n");
 	var chosen = prompt("Reserve a trailer against " + so + ".\nEnter the serial id:\n\n" + list,
 		FREE_SERIALS[0].name);
 	if (!chosen) return;
 	tradingAction("a3_trading_management.api.selling.reserve_serial",
 		{ sales_order: so, serial: chosen }, "Trailer reserved against " + so + ".");
+}
+function fromStock(so) {
+	tradingCall("a3_trading_management.api.selling.order_stock", { sales_order: so }).then(function (r) {
+		if (!r.lines.length) { alert(so + " has nothing left to deliver from stock."); return; }
+		var list = r.lines.map(function (l) {
+			return "• " + (l.item_name || l.item_code) + ": " + l.pending + " needed, " + l.in_stock + " in stock" + (l.warehouse ? " (" + l.warehouse + ")" : " — NOT ENOUGH");
+		}).join("\n");
+		if (!r.covered) { alert("Not enough in stock for " + so + ":\n\n" + list + "\n\nUse Build to raise a work order."); return; }
+		if (r.docstatus !== 1) { alert(so + " is not confirmed yet. Confirm it first, then dispatch.\n\n" + list); return; }
+		if (!confirm("No numbered trailer is free, but the stock covers " + so + ":\n\n" + list +
+			"\n\nDispatch from stock now? A draft Delivery Note is made without a chassis number.")) return;
+		tradingAction("a3_trading_management.api.selling.dispatch_from_stock", { sales_order: so },
+			"Delivery Note drafted from stock — submit it on Delivery Notes.");
+	}).catch(function (e) { alert((e && e.message) || "Could not check the stock."); });
 }
 function build(so) {
 	var item = prompt("Raise a work order to build a trailer for " + so + ".\nTrailer item code:");
