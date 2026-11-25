@@ -1246,7 +1246,7 @@
 		var sel = document.getElementById("wo-so");
 		callMethod(API + "open_sales_orders_for_item", { item: item }).then(function (rows) {
 			sel.innerHTML = '<option value="">Build to stock</option>' + (rows || []).map(function (o) {
-				return '<option value="' + esc(o.name) + '">' + esc(o.name) + ' · ' + esc(o.customer_name) + ' · ' + o.to_build + ' to build' + (o.delivery_date ? ' · due ' + esc(o.delivery_date) : '') + '</option>';
+				return '<option value="' + esc(o.name) + '" data-left="' + o.to_build + '">' + esc(o.name) + ' · ' + esc(o.customer_name) + ' · ' + o.to_build + ' to build' + (o.delivery_date ? ' · due ' + esc(o.delivery_date) : '') + '</option>';
 			}).join("");
 		});
 	}
@@ -1332,6 +1332,11 @@
 		var bom = document.getElementById("wo-bom").value;
 		if (!item) { alert("Pick an item to manufacture."); return; }
 		if (!bom) { openBomScreen(item); return; }
+		// Several work orders may build one Sales Order, but never more than it has left.
+		var soOpt = document.getElementById("wo-so").selectedOptions[0], want = Number(document.querySelector('[name=wo_qty]').value) || 1;
+		if (soOpt && soOpt.value && soOpt.dataset.left && want > Number(soOpt.dataset.left)) {
+			alert("Only " + soOpt.dataset.left + " left to build on " + soOpt.value + ". Lower the quantity to " + soOpt.dataset.left + " or less."); return;
+		}
 		var btn = this; btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Creating…';
 		callMethod(API + "create_work_order", {
 			item: item, bom: bom,

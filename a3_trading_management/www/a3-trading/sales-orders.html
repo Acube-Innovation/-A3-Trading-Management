@@ -1,5 +1,5 @@
 {% extends "templates/workshop_base.html" %}
-{% from "templates/macros/trading.html" import status_pill, filter_bar, filter_script, call_method_js, stat_row, doc_modals %}
+{% from "templates/macros/trading.html" import status_pill, filter_bar, filter_script, call_method_js, stat_row, doc_modals, sup_kit %}
 
 {% block page_content %}
 {#- Customer orders for trailers and parts, with the option to reserve a specific
@@ -65,9 +65,12 @@
 					<button type="button" class="btn btn--outline btn--sm" onclick="openDoc('Sales Order', '{{ o.name }}')"><i class="fa-solid fa-eye"></i> View</button>
 					{%- if o.docstatus == 0 %}
 					<button class="btn btn--primary btn--sm" onclick="submitSO('{{ o.name }}')">Confirm</button>
-					{%- else %}
+					{%- elif o.docstatus == 1 %}
 					<button class="btn btn--outline btn--sm" onclick="reserve('{{ o.name }}')">Reserve</button>
 					<button class="btn btn--outline btn--sm" onclick="build('{{ o.name }}')">Build</button>
+					{%- if (o.per_billed or 0) < 100 and o.status not in ("Closed", "On Hold") %}
+					<button class="btn btn--primary btn--sm" onclick="soInvoice('{{ o.name }}')"><i class="fa-solid fa-file-invoice"></i> Make Invoice</button>
+					{%- endif %}
 					{%- endif %}
 				</td>
 			</tr>
@@ -80,6 +83,8 @@
 </div></div>
 
 {{ call_method_js() }}
+{{ sup_kit() }}
+{% include "templates/includes/so_invoice.html" %}
 <script>
 var FREE_SERIALS = {{ available | tojson }};
 function submitSO(name) {

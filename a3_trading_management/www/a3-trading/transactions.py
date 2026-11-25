@@ -30,9 +30,11 @@ GROUPS = [
 	},
 	{
 		"title": "Selling",
-		"subtitle": "Customer orders, dispatch against the serial, and the invoice",
+		"subtitle": "Quotations, customer orders, dispatch against the serial, and the invoice",
 		"flow": True,
 		"tiles": [
+			{"label": "Quotations", "route": "/a3-trading/quotations",
+			 "icon": "fa-file-lines", "sub": "Price and approve offers; turn them into orders"},
 			{"label": "Sales Orders", "route": "/a3-trading/sales-orders",
 			 "icon": "fa-cart-shopping", "sub": "Orders for trailers and parts"},
 			{"label": "Awaiting Dispatch", "route": "/a3-trading/awaiting-dispatch",

@@ -497,6 +497,130 @@ def create_sales_order(customer, items, delivery_date=None, company=None):
 	return {"name": so.name, "grand_total": so.grand_total}
 
 
+# ---------------------------------------------------------------------------
+# Quotations, priced by Sales on the portal
+#
+# The Supervisor drafts a quotation without prices (supervisor_portal); Sales
+# makes priced ones here, opens the Supervisor's drafts to price them, approves
+# them (submit, Super Admin only through submit_guard) and turns an accepted
+# one into a Sales Order. This module is not on the Supervisor's API allowlist,
+# so prices never reach them.
+# ---------------------------------------------------------------------------
+
+@frappe.whitelist()
+def list_quotations(search=None, limit=200):
+	frappe.has_permission("Quotation", "read", throw=True)
+	quotes = rows(
+		"Quotation",
+		["name", "party_name", "customer_name", "transaction_date", "valid_till",
+		 "status", "docstatus", "grand_total", "currency", "owner"],
+		filters={"quotation_to": "Customer"}, search=search,
+		search_fields=["name", "party_name", "customer_name"], limit=limit,
+		order_by="transaction_date desc, modified desc",
+	)
+	items = {}
+	for i in frappe.get_all("Quotation Item", filters={"parent": ["in", [q["name"] for q in quotes] or [""]]},
+	                        fields=["parent", "item_code", "item_name", "qty", "rate"], order_by="idx"):
+		items.setdefault(i.parent, []).append(i)
+	for q in quotes:
+		q["items"] = items.get(q["name"], [])
+		# A Supervisor's draft still waiting for prices.
+		q["unpriced"] = q["docstatus"] == 0 and any(not flt(i.rate) for i in q["items"])
+	return quotes
+
+
+@frappe.whitelist()
+def create_quotation(customer, items, valid_till=None, company=None):
+	"""A priced quotation from the pop-up, saved as a draft; Approve on the list submits it."""
+	frappe.has_permission("Quotation", "create", throw=True)
+	if isinstance(items, str):
+		items = frappe.parse_json(items)
+	items = [r for r in (items or []) if (r.get("item_code") or "").strip() and flt(r.get("qty")) > 0]
+	if not customer:
+		frappe.throw(_("Choose a customer"))
+	if not items:
+		frappe.throw(_("Add at least one item with a quantity"))
+	qt = frappe.new_doc("Quotation")
+	qt.quotation_to = "Customer"
+	qt.party_name = customer
+	qt.company = company or default_company()
+	qt.order_type = "Sales"
+	qt.transaction_date = nowdate()
+	qt.valid_till = valid_till or frappe.utils.add_days(nowdate(), 30)
+	price_list = (frappe.db.get_single_value("Selling Settings", "selling_price_list")
+	              or frappe.db.get_value("Price List", {"selling": 1, "enabled": 1}, "name"))
+	if price_list:
+		qt.selling_price_list = price_list
+	for row in items:
+		qt.append("items", {"item_code": row.get("item_code"), "qty": flt(row.get("qty")), "rate": flt(row.get("rate"))})
+	qt.set_missing_values()
+	apply_taxes(qt)
+	qt.insert()
+	frappe.db.commit()
+	return {"name": qt.name, "grand_total": qt.grand_total}
+
+
+@frappe.whitelist()
+def price_quotation(name, rates):
+	"""Put the rates on a draft quotation (typically one a Supervisor raised).
+	`rates` maps the Quotation Item row name to its rate."""
+	if isinstance(rates, str):
+		rates = frappe.parse_json(rates)
+	qt = frappe.get_doc("Quotation", name)
+	qt.check_permission("write")
+	if qt.docstatus != 0:
+		frappe.throw(_("Quotation {0} is already approved").format(name))
+	for row in qt.items:
+		if row.name in (rates or {}):
+			row.rate = flt(rates[row.name])
+			# The rate typed in wins: no discount or margin re-derives it from the price list.
+			row.discount_percentage = 0
+			row.discount_amount = 0
+			row.margin_type = None
+			row.margin_rate_or_amount = 0
+	if not qt.get("taxes"):
+		apply_taxes(qt)
+	qt.save()
+	frappe.db.commit()
+	return {"name": qt.name, "grand_total": qt.grand_total}
+
+
+@frappe.whitelist()
+def get_quotation_lines(name):
+	frappe.has_permission("Quotation", "read", doc=name, throw=True)
+	return frappe.get_all("Quotation Item", filters={"parent": name, "parenttype": "Quotation"},
+	                      fields=["name", "item_code", "item_name", "qty", "rate"], order_by="idx")
+
+
+@frappe.whitelist()
+def submit_quotation(name):
+	if any(not flt(r) for r in frappe.get_all("Quotation Item", filters={"parent": name}, pluck="rate")):
+		frappe.throw(_("Every line of {0} needs a rate before it is approved").format(name))
+	return submit_document("Quotation", name)
+
+
+@frappe.whitelist()
+def make_sales_order_from_quotation(name, delivery_date=None):
+	"""The customer accepted: a draft Sales Order from the approved quotation, mapped the
+	standard way so terms, print sections and taxes come across."""
+	frappe.has_permission("Sales Order", "create", throw=True)
+	from erpnext.selling.doctype.quotation.quotation import make_sales_order
+
+	if frappe.db.get_value("Quotation", name, "docstatus") != 1:
+		frappe.throw(_("Approve quotation {0} before turning it into an order").format(name))
+	so = make_sales_order(name)
+	so.transaction_date = nowdate()
+	so.delivery_date = delivery_date or frappe.utils.add_days(nowdate(), 7)
+	fg = frappe.db.get_value("Warehouse", {"warehouse_name": "Finished Goods", "is_group": 0}, "name")
+	for row in so.items:
+		row.delivery_date = row.delivery_date or so.delivery_date
+		if fg and frappe.db.get_value("Item", row.item_code, "custom_is_trailer"):
+			row.warehouse = fg
+	so.insert()
+	frappe.db.commit()
+	return {"name": so.name, "grand_total": so.grand_total}
+
+
 @frappe.whitelist()
 def submit_delivery_note(name):
 	"""The trailer has left the yard: posts the note (stock out, serial Delivered)."""
@@ -509,3 +633,120 @@ def submit_sales_invoice(name):
 	"""Posts the invoice to the ledger; Receive becomes available."""
 	frappe.has_permission("Sales Invoice", "submit", doc=name, throw=True)
 	return submit_document("Sales Invoice", name)
+
+
+# ---------------------------------------------------------------------------
+# Sales invoices raised on the portal: direct, or from a Sales Order
+# ---------------------------------------------------------------------------
+
+def _selling_price_list():
+	return (frappe.db.get_single_value("Selling Settings", "selling_price_list")
+	        or frappe.db.get_value("Price List", {"selling": 1, "enabled": 1}, "name"))
+
+
+@frappe.whitelist()
+def create_sales_invoice(customer, items, due_date=None, company=None):
+	"""A sales invoice from the pop-up, without an order: parts, services, transport.
+	Stock items leave the yard on the line (Update Stock). A trailer is not sold
+	this way: it is invoiced from its Sales Order or Delivery Note, which follow
+	the serial. Saved as a draft; Open & Submit on the list posts it."""
+	frappe.has_permission("Sales Invoice", "create", throw=True)
+	if isinstance(items, str):
+		items = frappe.parse_json(items)
+	items = [r for r in (items or []) if (r.get("item_code") or "").strip()]
+	if not customer:
+		frappe.throw(_("Choose a customer"))
+	if not items:
+		frappe.throw(_("Add at least one item to the invoice"))
+	si = frappe.new_doc("Sales Invoice")
+	si.customer = customer
+	si.company = company or default_company()
+	si.posting_date = nowdate()
+	si.disable_rounded_total = 1
+	price_list = _selling_price_list()
+	if price_list:
+		si.selling_price_list = price_list
+	any_stock = False
+	for row in items:
+		item = frappe.get_cached_value("Item", row["item_code"], ["is_stock_item", "custom_is_trailer"], as_dict=True)
+		if not item:
+			frappe.throw(_("Item {0} not found").format(row["item_code"]))
+		if item.get("custom_is_trailer"):
+			frappe.throw(_("{0} is a trailer: invoice it from its Sales Order or Delivery Note, so the serial goes with it.").format(row["item_code"]))
+		if flt(row.get("qty")) <= 0:
+			frappe.throw(_("{0}: enter a quantity").format(row["item_code"]))
+		any_stock = any_stock or bool(item.is_stock_item)
+		si.append("items", {
+			"item_code": row["item_code"], "qty": flt(row.get("qty")), "rate": flt(row.get("rate")),
+			"warehouse": row.get("warehouse") or None,
+		})
+	si.update_stock = 1 if any_stock else 0
+	si.set_missing_values()
+	if due_date:
+		si.due_date = getdate(due_date)
+		si.payment_schedule = []
+	apply_taxes(si)
+	si.insert()
+	frappe.db.commit()
+	return {"name": si.name, "grand_total": si.grand_total}
+
+
+def _so_invoice(sales_order):
+	"""The standard Sales Order -> Sales Invoice mapping: every line with an
+	amount still to bill, at the quantity still to bill."""
+	from erpnext.selling.doctype.sales_order.sales_order import make_sales_invoice
+
+	so = frappe.db.get_value("Sales Order", sales_order, ["docstatus", "status"], as_dict=True)
+	if not so or so.docstatus != 1:
+		frappe.throw(_("Confirm Sales Order {0} before invoicing it").format(sales_order))
+	if so.status in ("Closed", "On Hold"):
+		frappe.throw(_("Sales Order {0} is {1}").format(sales_order, so.status))
+	return make_sales_invoice(sales_order)
+
+
+@frappe.whitelist()
+def get_so_billable(sales_order):
+	"""What the Make Invoice pop-up offers: each line still to bill."""
+	frappe.has_permission("Sales Order", "read", doc=sales_order, throw=True)
+	si = _so_invoice(sales_order)
+	ordered = {r.name: r for r in frappe.get_all("Sales Order Item", filters={"parent": sales_order},
+	                                             fields=["name", "qty", "delivered_qty"])}
+	return [{"so_detail": i.so_detail, "item_code": i.item_code, "item_name": i.item_name, "uom": i.uom,
+	         "rate": i.rate, "to_bill": i.qty, "ordered": ordered[i.so_detail].qty,
+	         "delivered": ordered[i.so_detail].delivered_qty} for i in si.items if i.so_detail in ordered]
+
+
+@frappe.whitelist()
+def make_invoice_from_so(sales_order, lines=None):
+	"""A draft invoice from a confirmed Sales Order. `lines` maps a Sales Order Item
+	to the quantity to bill now (any part of what is still to bill); without it
+	everything still to bill goes on."""
+	frappe.has_permission("Sales Invoice", "create", throw=True)
+	si = _so_invoice(sales_order)
+	if isinstance(lines, str):
+		lines = frappe.parse_json(lines)
+	if lines:
+		keep = []
+		for row in si.items:
+			want = flt(lines.get(row.so_detail))
+			if want <= 0:
+				continue
+			if want > flt(row.qty) + 1e-9:
+				frappe.throw(_("{0}: only {1} left to bill on {2}").format(row.item_code, frappe.format(row.qty), sales_order))
+			row.qty = want
+			keep.append(row)
+		if not keep:
+			frappe.throw(_("Enter a quantity to bill on at least one line"))
+		si.set("items", keep)
+		for i, row in enumerate(si.items, 1):
+			row.idx = i
+	if not si.items:
+		frappe.throw(_("Nothing is left to bill on {0}").format(sales_order))
+	si.disable_rounded_total = 1
+	# The order's schedule is for its whole amount; this bill's is worked out afresh.
+	si.payment_schedule = []
+	si.calculate_taxes_and_totals()
+	apply_taxes(si)
+	si.insert()
+	frappe.db.commit()
+	return {"name": si.name, "grand_total": si.grand_total}

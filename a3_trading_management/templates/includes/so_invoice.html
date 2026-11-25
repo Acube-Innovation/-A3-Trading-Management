@@ -1,0 +1,83 @@
+{#- "Invoice a Sales Order": a draft Sales Invoice from a confirmed order, for all
+    or part of what is still to bill (a 75-trailer order billed as they go).
+    Needs call_method_js() and sup_kit(). Open with soInvoice(name); without a
+    name the pop-up first asks which order (BILLABLE_SOS on the page). -#}
+<div class="modal-overlay" id="soi-modal" role="dialog" aria-modal="true">
+	<div class="modal" style="max-width:820px">
+		<div class="modal__head">
+			<div><h3>Invoice a Sales Order</h3><div class="sub">The quantity to bill now on each line; leave a line at 0 to bill it later. Saved as a draft.</div></div>
+			<button type="button" class="modal__close" data-sk-close><i class="fa-solid fa-xmark"></i></button>
+		</div>
+		<div class="modal__body">
+			<div class="field" id="soi-pick-wrap"><label>Sales Order</label><select id="soi-pick"></select></div>
+			<table class="sk-lines">
+				<thead><tr><th>Item</th><th style="text-align:right">Ordered</th><th style="text-align:right">Delivered</th><th style="text-align:right">To bill</th><th style="text-align:right">Rate</th><th style="width:110px">Bill now</th></tr></thead>
+				<tbody id="soi-lines"></tbody>
+			</table>
+			<div style="text-align:right;font-weight:700;margin-top:10px" id="soi-total"></div>
+			<div class="sk-err" id="soi-err"></div>
+		</div>
+		<div class="modal__foot">
+			<button type="button" class="btn btn--outline" data-sk-close>Cancel</button>
+			<button type="button" class="btn btn--primary" id="soi-save"><i class="fa-solid fa-file-invoice"></i> Make Invoice</button>
+		</div>
+	</div>
+</div>
+<script>
+(function () {
+	var API = "a3_trading_management.api.selling.", current = null;
+	function byId(id) { return document.getElementById(id); }
+	function fmt(v) { return (Number(v) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+	function err(m) { var e = byId("soi-err"); e.textContent = m || ""; e.style.display = m ? "block" : "none"; }
+	function total() {
+		var t = 0;
+		document.querySelectorAll("#soi-lines input").forEach(function (i) { t += (Number(i.value) || 0) * Number(i.dataset.rate); });
+		byId("soi-total").textContent = "Total before VAT: " + fmt(t);
+	}
+	function load(name) {
+		current = name; err(""); byId("soi-lines").innerHTML = '<tr><td colspan="6" class="muted">Loading…</td></tr>'; byId("soi-total").textContent = "";
+		if (!name) { byId("soi-lines").innerHTML = ""; return; }
+		tradingCall(API + "get_so_billable", { sales_order: name }).then(function (rows) {
+			if (!(rows || []).length) { byId("soi-lines").innerHTML = '<tr><td colspan="6" class="muted">Nothing left to bill on ' + SK.esc(name) + ".</td></tr>"; return; }
+			// Suggest what has gone out but is not yet billed (the rest can still be typed in
+			// to bill in advance); an order nothing has been delivered on suggests all of it.
+			var anyOut = rows.some(function (r) { return r.delivered > 0; });
+			byId("soi-lines").innerHTML = rows.map(function (r) {
+				var suggest = anyOut ? Math.min(r.to_bill, Math.max(0, r.delivered - (r.ordered - r.to_bill))) : r.to_bill;
+				return "<tr><td>" + SK.esc(r.item_name || r.item_code) + '<div class="muted" style="font-size:12px">' + SK.esc(r.item_code) + "</div></td>" +
+					'<td style="text-align:right">' + r.ordered + '</td><td style="text-align:right">' + r.delivered + '</td><td style="text-align:right">' + r.to_bill + "</td>" +
+					'<td style="text-align:right">' + fmt(r.rate) + "</td>" +
+					'<td><input type="number" min="0" step="any" max="' + r.to_bill + '" data-row="' + SK.esc(r.so_detail) + '" data-rate="' + r.rate + '" data-max="' + r.to_bill + '" value="' + suggest + '"></td></tr>';
+			}).join("");
+			document.querySelectorAll("#soi-lines input").forEach(function (i) { i.addEventListener("input", total); });
+			total();
+		}).catch(function (e) { byId("soi-lines").innerHTML = ""; err(SK.err(e)); });
+	}
+	window.soInvoice = function (name) {
+		var pick = byId("soi-pick"), list = window.BILLABLE_SOS || [];
+		byId("soi-pick-wrap").style.display = name ? "none" : "";
+		if (!name) {
+			pick.innerHTML = '<option value="">Choose a confirmed order…</option>' + list.map(function (o) {
+				return '<option value="' + SK.esc(o.name) + '">' + SK.esc(o.name) + " · " + SK.esc(o.customer_name || o.customer) + " · " + Math.round(o.per_billed || 0) + "% billed</option>";
+			}).join("");
+		}
+		load(name || null);
+		SK.open("soi-modal");
+	};
+	byId("soi-pick").addEventListener("change", function () { load(this.value || null); });
+	byId("soi-save").addEventListener("click", function () {
+		if (!current) { err("Choose the Sales Order."); return; }
+		var lines = {}, any = false, over = null;
+		document.querySelectorAll("#soi-lines input").forEach(function (i) {
+			var v = Number(i.value) || 0; if (v > Number(i.dataset.max) + 1e-9) over = i.dataset.max; if (v > 0) any = true; lines[i.dataset.row] = v;
+		});
+		if (over !== null) { err("A line asks to bill more than is left (" + over + ")."); return; }
+		if (!any) { err("Enter a quantity to bill on at least one line."); return; }
+		var btn = this; btn.disabled = true;
+		tradingCall(API + "make_invoice_from_so", { sales_order: current, lines: JSON.stringify(lines) }).then(function (r) {
+			alert(r.name + " saved as a draft. Open & Submit it on Sales Invoices to post it.");
+			location.href = "/a3-trading/sales-invoices" + (/[?&]embed=1/.test(location.search) ? "?embed=1" : "");
+		}).catch(function (e) { err(SK.err(e)); }).then(function () { btn.disabled = false; });
+	});
+})();
+</script>

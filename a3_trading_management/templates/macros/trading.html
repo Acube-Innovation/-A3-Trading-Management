@@ -493,8 +493,11 @@ function requestDeletion(doctype, name) {
 			list.style.width = Math.max(r.width, 320) + "px";
 			list.style.left = Math.min(r.left, window.innerWidth - Math.max(r.width, 320) - 8) + "px";
 			var below = window.innerHeight - r.bottom;
-			if (below < 230 && r.top > below) { list.style.top = ""; list.style.bottom = (window.innerHeight - r.top + 2) + "px"; }
-			else { list.style.bottom = ""; list.style.top = (r.bottom + 2) + "px"; }
+			// "auto", not "": clearing the inline value lets the stylesheet's top:100%
+			// back in, which for a fixed list is the bottom of the screen, and with
+			// both top and bottom set the list collapses to nothing.
+			if (below < 230 && r.top > below) { list.style.top = "auto"; list.style.bottom = (window.innerHeight - r.top + 2) + "px"; }
+			else { list.style.bottom = "auto"; list.style.top = (r.bottom + 2) + "px"; }
 		}
 		// A picked item shows its name; its code is what the form sends.
 		function pick(i) { var it = items[i]; if (!it) return; input.value = it.label || it.value; input.dataset.value = it.value; input.title = it.value; close(); onPick(it); }

@@ -629,23 +629,42 @@ def create_purchase_order(supplier, items, schedule_date=None, company=None):
 	return {"name": po.name, "grand_total": po.grand_total}
 
 
+def _item_uoms(item_code):
+	"""The units a bill line may be in for this item: its stock unit, its default
+	purchase unit and the units in its conversion table, each with how many stock
+	units one holds. Any other unit would book at ERPNext's fallback factor of 1."""
+	item = frappe.get_cached_value("Item", item_code, ["stock_uom", "purchase_uom"], as_dict=True)
+	if not item:
+		frappe.throw(_("Item {0} not found").format(item_code))
+	factors = {item.stock_uom: 1.0}
+	for d in frappe.get_all("UOM Conversion Detail", filters={"parent": item_code, "parenttype": "Item"},
+	                        fields=["uom", "conversion_factor"], order_by="idx"):
+		if d.uom and d.uom != item.stock_uom:
+			factors[d.uom] = flt(d.conversion_factor)
+	if item.purchase_uom and item.purchase_uom not in factors:
+		# A purchase unit missing from the table: offered, but refused on save
+		# until the item says how many stock units it holds.
+		factors[item.purchase_uom] = 0.0
+	return item, factors
+
+
 @frappe.whitelist()
-def list_packing_types():
-	"""The enabled Packing Types for the New Purchase Invoice form, in their order."""
-	return frappe.get_all("Packing Type", filters={"enabled": 1},
-		fields=["name", "is_loose", "uom"], order_by="sort_order asc, name asc")
-
-
-def _packing(name):
-	"""(is loose, uom) of a Packing Type; a blank name is loose."""
-	if not name:
-		return True, None
-	pt = frappe.db.get_value("Packing Type", name, ["is_loose", "uom", "enabled"], as_dict=True)
-	if not pt or not pt.enabled:
-		frappe.throw(_("Packing Type {0} not found").format(name))
-	if not pt.is_loose and not pt.uom:
-		frappe.throw(_("Packing Type {0} has no Unit of Measure").format(name))
-	return bool(pt.is_loose), pt.uom
+def get_item_uoms(item_code, price_list=None):
+	"""For the New Purchase Invoice line: the item's units, the purchase unit first,
+	and the price list rate per stock unit (an Item Price is kept in its own unit,
+	not always the stock unit), so the form can show it per the unit chosen."""
+	frappe.has_permission("Item", "read", throw=True)
+	item, factors = _item_uoms(item_code)
+	default = item.purchase_uom or item.stock_uom
+	order = [default] + [u for u in factors if u != default]
+	stock_rate = 0
+	if price_list:
+		price = frappe.db.get_value("Item Price", {"item_code": item_code, "price_list": price_list},
+		                            ["price_list_rate", "uom"], as_dict=True, order_by="valid_from desc")
+		if price and flt(factors.get(price.uom or item.stock_uom)):
+			stock_rate = flt(price.price_list_rate) / flt(factors[price.uom or item.stock_uom])
+	return {"stock_uom": item.stock_uom, "default": default, "stock_rate": stock_rate,
+	        "uoms": [{"uom": u, "conversion_factor": factors[u]} for u in order]}
 
 
 @frappe.whitelist()
@@ -653,15 +672,10 @@ def create_purchase_invoice(supplier, items, bill_no=None, bill_date=None, posti
 	"""A bill straight from the supplier's invoice, the goods received on it
 	(Update Stock). Saved as a draft; Approve on the list posts it.
 
-	Each line says how it was bought: {item_code, packing_type, packs,
-	inner_packing, inner_per_pack, per_pack, pack_rate, warehouse}.
-	- Loose: packs = pieces, rate per piece.
-	- 5 Box of 100 at 100 a box: packing_type Box, packs 5, per_pack 100.
-	- 2 Pallet of 10 Box x 10 pieces at 900 a pallet: packing_type Pallet,
-	  packs 2, inner_packing Box, inner_per_pack 10, per_pack 10 -> 100 a pallet.
-	ERPNext books it as uom = the packing's unit, qty = packs, conversion factor =
-	pieces per pack, rate = pack rate. Cut material and sheets keep the length or
-	size their item master gives a piece."""
+	Each line is {item_code, uom, qty, rate, warehouse}, the way the Desk form
+	takes it: the rate is per `uom`, and the conversion factor comes from the
+	item (stock unit, default purchase unit, or its UOM conversion table) --
+	5 Box at 100 a box of an item kept in Nos with Box = 100 books 500 Nos at 1."""
 	frappe.has_permission("Purchase Invoice", "create", throw=True)
 	if isinstance(items, str):
 		items = frappe.parse_json(items)
@@ -671,9 +685,7 @@ def create_purchase_invoice(supplier, items, bill_no=None, bill_date=None, posti
 	if not items:
 		frappe.throw(_("Add at least one item to the bill"))
 
-	from a3_trading_management.api.cut_material import is_cut_item
 	from a3_trading_management.api.live_stock import _mr_warehouse
-	from a3_trading_management.api.sheet_cut import is_sheet_item
 
 	pi = frappe.new_doc("Purchase Invoice")
 	pi.supplier = supplier
@@ -697,54 +709,24 @@ def create_purchase_invoice(supplier, items, bill_no=None, bill_date=None, posti
 	pi.update_stock = 1 if any(in_stock.values()) else 0
 	for row in items:
 		item_code = row["item_code"].strip()
-		stock_uom = frappe.get_cached_value("Item", item_code, "stock_uom")
-		packing = (row.get("packing_type") or "").strip() or None
-		loose, uom = _packing(packing)
-		uom = stock_uom if loose else uom
-		packs = flt(row.get("packs"))
-		if packs <= 0:
-			frappe.throw(_("{0}: enter how many {1} were bought").format(item_code, packing or stock_uom))
-		inner, inner_per, per_unit = None, 0, 0
-		# Only the item's own unit table: ERPNext's lookup falls back to 1 for an unknown unit.
-		known = 1 if uom == stock_uom else flt(frappe.db.get_value(
-			"UOM Conversion Detail", {"parent": item_code, "parenttype": "Item", "uom": uom}, "conversion_factor"))
-		if uom == stock_uom:
-			per_pack = 1
-		elif is_cut_item(item_code) or is_sheet_item(item_code):
-			# A piece of cut material is the length its item master says.
-			if not known:
-				frappe.throw(_("{0} is cut material: its item has no {1} conversion. Buy it Loose or add the unit to the item.").format(item_code, uom))
-			per_pack = known
-		else:
-			per_unit = flt(row.get("per_pack"))
-			inner = (row.get("inner_packing") or "").strip() or None
-			if inner:
-				if inner == packing:
-					frappe.throw(_("{0}: the inner packing cannot be the same as the packing ({1})").format(item_code, packing))
-				if _packing(inner)[0]:
-					frappe.throw(_("{0}: the inner packing must be a pack (Box, Packet...), not {1}").format(item_code, inner))
-				inner_per = flt(row.get("inner_per_pack"))
-				if inner_per <= 0:
-					frappe.throw(_("{0}: say how many {1} are in each {2}").format(item_code, inner, packing))
-				if per_unit <= 0:
-					frappe.throw(_("{0}: say how many {1} are in each {2}").format(item_code, stock_uom, inner))
-				per_pack = inner_per * per_unit
-			else:
-				per_pack = per_unit or known
-				if per_pack <= 0:
-					frappe.throw(_("{0}: say how many {1} are in each {2}").format(item_code, stock_uom, packing))
+		item, factors = _item_uoms(item_code)
+		uom = (row.get("uom") or "").strip() or item.purchase_uom or item.stock_uom
+		if uom not in factors:
+			frappe.throw(_("{0}: {1} is not one of its units ({2})").format(item_code, uom, ", ".join(factors)))
+		if factors[uom] <= 0:
+			frappe.throw(_("{0}: the item does not say how many {1} are in a {2}. Add {2} to its UOM conversion table.").format(
+				item_code, item.stock_uom, uom))
+		qty = flt(row.get("qty"))
+		if qty <= 0:
+			frappe.throw(_("{0}: enter how many {1} were bought").format(item_code, uom))
 		pi.append("items", {
 			"item_code": item_code,
-			"qty": packs,
-			"received_qty": packs,
+			"qty": qty,
+			"received_qty": qty,
 			"uom": uom,
-			"conversion_factor": per_pack,
-			"rate": flt(row.get("pack_rate")),
+			"conversion_factor": factors[uom],
+			"rate": flt(row.get("rate")),
 			"warehouse": (row.get("warehouse") or default_yard) if in_stock[item_code] else None,
-			"custom_packing_type": packing,
-			"custom_inner_packing": inner,
-			"custom_inner_per_pack": inner_per,
-			"custom_pcs_per_unit": per_unit or per_pack,
 		})
 	pi.set_missing_values()
 	apply_taxes(pi)

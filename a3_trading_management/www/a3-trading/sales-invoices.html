@@ -1,5 +1,5 @@
 {% extends "templates/workshop_base.html" %}
-{% from "templates/macros/trading.html" import status_pill, filter_bar, filter_script, call_method_js, stat_row, doc_modals, dispatch_nav, deletion_request_js %}
+{% from "templates/macros/trading.html" import status_pill, filter_bar, filter_script, call_method_js, stat_row, doc_modals, dispatch_nav, deletion_request_js, sup_kit %}
 
 {% block page_content %}
 {#- Step 3 of 3: the invoices raised from delivery notes, so the customer is
@@ -24,6 +24,8 @@
 			<i class="fa-solid fa-truck-fast"></i> Delivery Notes</a>
 		<a class="btn btn--outline btn--sm" href="/a3-trading/payments-receipts">
 			<i class="fa-solid fa-right-left"></i> Payments &amp; Receipts</a>
+		<button type="button" class="btn btn--outline btn--sm" onclick="soInvoice()"><i class="fa-solid fa-cart-shopping"></i> From Sales Order</button>
+		<button type="button" class="btn btn--primary btn--sm" onclick="newSalesInvoice()"><i class="fa-solid fa-plus"></i> New Invoice</button>
 	</div>
 </div>
 
@@ -71,13 +73,37 @@
 		{%- endfor %}
 		</tbody>
 	</table>
-	{%- else %}<div class="empty">No sales invoices yet. Invoice a submitted note from <a href="/a3-trading/delivery-notes">Delivery Notes</a>.</div>{% endif %}
+	{%- else %}<div class="empty">No sales invoices yet. Make one with New Invoice, from a Sales Order, or from a submitted note on <a href="/a3-trading/delivery-notes">Delivery Notes</a>.</div>{% endif %}
 </div></div>
 
 {{ filter_script() }}
 {{ call_method_js() }}
 {{ deletion_request_js() }}
+{{ sup_kit() }}
+{% include "templates/includes/so_invoice.html" %}
 <script>
+// Confirmed orders with something still to bill, for From Sales Order.
+var BILLABLE_SOS = {{ (billable_orders or []) | tojson }};
+function newSalesInvoice() {
+	openNewDoc({
+		title: "New Sales Invoice", subtitle: "Parts, services or transport sold without an order. Stock items leave the yard chosen on the line. A trailer is invoiced from its Sales Order or Delivery Note instead.",
+		head: [
+			{ key: "customer", label: "Customer", party: "Customer", required: true, placeholder: "Search customer…" },
+			{ key: "due_date", label: "Due date", type: "date", value: new Date().toISOString().slice(0, 10) }
+		],
+		columns: [
+			{ key: "item_code", label: "Item", pick: "item", placeholder: "Search part or service…" },
+			{ key: "qty", label: "Qty", num: true, value: 1, width: "90px" },
+			{ key: "rate", label: "Rate", num: true, width: "120px" },
+			{ key: "warehouse", label: "From yard", default: "Stores - RT" }
+		],
+		priceList: "Standard Selling",
+		total: function (l) { return [["Total before VAT", l.reduce(function (s, r) { return s + (Number(r.qty) || 0) * (Number(r.rate) || 0); }, 0).toLocaleString(undefined, { minimumFractionDigits: 2 })]]; },
+		validate: function (h, l) { l = l.filter(function (r) { return r.item_code; }); if (!h.customer) return "Choose a customer."; if (!l.length) return "Add at least one item."; if (l.some(function (r) { return !Number(r.qty); })) return "Every line needs a quantity."; if (l.some(function (r) { return !Number(r.rate); })) return "Every line needs a rate."; return null; },
+		build: function (h, l) { return { customer: h.customer, due_date: h.due_date || null, items: JSON.stringify(l.filter(function (r) { return r.item_code; }).map(function (r) { return { item_code: r.item_code, qty: r.qty, rate: r.rate, warehouse: r.warehouse }; })) }; },
+		method: "a3_trading_management.api.selling.create_sales_invoice"
+	});
+}
 function deleteInvoice(name) {
 	if (!confirm("Delete sales invoice " + name + "?\n\nThis cannot be undone.")) return;
 	if (!confirm("Confirm once more: permanently delete " + name + "?")) return;

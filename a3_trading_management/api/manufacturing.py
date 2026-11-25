@@ -814,6 +814,55 @@ def request_shortfall(bom, qty=1, source_warehouse=None):
     return create_material_request(items=items, force=0)
 
 
+def so_build_balance(sales_order, item, exclude_work_order=None):
+    """How many of `item` a Sales Order still needs work orders for.
+
+    Ordered (stock qty on the order), less what is already on its work orders
+    (drafts included, closed ones and `exclude_work_order` left out), less the
+    trailers given to it from stock (a serial against the order that none of its
+    work orders built). A delivered trailer was either built on one of those work
+    orders or taken from stock, so it is not counted a second time.
+    Returns (ordered, on_work_orders, from_stock, left)."""
+    ordered = flt(frappe.db.sql(
+        "select sum(stock_qty) from `tabSales Order Item` where parent = %s and item_code = %s",
+        (sales_order, item))[0][0])
+    wo_names = frappe.get_all("Work Order", filters={
+        "sales_order": sales_order, "production_item": item, "docstatus": ["<", 2],
+        "status": ["!=", "Closed"], "name": ["!=", exclude_work_order or ""]}, fields=["name", "qty"])
+    on_wo = sum(flt(w.qty) for w in wo_names)
+    built_by = frappe.get_all("Work Order", filters={"sales_order": sales_order, "production_item": item}, pluck="name")
+    from_stock = 0
+    if frappe.get_meta("Trailer Serial").has_field("sales_order"):
+        from_stock = frappe.db.count("Trailer Serial", {
+            "sales_order": sales_order, "trailer_type": item, "status": ["in", ["Sold", "Delivered"]],
+            "work_order": ["not in", built_by or [""]]})
+        # A serial with no work order at all is also from stock.
+        from_stock += frappe.db.count("Trailer Serial", {
+            "sales_order": sales_order, "trailer_type": item, "status": ["in", ["Sold", "Delivered"]],
+            "work_order": ["is", "not set"]})
+    return ordered, on_wo, from_stock, ordered - on_wo - from_stock
+
+
+def validate_so_balance(doc, method=None):
+    """Work Order validate: several work orders may build one Sales Order, but
+    together never more than it ordered -- 75 ordered, 7 x 10 raised, the next
+    one may be 5 at most."""
+    if not doc.sales_order or not doc.production_item or doc.docstatus == 2:
+        return
+    ordered, on_wo, from_stock, left = so_build_balance(doc.sales_order, doc.production_item, doc.name)
+    if not ordered:
+        frappe.throw(_("Sales Order {0} does not order {1}").format(doc.sales_order, doc.production_item))
+    if flt(doc.qty) > left:
+        done = _("{0} already on work orders").format(frappe.format(on_wo)) + (
+            _(" and {0} given from stock").format(from_stock) if from_stock else "")
+        if left <= 0:
+            frappe.throw(_("Sales Order {0} is for {1} of {2}; {3}, so nothing is left to build.").format(
+                doc.sales_order, frappe.format(ordered), doc.production_item, done), title=_("Sales Order fully covered"))
+        frappe.throw(_("Sales Order {0} is for {1} of {2}; {3}, so only {4} can be built on this work order.").format(
+            doc.sales_order, frappe.format(ordered), doc.production_item, done, frappe.format(left)),
+            title=_("More than the Sales Order"))
+
+
 @frappe.whitelist()
 def open_sales_orders_for_item(item):
     """Confirmed customer orders for `item` with trailers still to build -- what
@@ -841,9 +890,9 @@ def open_sales_orders_for_item(item):
     )
     out = []
     for r in rows:
-        # Still to build = ordered, less delivered, less reserved from stock, less
-        # already on a work order. An order fully covered is not offered.
-        to_build = flt(r.qty) - flt(r.delivered_qty) - flt(r.reserved_qty) - flt(r.ordered_qty)
+        # Still to build = ordered, less already on its work orders, less given
+        # from stock (so_build_balance). An order fully covered is not offered.
+        to_build = so_build_balance(r.name, item)[3]
         if to_build <= 0:
             continue
         out.append({

@@ -107,44 +107,40 @@ function payInv(name, outstanding) {
 {{ doc_modals() }}
 {{ filter_script() }}
 <script>
-// How each line was bought: the enabled Packing Types (Desk → Packing Type).
-var PI_PACKING = {{ (packing_types or []) | tojson }};
-var PI_LOOSE = {}; PI_PACKING.forEach(function (p) { if (p.is_loose) PI_LOOSE[p.name] = 1; });
+// Each line is in one of the item's own units, as on the Desk form: its stock
+// unit, its default purchase unit, or a unit in its UOM conversion table.
+// PI_UOMS[item] = {stock_uom, factors: {uom: stock units in one}}.
+var PI_UOMS = {};
+function piEsc(v) { return String(v == null ? "" : v).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
 function piNum(v) { return Number(v) || 0; }
 function piMoney(v) { return v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 }); }
-function piLoose(l) { return !l.packing_type || PI_LOOSE[l.packing_type]; }
-// Pieces in one pack: loose = 1; with an inner packing = inner packs × pieces in each.
-function piPerPack(l) {
-	if (piLoose(l)) return 1;
-	return l.inner_packing ? piNum(l.inner_per_pack) * piNum(l.per_pack) : piNum(l.per_pack);
+function piFactor(l) { var u = PI_UOMS[l.item_code]; return u && l.uom ? piNum(u.factors[l.uom]) : 0; }
+// The price list rate is per stock unit: show it per the chosen unit, unless a rate was typed.
+function piPrefill(tr) {
+	var rate = tr.querySelector('[data-key="rate"]'), l = lineOfRow(tr), cf = piFactor(l);
+	if (rate && !rate.dataset.typed && tr.dataset.stockRate && cf) rate.value = +(piNum(tr.dataset.stockRate) * cf).toFixed(4);
 }
 function newPurchaseInvoice() {
-	var packs = PI_PACKING.map(function (p) { return { value: p.name, label: p.name }; });
-	var inner = [{ value: "", label: "—" }].concat(PI_PACKING.filter(function (p) { return !p.is_loose; }).map(function (p) { return { value: p.name, label: p.name }; }));
-	var first = (PI_PACKING.filter(function (p) { return p.is_loose; })[0] || PI_PACKING[0] || {}).name || "";
 	openNewDoc({
-		title: "New Purchase Invoice", width: 1280,
-		subtitle: "A supplier's bill with the goods received on it. Say how each line was bought: loose, by the box, by the pallet. For a pack of smaller packs (a pallet of boxes) fill Inner packing too. The rate per piece feeds the average purchase rate every BOM is costed at once the bill is approved.",
+		title: "New Purchase Invoice", width: 1180,
+		subtitle: "A supplier's bill with the goods received on it. Each line is in one of the item's units (its stock unit, purchase unit or a unit in its conversion table); the rate is per that unit. The rate per stock unit feeds the average purchase rate every BOM is costed at once the bill is approved.",
 		head: [
 			{ key: "supplier", label: "Supplier", party: "Supplier", required: true, placeholder: "Search supplier…" },
 			{ key: "bill_no", label: "Supplier invoice no", required: true, placeholder: "As printed on their tax invoice" },
 			{ key: "bill_date", label: "Supplier invoice date", type: "date", required: true, value: new Date().toISOString().slice(0, 10) }
 		],
 		columns: [
-			{ key: "item_code", label: "Item", pick: "item", placeholder: "Search item…", width: "200px" },
-			{ key: "packing_type", label: "Packing Type", options: packs, value: first, width: "120px" },
-			{ key: "packs", label: "How many", num: true, value: 1, width: "80px" },
-			{ key: "inner_packing", label: "Inner packing", options: inner, value: "", width: "110px" },
-			{ key: "inner_per_pack", label: "Inner per pack", num: true, width: "85px" },
-			{ key: "per_pack", label: "Pcs per pack", num: true, width: "85px" },
-			{ key: "pack_rate", label: "Rate each", num: true, width: "95px" },
-			{ key: "per_piece", label: "Per piece", width: "85px", calc: function (l) {
-				var per = piPerPack(l);
-				return per && piNum(l.pack_rate) ? piMoney(piNum(l.pack_rate) / per) : "";
+			{ key: "item_code", label: "Item", pick: "item", placeholder: "Search item…", width: "260px" },
+			{ key: "uom", label: "UOM", options: [{ value: "", label: "—" }], width: "120px" },
+			{ key: "qty", label: "Qty", num: true, value: 1, width: "85px" },
+			{ key: "per_unit", label: "Conversion", width: "110px", calc: function (l) {
+				var u = PI_UOMS[l.item_code], cf = piFactor(l);
+				if (!u || !l.uom) return "";
+				return cf ? "= " + (+cf.toFixed(6)) + " " + u.stock_uom : "not set on item";
 			} },
-			{ key: "pieces", label: "Pieces", width: "70px", calc: function (l) {
-				var per = piPerPack(l);
-				return per && piNum(l.packs) ? String(+(piNum(l.packs) * per).toFixed(3)) : "";
+			{ key: "rate", label: "Rate", num: true, width: "105px" },
+			{ key: "amount", label: "Amount", width: "100px", calc: function (l) {
+				return piNum(l.qty) && piNum(l.rate) ? piMoney(piNum(l.qty) * piNum(l.rate)) : "";
 			} },
 			{ key: "warehouse", label: "To yard", default: "Stores - RT" }
 		],
@@ -152,26 +148,32 @@ function newPurchaseInvoice() {
 		// Bills also carry expenses (stationery, coupons): non-stock items are listed too.
 		purchaseItems: true,
 		onPick: function (tr, it) {
-			// The rate the search shows is per stock unit; it only fits a loose line.
-			var rate = tr.querySelector('[data-key="pack_rate"]');
-			if (rate && !piLoose(lineOfRow(tr))) rate.value = "";
+			var rate = tr.querySelector('[data-key="rate"]'), sel = tr.querySelector('[data-key="uom"]');
+			if (rate && !rate.dataset.watch) {
+				rate.dataset.watch = 1;
+				rate.addEventListener("input", function () { rate.dataset.typed = rate.value ? 1 : ""; });
+			}
+			if (rate && !rate.dataset.typed) rate.value = "";
+			sel.innerHTML = '<option value="">…</option>';
+			tradingCall("a3_trading_management.api.buying.get_item_uoms", { item_code: it.value, price_list: "Standard Buying" }).then(function (r) {
+				tr.dataset.stockRate = r.stock_rate || "";
+				var factors = {};
+				r.uoms.forEach(function (u) { factors[u.uom] = u.conversion_factor; });
+				PI_UOMS[it.value] = { stock_uom: r.stock_uom, factors: factors };
+				sel.innerHTML = r.uoms.map(function (u) {
+					return '<option value="' + piEsc(u.uom) + '"' + (u.uom === r["default"] ? " selected" : "") + ">" + piEsc(u.uom) + "</option>";
+				}).join("");
+				piPrefill(tr);
+				sel.dispatchEvent(new Event("change"));
+			}).catch(function (e) { sel.innerHTML = '<option value="">—</option>'; alert((e && e.message) || e); });
 		},
 		onLine: function (tr, l) {
-			var loose = piLoose(l);
-			var inner = tr.querySelector('[data-key="inner_packing"]'), innerPer = tr.querySelector('[data-key="inner_per_pack"]'), per = tr.querySelector('[data-key="per_pack"]');
-			if (inner) { inner.disabled = loose; if (loose) inner.value = ""; }
-			var hasInner = !loose && inner && inner.value;
-			if (innerPer) { innerPer.disabled = !hasInner; if (!hasInner) innerPer.value = ""; innerPer.placeholder = hasInner ? "e.g. 10" : ""; }
-			if (per) {
-				per.disabled = loose; if (loose) per.value = "";
-				per.placeholder = loose ? "1" : "e.g. 50";
-				// With an inner packing, the pieces are counted per inner pack.
-				per.title = hasInner ? "Pieces in each " + inner.value : "Pieces in each " + (l.packing_type || "pack");
-			}
+			var sel = tr.querySelector('[data-key="uom"]');
+			if (sel && sel.dataset.last !== l.uom) { sel.dataset.last = l.uom; piPrefill(tr); }
 		},
 		total: function (l) {
 			l = l.filter(function (r) { return r.item_code; });
-			return [["Lines", String(l.length)], ["Total before VAT", piMoney(l.reduce(function (s, r) { return s + piNum(r.packs) * piNum(r.pack_rate); }, 0))]];
+			return [["Lines", String(l.length)], ["Total before VAT", piMoney(l.reduce(function (s, r) { return s + piNum(r.qty) * piNum(r.rate); }, 0))]];
 		},
 		validate: function (h, l) {
 			l = l.filter(function (r) { return r.item_code; });
@@ -179,17 +181,16 @@ function newPurchaseInvoice() {
 			if (!h.bill_no) return "Enter the supplier's invoice no.";
 			if (!h.bill_date) return "Enter the supplier's invoice date.";
 			if (!l.length) return "Add at least one item.";
-			if (l.some(function (r) { return !piNum(r.packs); })) return "Every line needs how many were bought.";
-			if (l.some(function (r) { return r.inner_packing && !piNum(r.inner_per_pack); })) return "Say how many inner packs are in each pack.";
-			if (l.some(function (r) { return r.inner_packing && !piNum(r.per_pack); })) return "Say how many pieces are in each inner pack.";
-			if (l.some(function (r) { return !piNum(r.pack_rate); })) return "Every line needs a rate.";
+			if (l.some(function (r) { return !r.uom; })) return "Every line needs a UOM.";
+			if (l.some(function (r) { return !piFactor(r); })) return "A line's UOM has no conversion on its item. Add it to the item's UOM table or pick another unit.";
+			if (l.some(function (r) { return !piNum(r.qty); })) return "Every line needs a quantity.";
+			if (l.some(function (r) { return !piNum(r.rate); })) return "Every line needs a rate.";
 			return null;
 		},
 		build: function (h, l) {
 			return { supplier: h.supplier, bill_no: h.bill_no, bill_date: h.bill_date,
 				items: JSON.stringify(l.filter(function (r) { return r.item_code; }).map(function (r) {
-					return { item_code: r.item_code, packing_type: r.packing_type, packs: r.packs, inner_packing: r.inner_packing,
-						inner_per_pack: r.inner_per_pack, per_pack: r.per_pack, pack_rate: r.pack_rate, warehouse: r.warehouse };
+					return { item_code: r.item_code, uom: r.uom, qty: r.qty, rate: r.rate, warehouse: r.warehouse };
 				})) };
 		},
 		method: "a3_trading_management.api.buying.create_purchase_invoice"

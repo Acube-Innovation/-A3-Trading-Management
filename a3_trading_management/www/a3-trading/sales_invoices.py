@@ -20,6 +20,9 @@ def get_context(context):
 	from a3_trading_management.api.invoice_delete import portal_context
 
 	context.can_request_delete, context.open_deletions = portal_context("Sales Invoice")
+	context.billable_orders = frappe.get_all("Sales Order", filters={
+		"docstatus": 1, "per_billed": ["<", 100], "status": ["not in", ["Closed", "On Hold", "Completed"]]},
+		fields=["name", "customer", "customer_name", "per_billed"], order_by="transaction_date desc, name desc")
 	context.page_count = len(context.invoices)
 	context.page_count_label = "invoices"
 	return context

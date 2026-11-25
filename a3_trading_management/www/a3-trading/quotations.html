@@ -1,31 +1,46 @@
 {% extends "templates/workshop_base.html" %}
-{% from "templates/macros/trading.html" import status_pill, filter_bar, filter_script, call_method_js, stat_row, doc_modals %}
+{% from "templates/macros/trading.html" import status_pill, filter_bar, filter_script, call_method_js, stat_row, doc_modals, sup_kit %}
 
 {% block page_content %}
-{#- Quotations without prices: the Supervisor lists what the customer wants;
-    Sales opens the draft on the Desk, adds the rates and submits it. -#}
+{#- Two views of one list. The Supervisor lists what the customer wants, with no
+    prices. Sales makes priced quotations, prices the Supervisor's drafts, approves
+    them (submit — Super Admin only) and turns an accepted one into a Sales Order. -#}
+{%- set is_sup = supervisor is defined and supervisor %}
 
+{%- if is_sup %}
 {{ stat_row([
 	{"label": "Quotations", "value": quotations | length, "sub": "Raised"},
 	{"label": "Drafts", "value": drafts, "sub": "Waiting for Sales to price"},
-	{"label": "Sent", "value": sent, "sub": "Priced and submitted"},
+	{"label": "Approved", "value": approved, "sub": "Priced and approved"},
 ]) }}
+{%- else %}
+{{ stat_row([
+	{"label": "Quotations", "value": quotations | length, "sub": "Raised"},
+	{"label": "To Price", "value": unpriced, "sub": "Drafts from the floor without rates"},
+	{"label": "Drafts", "value": drafts, "sub": "Not yet approved"},
+	{"label": "Approved", "value": approved, "sub": "Ready for the customer"},
+]) }}
+{%- endif %}
 
 <div class="toolbar">
 	<div class="section-title" style="margin:0">Quotations</div>
 	<div class="toolbar__right">
+		{%- if not is_sup %}
+		<a class="btn btn--outline btn--sm" href="/a3-trading/sales-orders"><i class="fa-solid fa-cart-shopping"></i> Sales Orders</a>
+		{%- endif %}
 		<button type="button" class="btn btn--primary btn--sm" onclick="newQuotation()"><i class="fa-solid fa-plus"></i> New Quotation</button>
 	</div>
 </div>
 
 {{ filter_bar("Search quotation, customer or item…", [
-	{"key": "status", "label": "All statuses", "options": ["Draft", "Open", "Ordered", "Lost", "Expired", "Cancelled"]}
+	{"key": "status", "label": "All statuses", "options": ["Draft", "Open", "Partially Ordered", "Ordered", "Lost", "Expired", "Cancelled"]}
 ]) }}
 
 <div class="card"><div class="card__body" style="overflow-x:auto">
 	{%- if quotations %}
 	<table class="table" id="tf-table">
-		<thead><tr><th>Quotation</th><th>Customer</th><th>Date</th><th>Valid Till</th><th>Items</th><th>Status</th><th>Action</th></tr></thead>
+		<thead><tr><th>Quotation</th><th>Customer</th><th>Date</th><th>Valid Till</th><th>Items</th>
+			{%- if not is_sup %}<th class="num">Total</th>{% endif %}<th>Status</th><th>Action</th></tr></thead>
 		<tbody>
 		{%- for q in quotations %}
 			<tr data-hay="{{ (q.name ~ ' ' ~ (q.customer_name or q.party_name or '') ~ ' ' ~ (q["items"] | map(attribute='item_code') | join(' '))) | lower }}" data-status="{{ q.status }}">
@@ -35,8 +50,23 @@
 				<td>{{ frappe.utils.formatdate(q.valid_till, "dd MMM yyyy") if q.valid_till else "—" }}</td>
 				<td>{%- for i in q["items"][:3] %}{{ i.item_name or i.item_code }} &times;{{ i.qty | int }}{% if not loop.last %}, {% endif %}{%- endfor %}
 					{%- if q["items"] | length > 3 %} <span class="muted">+{{ (q["items"] | length) - 3 }} more</span>{% endif %}</td>
+				{%- if not is_sup %}
+				<td class="num">{%- if q.unpriced %}<span class="muted">to price</span>{% else %}{{ frappe.utils.fmt_money(q.grand_total, currency=q.currency) }}{% endif %}</td>
+				{%- endif %}
 				<td>{{ status_pill(q.status, q.docstatus) }}</td>
-				<td><button type="button" class="btn btn--outline btn--sm" onclick="openDoc('Quotation', '{{ q.name }}')"><i class="fa-solid fa-eye"></i> View</button></td>
+				<td style="white-space:nowrap">
+					<button type="button" class="btn btn--outline btn--sm" onclick="openDoc('Quotation', '{{ q.name }}')"><i class="fa-solid fa-eye"></i> View</button>
+					{%- if not is_sup %}
+					{%- if q.docstatus == 0 %}
+					<button type="button" class="btn btn--outline btn--sm" onclick="priceQuotation('{{ q.name }}')"><i class="fa-solid fa-tag"></i> Price</button>
+					{%- if can_submit and not q.unpriced %}
+					<button type="button" class="btn btn--primary btn--sm" onclick="approveQuotation('{{ q.name }}')"><i class="fa-solid fa-check"></i> Approve</button>
+					{%- endif %}
+					{%- elif q.docstatus == 1 and q.status in ("Open", "Partially Ordered") %}
+					<button type="button" class="btn btn--primary btn--sm" onclick="makeOrder('{{ q.name }}')"><i class="fa-solid fa-cart-shopping"></i> Make Order</button>
+					{%- endif %}
+					{%- endif %}
+				</td>
 			</tr>
 		{%- endfor %}
 		</tbody>
@@ -46,16 +76,41 @@
 	{%- endif %}
 </div></div>
 
+{%- if not is_sup %}
+<div class="modal-overlay" id="qp-modal" role="dialog" aria-modal="true">
+	<div class="modal">
+		<div class="modal__head">
+			<div><h3>Price <span id="qp-name"></span></h3><div class="sub">The rate for each line. VAT is added from the company's template.</div></div>
+			<button type="button" class="modal__close" data-sk-close><i class="fa-solid fa-xmark"></i></button>
+		</div>
+		<div class="modal__body">
+			<table class="sk-lines">
+				<thead><tr><th>Item</th><th style="width:90px">Qty</th><th style="width:140px">Rate</th></tr></thead>
+				<tbody id="qp-lines"></tbody>
+			</table>
+			<div class="sk-err" id="qp-err"></div>
+		</div>
+		<div class="modal__foot">
+			<button type="button" class="btn btn--outline" data-sk-close>Cancel</button>
+			<button type="button" class="btn btn--primary" onclick="savePrices()"><i class="fa-solid fa-check"></i> Save prices</button>
+		</div>
+	</div>
+</div>
+{%- endif %}
+
 {{ call_method_js() }}
+{{ sup_kit() }}
 {{ doc_modals() }}
 {{ filter_script() }}
 <script>
+var VALID_TILL = (function () { var d = new Date(); d.setDate(d.getDate() + 30); return d.toISOString().slice(0, 10); })();
+{%- if is_sup %}
 function newQuotation() {
 	openNewDoc({
 		title: "New Quotation", subtitle: "What the customer wants and how many. Sales adds the prices and sends it.",
 		head: [
 			{ key: "customer", label: "Customer", party: "Customer", required: true, placeholder: "Search customer…" },
-			{ key: "valid_till", label: "Valid till", type: "date", value: (function () { var d = new Date(); d.setDate(d.getDate() + 30); return d.toISOString().slice(0, 10); })() }
+			{ key: "valid_till", label: "Valid till", type: "date", value: VALID_TILL }
 		],
 		columns: [{ key: "item_code", label: "Item", pick: "item", placeholder: "Search item…" }, { key: "qty", label: "Qty", num: true, value: 1, width: "110px" }],
 		validate: function (h, l) { return !h.customer ? "Choose the customer." : (l.length ? null : "Add at least one item."); },
@@ -64,5 +119,57 @@ function newQuotation() {
 		onDone: function (r) { alert(r.name + " saved. Sales adds the prices and sends it."); location.reload(); }
 	});
 }
+{%- else %}
+var QAPI = "a3_trading_management.api.selling.";
+function newQuotation() {
+	openNewDoc({
+		title: "New Quotation", subtitle: "A priced offer to the customer. Approve it from the list once saved.",
+		head: [
+			{ key: "customer", label: "Customer", party: "Customer", required: true, placeholder: "Search customer…" },
+			{ key: "valid_till", label: "Valid till", type: "date", value: VALID_TILL }
+		],
+		columns: [{ key: "item_code", label: "Item", pick: "item", placeholder: "Search trailer or part…" }, { key: "qty", label: "Qty", num: true, value: 1, width: "100px" }, { key: "rate", label: "Rate", num: true, width: "130px" }],
+		priceList: "Standard Selling",
+		total: function (l) { return [["Total (before VAT)", l.reduce(function (s, r) { return s + (Number(r.qty) || 0) * (Number(r.rate) || 0); }, 0).toLocaleString(undefined, { minimumFractionDigits: 2 })]]; },
+		validate: function (h, l) { if (!h.customer) return "Choose a customer."; if (!l.length) return "Add at least one item."; if (l.some(function (r) { return !Number(r.rate); })) return "Every line needs a rate."; return null; },
+		build: function (h, l) { return { customer: h.customer, valid_till: h.valid_till || null, items: JSON.stringify(l.map(function (r) { return { item_code: r.item_code, qty: r.qty, rate: r.rate }; })) }; },
+		method: QAPI + "create_quotation"
+	});
+}
+var QP = null;
+function priceQuotation(name) {
+	tradingCall(QAPI + "get_quotation_lines", { name: name }).then(function (lines) {
+		QP = name;
+		document.getElementById("qp-name").textContent = name;
+		document.getElementById("qp-err").style.display = "none";
+		document.getElementById("qp-lines").innerHTML = (lines || []).map(function (l) {
+			return "<tr><td>" + SK.esc(l.item_name || l.item_code) + "<div class=\"muted\" style=\"font-size:12px\">" + SK.esc(l.item_code) + "</div></td><td>" +
+				SK.esc(l.qty) + '</td><td><input type="number" min="0" step="0.01" data-row="' + SK.esc(l.name) + '" value="' + (Number(l.rate) || "") + '"></td></tr>';
+		}).join("");
+		SK.open("qp-modal");
+	}).catch(function (e) { alert(SK.err(e)); });
+}
+function savePrices() {
+	var rates = {}, missing = false;
+	document.querySelectorAll("#qp-lines input[data-row]").forEach(function (i) { if (!Number(i.value)) missing = true; rates[i.dataset.row] = Number(i.value) || 0; });
+	var err = document.getElementById("qp-err");
+	if (missing) { err.textContent = "Every line needs a rate."; err.style.display = "block"; return; }
+	tradingCall(QAPI + "price_quotation", { name: QP, rates: JSON.stringify(rates) }).then(function () { location.reload(); })
+		.catch(function (e) { err.textContent = SK.err(e); err.style.display = "block"; });
+}
+function approveQuotation(name) {
+	if (!confirm("Approve quotation " + name + "? Once approved it can no longer be edited.")) return;
+	tradingAction(QAPI + "submit_quotation", { name: name }, name + " approved.");
+}
+function makeOrder(name) {
+	var d = new Date(); d.setDate(d.getDate() + 7);
+	var when = prompt("The customer accepted " + name + ". Delivery date for the sales order (yyyy-mm-dd):", d.toISOString().slice(0, 10));
+	if (!when) return;
+	tradingCall(QAPI + "make_sales_order_from_quotation", { name: name, delivery_date: when }).then(function (r) {
+		alert(r.name + " saved as a draft. Confirm it on Sales Orders.");
+		location.href = "/a3-trading/sales-orders";
+	}).catch(function (e) { alert("Could not make the order: " + SK.err(e)); });
+}
+{%- endif %}
 </script>
 {% endblock %}
