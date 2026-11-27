@@ -33,7 +33,12 @@ def get_context(context):
 	if fd.get("workorder"):
 		_workorder(context, fd.get("workorder").strip())
 	elif fd.get("qi"):
-		_quality_inspection(context, fd.get("qi").strip())
+		# The inspection report is the RLI Quality Inspection PDF, as Get PDF makes it:
+		# A4 portrait, letter head and footer on every page, customer chassis, stamp.
+		from urllib.parse import quote
+
+		frappe.local.flags.redirect_location = "/api/method/frappe.utils.print_format.download_pdf?doctype=Quality%20Inspection&format=RLI%20Quality%20Inspection&no_letterhead=0&name=" + quote(fd.get("qi").strip())
+		raise frappe.Redirect
 	else:
 		context.mode = "none"
 		context.title = "Print"

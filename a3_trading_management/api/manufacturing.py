@@ -1506,25 +1506,30 @@ def advance_stage(name, notes=None, sheet_choices=None, allow_shortage=0):
         frappe.throw(_("Work order is already at the final stage"))
 
     nxt = STAGES[idx + 1]
+    cut_later = False
     if cur == STAGES[0]:
         # Production starts only when all the material is there, counting what
         # other work orders already in production will use -- unless the user
-        # chose "Continue with negative stock" in the shortage pop-up. Items that
-        # can never go negative (batch items) still block.
+        # chose "Continue with negative stock" in the shortage pop-up. Batch items
+        # (channels, sheets, tubes) cannot go negative: the job may still start,
+        # but it cannot reach Delivery until they are received (_check_stock
+        # below), and their pieces are cut then rather than now.
         short = _shortages(wo, reserve=True)
         if short and cint(allow_shortage):
             hard = _blocking(short, all_rows=False)
-            if hard:
-                frappe.throw(_("These are batch items and cannot go negative. Receive them first.")
-                             + "<br><br>" + _shortage_text(hard), title=_("Material short"))
             line = _("Started short (stock will go negative): {0}").format(
                 ", ".join("{0} {1} {2}".format(r["item_name"], r["short"], r["uom"] or "") for r in short))
+            if hard:
+                line += ". " + _("Batch items to receive before Delivery: {0}").format(
+                    ", ".join(r["item_name"] for r in hard))
+                cut_later = True
             notes = (notes + " | " + line) if notes else line
         elif short:
             frappe.throw(_("Not enough material to start this work order (after what other work orders in "
                            "production need). Receive it first, then move it to Fabrication.")
                          + "<br><br>" + _shortage_text(short), title=_("Material short"))
-    _sheet_material(wo, cur, nxt, sheet_choices)
+    if not cut_later:
+        _sheet_material(wo, cur, nxt, sheet_choices)
     if cur == "QC":
         # Leaving QC is the QC sign-off: it lands on the Quality screen's list,
         # and a failed inspection holds the trailer back.
@@ -1691,7 +1696,7 @@ def material_check(name):
         r["batch"] = bool(frappe.get_cached_value("Item", r["item_code"], "has_batch_no"))
         r["requested"] = on_mr.get(r["item_code"])
     return {"rows": rows, "material_request": _open_wo_request(name),
-            "can_continue": bool(rows) and not any(r["batch"] for r in rows)}
+            "can_continue": bool(rows)}
 
 
 @frappe.whitelist()

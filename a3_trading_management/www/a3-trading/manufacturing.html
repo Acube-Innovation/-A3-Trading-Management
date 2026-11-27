@@ -869,12 +869,13 @@
 	}
 
 	// ---- material short pop-up ---------------------------------------------
-	var shortModal = document.getElementById("short-modal");
+	var shortModal = document.getElementById("short-modal"), SHORT_BATCH = false;
 	function fmtQ(v) { return (Math.round(Number(v || 0) * 1000) / 1000).toLocaleString(); }
 	function openShort(res) {
 		var rows = res.rows || [];
 		document.getElementById("short-sub").textContent = current + " — " + rows.length + " item" + (rows.length === 1 ? "" : "s") + " short to start fabrication";
 		var hasBatch = rows.some(function (r) { return r.batch; });
+		SHORT_BATCH = hasBatch;
 		var html = '<div style="overflow-x:auto"><table class="table"><thead><tr><th>Item</th><th class="num">Needs</th><th class="num">Free</th><th class="num">Short</th><th>Already requested</th></tr></thead><tbody>' +
 			rows.map(function (r) {
 				return "<tr><td>" + esc(r.item_name) + (r.batch ? ' <span title="Batch item: cannot go negative">🔒</span>' : "") +
@@ -883,7 +884,7 @@
 					'</td><td class="num"><b style="color:var(--danger,#c0392b)">' + fmtQ(r.short) + "</b></td><td>" +
 					(r.requested ? esc(r.requested) : "—") + "</td></tr>";
 			}).join("") + "</tbody></table></div>";
-		if (hasBatch) html += '<div class="alert" style="margin-top:10px">🔒 Sheets, channels, tubes and other batch items cannot go negative. This job can start only when they arrive — raise a Material Request.</div>';
+		if (hasBatch) html += '<div class="alert" style="margin-top:10px">🔒 Sheets, channels, tubes and other batch items cannot go negative. You can start Fabrication now, but the trailer cannot move to Delivery until they are received — raise a Material Request. Their pieces are cut at Delivery.</div>';
 		else html += '<p class="muted" style="margin-top:10px;font-size:13px">Continue moves the job to Fabrication now; the shortage is noted in the stage history and these items go negative in stock when the trailer is delivered.</p>';
 		if (res.material_request) html += '<p style="margin-top:6px;font-size:13px">This work order already has an open request: <b>' + esc(res.material_request) + "</b>.</p>";
 		document.getElementById("short-body").innerHTML = html;
@@ -899,7 +900,10 @@
 	shortModal.querySelectorAll("[data-short-close]").forEach(function (b) { b.addEventListener("click", closeShort); });
 	shortModal.addEventListener("click", function (e) { if (e.target === shortModal) closeShort(); });
 	document.getElementById("short-continue").addEventListener("click", function () {
-		ALLOW_SHORT = true; closeShort(); advance(true);
+		ALLOW_SHORT = true; closeShort();
+		// Batch items short: nothing to cut yet, so skip the sheet dialog (asked at Delivery).
+		if (SHORT_BATCH) { doAdvance(null); return; }
+		advance(true);
 	});
 	document.getElementById("short-request").addEventListener("click", function () {
 		var b = this; b.disabled = true; b.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Raising…';
