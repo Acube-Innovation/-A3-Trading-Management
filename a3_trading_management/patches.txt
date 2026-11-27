@@ -17,6 +17,6 @@ a3_trading_management.patches.split_terms_into_print_sections
 a3_trading_management.patches.sync_delivered_trailers
 a3_trading_management.patches.tidy_spec_lists
 a3_trading_management.patches.clean_cancelled_vouchers
-a3_trading_management.patches.remove_packing_type
+a3_trading_management.patches.remove_packing_type #2 2026-11-27 re-run: custom_packing_type left linking to a deleted Packing Type
 a3_trading_management.patches.merge_qt0002_sales_orders
 a3_trading_management.patches.fix_naming_counters
